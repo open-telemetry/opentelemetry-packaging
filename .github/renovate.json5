@@ -1,0 +1,32 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    "helpers:pinGitHubActionDigestsToSemver"
+  ],
+  "packageRules": [
+    {
+      "groupName": "all patch versions",
+      "matchUpdateTypes": ["patch"],
+      "schedule": ["before 8am every weekday"]
+    },
+    {
+      "matchUpdateTypes": ["minor", "major"],
+      "schedule": ["before 8am on Monday"]
+    },
+    {
+      // group all GitHub Actions updates into a single weekly PR
+      // (Renovate applies packageRules in order and later rules win)
+      "groupName": "github actions",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "schedule": [
+        "before 8am on Tuesday"
+      ]
+    }
+  ],
+  "labels": [
+    "dependencies"
+  ]
+}
