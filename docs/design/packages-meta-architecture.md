@@ -167,10 +167,14 @@ Language packages only suggest `opentelemetry-injector1` (DEB `Suggests`; omitte
 This decouples the API contract from the package's release cadence:
 
 - **Today:** the injector provides `opentelemetry-injector1`. The metapackage depends on it. Everything resolves.
-- **If a future injector release breaks the conf.d contract:** that release stops providing `opentelemetry-injector1` and starts providing `opentelemetry-injector2`. The metapackage still depends on `opentelemetry-injector1`, so the package manager blocks the upgrade until the metapackage (and the language packages it references) are also updated.
+- **If a future injector release breaks the conf.d contract:** that release stops providing `opentelemetry-injector1` and starts providing `opentelemetry-injector2`. The metapackage still depends on `opentelemetry-injector1`, so the package manager blocks the injector upgrade until the metapackage is also updated.
 - **Updated metapackage and language packages** switch to `opentelemetry-injector2`, and the system can upgrade atomically.
 
-This mechanism is self-service for vendors: a vendor package suggests `opentelemetry-injector1` and is automatically protected from incompatible injector upgrades without the injector needing to know the vendor package exists.
+The same logic applies to language package interface generations. When the metapackage moves from `opentelemetry-java-autoinstrumentation1` to `opentelemetry-java-autoinstrumentation2`, the package manager upgrades the upstream language package in the same transaction.
+
+**Impact on vendor packages.** If a user has a vendor package that provides `opentelemetry-java-autoinstrumentation1` but the new metapackage requires `opentelemetry-java-autoinstrumentation2`, the package manager holds back the metapackage upgrade until the vendor ships an updated package providing `…2`. This is the intended safety behavior — it prevents a vendor package from being silently used with an incompatible interface — but it means the user cannot upgrade to the new metapackage until their vendor catches up.
+
+This mechanism is self-service for vendors: a vendor package provides a given interface generation and is automatically protected from incompatible upgrades without the upstream needing to know the vendor package exists.
 
 ### `opentelemetry-java-autoinstrumentation`
 
