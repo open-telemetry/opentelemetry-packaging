@@ -163,7 +163,7 @@ The injector declares `Provides: opentelemetry-injector1`.
 The trailing `1` is not the package release version — it is the **generation number of the conf.d configuration API**, following the Debian shared-library naming convention (`libssl3`, `libgcc-s1`, `libpng16-16`).
 
 The metapackage depends on `opentelemetry-injector1` (hard dependency) to ensure the installed injector is compatible with the language packages it pulls in.
-Language packages only suggest `opentelemetry-injector1` (DEB `Suggests`; omitted on RPM which has no equivalent) since they are useful on their own without the injector.
+Language packages only suggest `opentelemetry-injector1` (DEB `Suggests`; RPM [`Suggests`](https://docs.fedoraproject.org/en-US/packaging-guidelines/WeakDependencies/) via `--rpm-tag`) since they are useful on their own without the injector.
 This decouples the API contract from the package's release cadence:
 
 - **Today:** the injector provides `opentelemetry-injector1`. The metapackage depends on it. Everything resolves.
@@ -196,7 +196,7 @@ Downloads the upstream [OpenTelemetry Java agent](https://github.com/open-teleme
 |-------|-----|-----|
 | Architecture | `all` | `noarch` |
 | Provides | `opentelemetry-java-autoinstrumentation1` | `opentelemetry-java-autoinstrumentation1` |
-| Suggests | `opentelemetry-injector1`, `default-jre` (DEB only) | — |
+| Suggests | `opentelemetry-injector1`, `default-jre` | `opentelemetry-injector1` |
 | Config files | `/etc/opentelemetry/java` | `/etc/opentelemetry/java` |
 
 ### `opentelemetry-nodejs-autoinstrumentation`
@@ -219,7 +219,7 @@ Downloads [`@opentelemetry/auto-instrumentations-node`](https://www.npmjs.com/pa
 |-------|-----|-----|
 | Architecture | `all` | `noarch` |
 | Provides | `opentelemetry-nodejs-autoinstrumentation1` | `opentelemetry-nodejs-autoinstrumentation1` |
-| Suggests | `opentelemetry-injector1`, `nodejs (>= 18)` (DEB only) | — |
+| Suggests | `opentelemetry-injector1`, `nodejs (>= 18)` | `opentelemetry-injector1` |
 | Config files | `/etc/opentelemetry/nodejs` | `/etc/opentelemetry/nodejs` |
 
 ### `opentelemetry-dotnet-autoinstrumentation`
@@ -244,7 +244,7 @@ The injector detects the libc flavor at runtime by reading ELF headers.
 |-------|-----|-----|
 | Architecture | `amd64` or `arm64` | `x86_64` or `aarch64` |
 | Provides | `opentelemetry-dotnet-autoinstrumentation1` | `opentelemetry-dotnet-autoinstrumentation1` |
-| Suggests | `opentelemetry-injector1` (DEB only) | — |
+| Suggests | `opentelemetry-injector1` | `opentelemetry-injector1` |
 | Config files | `/etc/opentelemetry/dotnet` | `/etc/opentelemetry/dotnet` |
 
 ### `opentelemetry`
@@ -333,11 +333,12 @@ fpm -s dir -t deb -n "acme-java-autoinstrumentation" -v "$ACME_VERSION" \
 ```
 
 ```bash
-# RPM (no Suggests equivalent — the hint is omitted)
+# RPM
 fpm -s dir -t rpm -n "acme-java-autoinstrumentation" -v "$ACME_VERSION" \
     --provides "opentelemetry-java-autoinstrumentation1" \
     --conflicts "opentelemetry-java-autoinstrumentation" \
     --replaces "opentelemetry-java-autoinstrumentation" \
+    --rpm-tag "Suggests: opentelemetry-injector1" \
     --config-files /etc/opentelemetry/injector/conf.d/ \
     --config-files /etc/opentelemetry/java/ \
     …
@@ -348,7 +349,7 @@ Key properties:
 - `--provides` the virtual name so the metapackage's dependency is satisfied.
 - `--conflicts` and `--replaces` the concrete upstream name so the package manager removes the upstream package automatically during install.
 - The vendor package installs its own `conf.d/java.conf` (same filename, not a higher-priority override) pointing to its agent path. Because it `--replaces` the upstream package, the upstream's `conf.d/java.conf` is cleanly removed by the package manager.
-- The injector is a `Suggests` (DEB only), not a hard dependency. Language packages are useful on their own (e.g., a Java agent JAR can be used directly via `-javaagent:`), and the metapackage already ensures co-installation for the standard use case. RPM has no equivalent of `Suggests`, so the hint is omitted there.
+- The injector is a `Suggests`, not a hard dependency. Language packages are useful on their own (e.g., a Java agent JAR can be used directly via `-javaagent:`), and the metapackage already ensures co-installation for the standard use case.
 
 ### Conf.d file naming convention
 
@@ -466,11 +467,9 @@ Worse, the upstream JAR is still on disk consuming space, and the upstream packa
 
 | File | Change |
 |------|--------|
-| `packaging/rpm/java/build.sh` | Add `--provides "opentelemetry-java-autoinstrumentation1"`, remove `--depends "opentelemetry-injector >= ${VERSION}"` |
-| `packaging/rpm/nodejs/build.sh` | Add `--provides "opentelemetry-nodejs-autoinstrumentation1"`, remove `--depends "opentelemetry-injector >= ${VERSION}"` |
-| `packaging/rpm/dotnet/build.sh` | Add `--provides "opentelemetry-dotnet-autoinstrumentation1"`, remove `--depends "opentelemetry-injector >= ${VERSION}"` |
-
-RPM has no equivalent of `Suggests`, so the injector hint is omitted there.
+| `packaging/rpm/java/build.sh` | Add `--provides "opentelemetry-java-autoinstrumentation1"`, replace `--depends "opentelemetry-injector >= ${VERSION}"` with `--rpm-tag "Suggests: opentelemetry-injector1"` |
+| `packaging/rpm/nodejs/build.sh` | Add `--provides "opentelemetry-nodejs-autoinstrumentation1"`, replace `--depends "opentelemetry-injector >= ${VERSION}"` with `--rpm-tag "Suggests: opentelemetry-injector1"` |
+| `packaging/rpm/dotnet/build.sh` | Add `--provides "opentelemetry-dotnet-autoinstrumentation1"`, replace `--depends "opentelemetry-injector >= ${VERSION}"` with `--rpm-tag "Suggests: opentelemetry-injector1"` |
 
 ### Metapackage build scripts
 
@@ -604,3 +603,16 @@ An incompatible library version produces a different SONAME, breaking the depend
 | Versioned interface | `libssl3` | `libssl.so.3()(64bit)` | `opentelemetry-injector1`, `opentelemetry-java-autoinstrumentation1`, etc. |
 | Provider | `libssl3` package | `openssl-libs` package | `opentelemetry-injector`, `opentelemetry-java-autoinstrumentation`, etc. |
 | Consumer | any package linked against `libssl.so.3` | any package linked against `libssl.so.3` | metapackage, language packages, vendor packages |
+
+## Appendix: Implementation Notes
+
+### RPM `Suggests` via FPM
+
+FPM does not have a native `--rpm-suggests` flag ([jordansissel/fpm#1457](https://github.com/jordansissel/fpm/issues/1457)).
+The `--rpm-tag` flag injects arbitrary directives into the RPM spec header, so `Suggests` is expressed as:
+
+```bash
+--rpm-tag "Suggests: opentelemetry-injector1"
+```
+
+The RPM repository must be indexed with `createrepo_c` (not the legacy `createrepo`) for weak dependencies to be preserved in the repository metadata.
