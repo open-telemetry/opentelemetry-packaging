@@ -615,6 +615,16 @@ An incompatible library version produces a different SONAME, breaking the depend
 | Provider | `libssl3` package | `openssl-libs` package | `opentelemetry-injector`, `opentelemetry-java-autoinstrumentation`, etc. |
 | Consumer | any package linked against `libssl.so.3` | any package linked against `libssl.so.3` | metapackage, language packages, vendor packages |
 
+### `/etc/ld.so.preload` management
+
+The injector's post-install and pre-uninstall scripts add and remove an entry in `/etc/ld.so.preload`.
+This pattern has prior art in the Debian ecosystem:
+
+**[`snoopy`](https://packages.debian.org/sid/snoopy)** — a command-logging library loaded via `/etc/ld.so.preload`.
+Its [`postinst`](https://salsa.debian.org/pkg-security-team/snoopy/-/blob/debian/master/debian/snoopy.postinst.in) appends the library path and its [`prerm`](https://salsa.debian.org/pkg-security-team/snoopy/-/blob/debian/master/debian/snoopy.prerm) removes it.
+
+**[`ld.so.preload-manager`](https://launchpad.net/ubuntu/+source/ld.so.preload-manager)** — an Ubuntu package that provided a dedicated tool for managing `/etc/ld.so.preload` entries. No longer maintained.
+
 ## Appendix: Implementation Notes
 
 ### RPM `Suggests` via FPM
