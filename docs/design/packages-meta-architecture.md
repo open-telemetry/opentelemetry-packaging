@@ -224,7 +224,7 @@ Downloads [`@opentelemetry/auto-instrumentations-node`](https://www.npmjs.com/pa
 
 ### `opentelemetry-dotnet-autoinstrumentation`
 
-Downloads the [OpenTelemetry .NET auto-instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation) binaries at build time, for both glibc and musl libc flavors.
+Downloads the [OpenTelemetry .NET Automatic Instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation) binaries at build time, for both glibc and musl libc flavors.
 The injector detects the libc flavor at runtime by reading ELF headers.
 
 #### Contents
