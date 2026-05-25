@@ -291,6 +291,30 @@ See [Injector interface versioning](#injector-interface-versioning) for the upgr
 | `dotnet_auto_instrumentation_agent_path_prefix` | `conf.d/dotnet.conf` | Directory prefix for the .NET agent (injector appends `glibc/` or `musl/`) |
 | `all_auto_instrumentation_agents_env_path` | `otelinject.conf` | Path to the default environment variables file |
 
+## Component Versioning
+
+Each language package bundles pre-built upstream artifacts (a JAR, a `node_modules` tree, .NET binaries).
+Users and security teams need to know which versions are inside a given package without extracting and inspecting the files.
+See [#13](https://github.com/open-telemetry/opentelemetry-packaging/issues/13) for the full discussion.
+
+### Build-time version pinning
+
+The build repository pins the exact upstream artifact version for each language package in a central manifest.
+Rebuilding the package from the same commit always produces the same contents.
+
+### Installed package metadata
+
+**RPM** — each language package declares its bundled components using Fedora's [`bundled()` virtual provides](https://docs.fedoraproject.org/en-US/packaging-guidelines/Bundled_Libraries/) convention:
+
+```
+Provides: bundled(opentelemetry-javaagent) = 2.15.0
+```
+
+This is machine-readable and queryable (`rpm -q --provides <package> | grep bundled`), and is used by security teams to assess CVE impact on packages with vendored dependencies.
+
+**DEB** — Debian has no equivalent of `bundled()` provides.
+Each language package ships an SBOM file under `/usr/share/doc/<package>/` in [SPDX](https://spdx.dev/) or [CycloneDX](https://cyclonedx.org/) format, listing all bundled components and their versions.
+
 ## File Ownership Boundaries
 
 Each package owns a disjoint set of paths.
