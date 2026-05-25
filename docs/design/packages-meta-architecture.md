@@ -554,6 +554,15 @@ Rejected because:
 - RPM has no equivalent; the solution must work for both DEB and RPM.
 - Diverts are fragile and difficult to debug.
 
+### SONAME versioning and multiarch paths for the injector
+
+Standard shared libraries use a SONAME symlink chain (`libfoo.so → libfoo.so.1 → libfoo.so.1.2.3`) so the dynamic linker can resolve the correct ABI version at load time. Architecture-dependent binaries are typically installed under [multiarch triplet paths](https://wiki.debian.org/Multiarch/HOWTO) (e.g., `/usr/lib/x86_64-linux-gnu/`) to allow co-installation of multiple architectures.
+
+Neither convention applies to `libotelinject.so`:
+
+- **SONAME versioning:** The injector is not linked against by any binary. It is loaded via a literal path in `/etc/ld.so.preload`, which does not perform SONAME resolution. A versioned filename (`libotelinject.so.1`) would require the post-install script to write that exact name into `/etc/ld.so.preload`, gaining nothing over the unversioned name. Interface compatibility is already tracked at the package level via `Provides: opentelemetry-injector1`.
+- **Multiarch triplet paths:** The injector is loaded into every process on the system via `/etc/ld.so.preload`. There is no use case for co-installing `amd64` and `i386` variants of the injector — only one architecture's injector can be active system-wide. Separate per-arch packages are built, but they are not co-installable, so multiarch paths add complexity without benefit.
+
 ### Co-installable interface generations
 
 We do not plan to make different interface generations of the same language package co-installable (e.g., `opentelemetry-java-autoinstrumentation1` and `opentelemetry-java-autoinstrumentation2` installed side by side), following the shared-library co-installability pattern (`libssl1.1` and `libssl3`).
