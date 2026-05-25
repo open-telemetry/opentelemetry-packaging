@@ -42,10 +42,10 @@ All are built with [FPM](https://fpm.readthedocs.io/) for both DEB and RPM.
 
 ```
 opentelemetry  (metapackage)
-├── opentelemetry-injector1                      (virtual)
-├── opentelemetry-java-autoinstrumentation1      (virtual)
-├── opentelemetry-nodejs-autoinstrumentation1    (virtual)
-└── opentelemetry-dotnet-autoinstrumentation1    (virtual)
+├── Depends: opentelemetry-injector1                      (virtual)
+├── Recommends: opentelemetry-java-autoinstrumentation1   (virtual)
+├── Recommends: opentelemetry-nodejs-autoinstrumentation1 (virtual)
+└── Recommends: opentelemetry-dotnet-autoinstrumentation1 (virtual)
 
 opentelemetry-injector
 └── Provides: opentelemetry-injector1
@@ -261,13 +261,20 @@ It exists so that `apt install opentelemetry` or `yum install opentelemetry` pul
 |-------|-----|-----|
 | Architecture | `all` | `noarch` |
 | Depends | `opentelemetry-injector1` | `opentelemetry-injector1` |
-| Depends | `opentelemetry-java-autoinstrumentation1` | `opentelemetry-java-autoinstrumentation1` |
-| Depends | `opentelemetry-nodejs-autoinstrumentation1` | `opentelemetry-nodejs-autoinstrumentation1` |
-| Depends | `opentelemetry-dotnet-autoinstrumentation1` | `opentelemetry-dotnet-autoinstrumentation1` |
+| Recommends | `opentelemetry-java-autoinstrumentation1` | `opentelemetry-java-autoinstrumentation1` |
+| Recommends | `opentelemetry-nodejs-autoinstrumentation1` | `opentelemetry-nodejs-autoinstrumentation1` |
+| Recommends | `opentelemetry-dotnet-autoinstrumentation1` | `opentelemetry-dotnet-autoinstrumentation1` |
 
 Every dependency uses a virtual name rather than a concrete package name.
-`opentelemetry-injector1` ensures compatibility with the injector's conf.d API generation.
-Language package dependencies (`opentelemetry-<language>-autoinstrumentation1`) serve a dual purpose: they version the provider interface *and* allow either the upstream or a vendor package to satisfy them.
+
+**Why `Depends` for the injector and `Recommends` for language packages.**
+The metapackage uses two dependency strengths:
+
+- **`Depends: opentelemetry-injector1`** — hard dependency. The metapackage is useless without the injector; removing it should tear down the metapackage.
+- **`Recommends: opentelemetry-<language>-autoinstrumentation1`** — soft dependency. Language packages are installed by default (both `apt` and `dnf` install `Recommends` by default), but a user who does not need a particular language can remove it (e.g., `apt remove opentelemetry-dotnet-autoinstrumentation`) without tearing out the metapackage. The remaining language packages stay protected from `apt autoremove` / `dnf autoremove` because the metapackage still recommends them.
+
+If `Depends` were used instead, removing any single language package would force removal of the metapackage, which in turn would leave all other language packages unprotected from autoremove — a cascade the user did not intend.
+
 See [Injector interface versioning](#injector-interface-versioning) for the upgrade scenario.
 
 ## Configuration System
@@ -513,8 +520,8 @@ Worse, the upstream JAR is still on disk consuming space, and the upstream packa
 
 | File | Change |
 |------|--------|
-| `packaging/deb/meta/build.sh` | Change `--depends "opentelemetry-injector (= ${VERSION})"` to `--depends "opentelemetry-injector1"`, change `--depends "opentelemetry-java-autoinstrumentation (= ${VERSION})"` to `--depends "opentelemetry-java-autoinstrumentation1"` (same for nodejs, dotnet) |
-| `packaging/rpm/meta/build.sh` | Change `--depends "opentelemetry-injector = ${VERSION}"` to `--depends "opentelemetry-injector1"`, change `--depends "opentelemetry-java-autoinstrumentation = ${VERSION}"` to `--depends "opentelemetry-java-autoinstrumentation1"` (same for nodejs, dotnet) |
+| `packaging/deb/meta/build.sh` | Change `--depends "opentelemetry-injector (= ${VERSION})"` to `--depends "opentelemetry-injector1"`, change `--depends "opentelemetry-java-autoinstrumentation (= ${VERSION})"` to `--deb-recommends "opentelemetry-java-autoinstrumentation1"` (same for nodejs, dotnet) |
+| `packaging/rpm/meta/build.sh` | Change `--depends "opentelemetry-injector = ${VERSION}"` to `--depends "opentelemetry-injector1"`, change `--depends "opentelemetry-java-autoinstrumentation = ${VERSION}"` to `--rpm-tag "Recommends: opentelemetry-java-autoinstrumentation1"` (same for nodejs, dotnet) |
 
 ### No changes needed
 
