@@ -35,7 +35,7 @@ All are built with [FPM](https://fpm.readthedocs.io/) for both DEB and RPM.
 | `opentelemetry-injector` | LD_PRELOAD-based shared library that activates language agents | Per-arch (`amd64`, `arm64`) |
 | `opentelemetry-java-autoinstrumentation` | OpenTelemetry Java agent JAR | `all` / `noarch` |
 | `opentelemetry-nodejs-autoinstrumentation` | OpenTelemetry Node.js auto-instrumentation | `all` / `noarch` |
-| `opentelemetry-dotnet-autoinstrumentation` | OpenTelemetry .NET auto-instrumentation (glibc + musl) | Per-arch (`amd64`, `arm64`) |
+| `opentelemetry-dotnet-autoinstrumentation` | OpenTelemetry .NET Automatic Instrumentation (glibc + musl) | Per-arch (`amd64`, `arm64`) |
 | `opentelemetry` | Metapackage that pulls in the injector and all language packages | `all` / `noarch` |
 
 ### Dependency graph
