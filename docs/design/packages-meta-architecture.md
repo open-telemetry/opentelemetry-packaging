@@ -112,11 +112,11 @@ All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfound
     └── otel-config.yaml
 
 /usr/share/man/
-├── man8/opentelemetry-injector.8.gz
-└── man1/
-    ├── opentelemetry-java.1.gz
-    ├── opentelemetry-nodejs.1.gz
-    └── opentelemetry-dotnet.1.gz
+└── man8/
+    ├── opentelemetry-injector.8.gz
+    ├── opentelemetry-java.8.gz
+    ├── opentelemetry-nodejs.8.gz
+    └── opentelemetry-dotnet.8.gz
 
 /usr/share/doc/
 ├── opentelemetry-injector/
@@ -187,7 +187,7 @@ Downloads the upstream [OpenTelemetry Java agent](https://github.com/open-teleme
 | `/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar` | Java agent JAR |
 | `/etc/opentelemetry/injector/conf.d/java.conf` | Drop-in: `jvm_auto_instrumentation_agent_path=/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar` |
 | `/etc/opentelemetry/java/otel-config.yaml` | Declarative configuration template |
-| `/usr/share/man/man1/opentelemetry-java.1.gz` | Man page |
+| `/usr/share/man/man8/opentelemetry-java.8.gz` | Man page |
 | `/usr/share/doc/opentelemetry-java-autoinstrumentation/` | Documentation and copyright |
 
 #### Package metadata
@@ -210,7 +210,7 @@ Downloads [`@opentelemetry/auto-instrumentations-node`](https://www.npmjs.com/pa
 | `/usr/lib/opentelemetry/nodejs/node_modules/…` | Node.js auto-instrumentation modules |
 | `/etc/opentelemetry/injector/conf.d/nodejs.conf` | Drop-in: `nodejs_auto_instrumentation_agent_path=…/register.js` |
 | `/etc/opentelemetry/nodejs/otel-config.yaml` | Declarative configuration template |
-| `/usr/share/man/man1/opentelemetry-nodejs.1.gz` | Man page |
+| `/usr/share/man/man8/opentelemetry-nodejs.8.gz` | Man page |
 | `/usr/share/doc/opentelemetry-nodejs-autoinstrumentation/` | Documentation and copyright |
 
 #### Package metadata
@@ -235,7 +235,7 @@ The injector detects the libc flavor at runtime by reading ELF headers.
 | `/usr/lib/opentelemetry/dotnet/musl/…` | .NET agent binaries (musl) |
 | `/etc/opentelemetry/injector/conf.d/dotnet.conf` | Drop-in: `dotnet_auto_instrumentation_agent_path_prefix=/usr/lib/opentelemetry/dotnet` |
 | `/etc/opentelemetry/dotnet/otel-config.yaml` | Declarative configuration template |
-| `/usr/share/man/man1/opentelemetry-dotnet.1.gz` | Man page |
+| `/usr/share/man/man8/opentelemetry-dotnet.8.gz` | Man page |
 | `/usr/share/doc/opentelemetry-dotnet-autoinstrumentation/` | Documentation and copyright |
 
 #### Package metadata
