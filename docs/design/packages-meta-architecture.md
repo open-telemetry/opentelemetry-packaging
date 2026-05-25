@@ -178,7 +178,8 @@ This mechanism is self-service for vendors: a vendor package provides a given in
 
 ### `opentelemetry-java-autoinstrumentation`
 
-Downloads the upstream [OpenTelemetry Java agent](https://github.com/open-telemetry/opentelemetry-java-instrumentation) JAR at build time and packages it.
+The package build fetches the pre-built upstream [OpenTelemetry Java agent](https://github.com/open-telemetry/opentelemetry-java-instrumentation) JAR and packages it.
+The JAR file is part of the system package; no files are downloaded at package installation time or afterwards.
 
 #### Contents
 
@@ -201,7 +202,8 @@ Downloads the upstream [OpenTelemetry Java agent](https://github.com/open-teleme
 
 ### `opentelemetry-nodejs-autoinstrumentation`
 
-Downloads [`@opentelemetry/auto-instrumentations-node`](https://www.npmjs.com/package/@opentelemetry/auto-instrumentations-node) from npm at build time and packages the installed `node_modules` tree.
+The package build fetches [`@opentelemetry/auto-instrumentations-node`](https://www.npmjs.com/package/@opentelemetry/auto-instrumentations-node) from npm and packages the installed `node_modules` tree.
+The modules are part of the system package; no files are downloaded at package installation time or afterwards.
 
 #### Contents
 
@@ -224,7 +226,8 @@ Downloads [`@opentelemetry/auto-instrumentations-node`](https://www.npmjs.com/pa
 
 ### `opentelemetry-dotnet-autoinstrumentation`
 
-Downloads the [OpenTelemetry .NET Automatic Instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation) binaries at build time, for both glibc and musl libc flavors.
+The package build fetches the pre-built [OpenTelemetry .NET Automatic Instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation) binaries for both glibc and musl libc flavors and packages them.
+The binaries are part of the system package; no files are downloaded at package installation time or afterwards.
 The injector detects the libc flavor at runtime by reading ELF headers.
 
 #### Contents
