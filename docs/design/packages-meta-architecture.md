@@ -67,6 +67,12 @@ Every dependency in the graph uses a virtual package name rather than a concrete
 The trailing `1` is not a package release version — it is the **interface generation number**, following the shared-library SONAME convention (`libssl3`, `libgcc-s1`).
 Both patterns are well-established in DEB and RPM (see [Appendix: Prior Art in DEB and RPM](#appendix-prior-art-in-deb-and-rpm)).
 
+> [!NOTE]
+> All `Provides` declarations are currently unversioned (e.g., `Provides: opentelemetry-injector1` without `(= X.Y.Z)`).
+> Per [Debian policy](https://www.debian.org/doc/debian-policy/ch-relationships.html#virtual-packages-provides), a versioned `Provides` (e.g., `Provides: opentelemetry-injector1 (= 1.2.3-1)`) would allow consumers to express versioned dependencies.
+> This is deferred until the package versioning scheme is defined (see [#11](https://github.com/open-telemetry/opentelemetry-packaging/issues/11)).
+> No current consumer requires a versioned dependency, so unversioned `Provides` is sufficient for now.
+
 **Interface versioning (`opentelemetry-injector1`).**
 Tracks generation 1 of the injector's `conf.d/` configuration API.
 The metapackage depends on this virtual name to ensure the installed injector is compatible with the language packages it pulls in.
