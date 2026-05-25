@@ -76,7 +76,7 @@ See [Injector interface versioning](#injector-interface-versioning) for the full
 **Swappable alternatives with interface versioning (`opentelemetry-java-autoinstrumentation1`, etc.).**
 Tracks generation 1 of the contract between the injector and each language's auto-instrumentation provider — the conf.d key names, the file layout under `/usr/lib/opentelemetry/<language>/`, and the `otel-config.yaml` structure.
 The metapackage depends on these virtual names.
-A vendor can ship a replacement package that also provides the same virtual name — combined with `Conflicts`/`Replaces` on the concrete upstream name, the package manager handles the swap transparently.
+A vendor can ship a replacement package with a different name (e.g., `acme-java-autoinstrumentation`) that also provides the same virtual name — combined with `Conflicts`/`Replaces` on the concrete upstream name, the package manager handles the swap transparently.
 If the upstream changes what "being a Java auto-instrumentation provider" means, it bumps to `opentelemetry-java-autoinstrumentation2`; existing vendor packages that still provide `…1` cannot satisfy the new dependency.
 See [Vendor Override](#vendor-override) for the recipe and user experience.
 
@@ -315,6 +315,17 @@ Each upstream language package declares a virtual package via `--provides` that 
 | `opentelemetry-java-autoinstrumentation` | `opentelemetry-java-autoinstrumentation1` |
 | `opentelemetry-nodejs-autoinstrumentation` | `opentelemetry-nodejs-autoinstrumentation1` |
 | `opentelemetry-dotnet-autoinstrumentation` | `opentelemetry-dotnet-autoinstrumentation1` |
+
+### Vendor package naming
+
+A vendor package **must** use a different concrete package name than the upstream package it replaces — for example, `acme-java-autoinstrumentation` rather than `opentelemetry-java-autoinstrumentation`.
+The vendor package then declares `Provides: opentelemetry-java-autoinstrumentation1` so that it satisfies the same virtual dependency, and `Conflicts`/`Replaces` on the upstream concrete name so the package manager handles the swap.
+
+| Upstream package | Vendor package (example) | Virtual package |
+|---|---|---|
+| `opentelemetry-java-autoinstrumentation` | `acme-java-autoinstrumentation` | `opentelemetry-java-autoinstrumentation1` |
+| `opentelemetry-nodejs-autoinstrumentation` | `acme-nodejs-autoinstrumentation` | `opentelemetry-nodejs-autoinstrumentation1` |
+| `opentelemetry-dotnet-autoinstrumentation` | `acme-dotnet-autoinstrumentation` | `opentelemetry-dotnet-autoinstrumentation1` |
 
 ### Vendor package recipe
 
