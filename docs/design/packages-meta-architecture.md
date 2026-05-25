@@ -571,7 +571,7 @@ Packages that just need "something that can fetch a URL" depend on `webclient`.
 
 ### Versioned interface names (API generations)
 
-The pattern used by all virtual names in this design — embedding an interface generation number as a suffix (`opentelemetry-injector1`, `opentelemetry-java-autoinstrumentation1`, etc.) — follows the shared-library SONAME convention used throughout Debian and RPM.
+The pattern used by all virtual names in this design — embedding an interface generation number as a suffix (`opentelemetry-injector1`, `opentelemetry-java-autoinstrumentation1`, etc.) — follows the shared-library SONAME convention used throughout Debian and RPM, see e.g. the [Shared Libraries](https://www.debian.org/doc/debian-policy/ch-sharedlibs.html#shared-libraries) Debian policy.
 
 #### DEB (Debian/Ubuntu)
 
