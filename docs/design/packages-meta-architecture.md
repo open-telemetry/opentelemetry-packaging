@@ -554,6 +554,20 @@ Rejected because:
 - RPM has no equivalent; the solution must work for both DEB and RPM.
 - Diverts are fragile and difficult to debug.
 
+### Co-installable interface generations
+
+We do not plan to make different interface generations of the same language package co-installable (e.g., `opentelemetry-java-autoinstrumentation1` and `opentelemetry-java-autoinstrumentation2` installed side by side), following the shared-library co-installability pattern (`libssl1.1` and `libssl3`).
+
+The rationale is the following:
+- The injector hooks into `/etc/ld.so.preload` and only one version should be active system-wide.
+  Since the injector can only speak one interface generation at a time, there is no scenario where both gen 1 and gen 2 language packages would be active simultaneously.
+- Co-installability would require versioned filesystem paths, adding complexity for a scenario that the single-generation injector makes unnecessary.
+- Different generations of the same language package use `Conflicts`/`Replaces` instead, and the package manager handles the transition atomically.
+
+While in some corner-cases, the end user may wish for multiple interface generations of language packages to be installable in parallel (one to be used by the injector, the others manually), that would require embedding the interface version in the file paths (e.g., `/usr/lib/opentelemetry/java-1/...`) and that is guaranteed to confuse the end users, who would see the index suffix as related with the runtime version (e.g., Java v1) instead of the much more obscure package interface version, which is well hidden in package metadata and effectively only a concern of the package manager.
+
+(And, technically, if we want to take the decision back and make language packages across interface versions co-installable, v2+ can add a suffix in the path, and we keep it clean for v1.)
+
 ### Vendor-swappable injector
 
 Making the injector itself swappable by vendors, the same way language packages are (i.e., a vendor could ship an alternative injector that provides `opentelemetry-injector1`).
