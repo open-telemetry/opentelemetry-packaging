@@ -99,8 +99,9 @@ All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfound
 ├── nodejs/
 │   └── node_modules/@opentelemetry/auto-instrumentations-node/…
 └── dotnet/
-    ├── glibc/…
-    └── musl/…
+    ├── (shared managed assemblies)
+    ├── linux-x64/OpenTelemetry.AutoInstrumentation.Native.so
+    └── linux-musl-x64/OpenTelemetry.AutoInstrumentation.Native.so
 
 /etc/opentelemetry/
 ├── injector/
@@ -233,15 +234,17 @@ The modules are part of the system package; no files are downloaded at package i
 ### `opentelemetry-dotnet-autoinstrumentation`
 
 The package build fetches the pre-built [OpenTelemetry .NET Automatic Instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation) binaries for both glibc and musl libc flavors and packages them.
+Following the [approach used by the OpenTelemetry Operator](https://github.com/open-telemetry/opentelemetry-operator/blob/7531991fa87143ee584e5a993f63d581f5e0fe74/autoinstrumentation/dotnet/Dockerfile#L26-L29), the shared managed assemblies are stored once, and only the native profiler library (`OpenTelemetry.AutoInstrumentation.Native.so`) is duplicated for glibc (`linux-x64/`) and musl (`linux-musl-x64/`).
 The binaries are part of the system package; no files are downloaded at package installation time or afterwards.
-The injector detects the libc flavor at runtime by reading ELF headers.
+The injector detects the libc flavor at runtime and selects the appropriate native library path.
 
 #### Contents
 
 | Path | Description |
 |------|-------------|
-| `/usr/lib/opentelemetry/dotnet/glibc/…` | .NET agent binaries (glibc) |
-| `/usr/lib/opentelemetry/dotnet/musl/…` | .NET agent binaries (musl) |
+| `/usr/lib/opentelemetry/dotnet/…` | Shared managed assemblies (common to glibc and musl) |
+| `/usr/lib/opentelemetry/dotnet/linux-x64/OpenTelemetry.AutoInstrumentation.Native.so` | Native profiler library (glibc) |
+| `/usr/lib/opentelemetry/dotnet/linux-musl-x64/OpenTelemetry.AutoInstrumentation.Native.so` | Native profiler library (musl) |
 | `/etc/opentelemetry/injector/conf.d/dotnet.conf` | Drop-in: `dotnet_auto_instrumentation_agent_path_prefix=/usr/lib/opentelemetry/dotnet` |
 | `/etc/opentelemetry/dotnet/otel-config.yaml` | Declarative configuration template |
 | `/usr/share/man/man8/opentelemetry-dotnet.8.gz` | Man page |
