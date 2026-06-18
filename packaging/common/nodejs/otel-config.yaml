@@ -1,0 +1,23 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# OpenTelemetry Node.js Auto-Instrumentation Configuration
+# This file provides default configuration for the Node.js agent.
+# See: https://opentelemetry.io/docs/zero-code/js/
+
+# File-based configuration is experimental and may change.
+# Set OTEL_EXPERIMENTAL_CONFIG_FILE to this file path to enable.
+
+# Example configuration:
+# file_format: "0.3"
+#
+# resource:
+#   attributes:
+#     service.name: "my-nodejs-service"
+#
+# tracer_provider:
+#   processors:
+#     - batch:
+#         exporter:
+#           otlp:
+#             endpoint: "http://localhost:4317"

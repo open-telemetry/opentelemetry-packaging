@@ -1,0 +1,65 @@
+.\" Copyright The OpenTelemetry Authors
+.\" SPDX-License-Identifier: Apache-2.0
+.TH OPENTELEMETRY-NODEJS 8 "@DATE@" "opentelemetry-nodejs-autoinstrumentation @VERSION@" "System Administration"
+.SH NAME
+opentelemetry-nodejs \- OpenTelemetry Node.js Auto-Instrumentation
+.SH SYNOPSIS
+The Node.js agent is loaded automatically by the OpenTelemetry Injector when a
+Node.js application starts. Manual usage:
+.PP
+.B node --require /usr/lib/opentelemetry/nodejs/node_modules/@opentelemetry/auto-instrumentations-node/build/src/register.js
+.I app.js
+.SH DESCRIPTION
+The OpenTelemetry Node.js Auto-Instrumentation package automatically instruments
+Node.js applications to collect distributed traces, metrics, and logs without
+requiring code changes.
+.PP
+When used with the OpenTelemetry Injector package, the agent is automatically
+loaded into all Node.js processes.
+.SH FILES
+.TP
+.B /usr/lib/opentelemetry/nodejs/
+Directory containing the Node.js instrumentation packages.
+.TP
+.B /etc/opentelemetry/nodejs/otel-config.yaml
+Optional declarative configuration file.
+.TP
+.B /etc/opentelemetry/injector/conf.d/nodejs.conf
+Drop-in configuration file that registers the Node.js agent path with the injector.
+.SH ENVIRONMENT
+.TP
+.B OTEL_SERVICE_NAME
+Set the service name for telemetry data.
+.TP
+.B OTEL_EXPORTER_OTLP_ENDPOINT
+Set the OTLP exporter endpoint (e.g., http://localhost:4317).
+.TP
+.B OTEL_TRACES_EXPORTER
+Set the traces exporter (otlp, console, none). Default: otlp
+.TP
+.B OTEL_METRICS_EXPORTER
+Set the metrics exporter (otlp, console, none). Default: otlp
+.TP
+.B OTEL_LOGS_EXPORTER
+Set the logs exporter (otlp, console, none). Default: otlp
+.TP
+.B OTEL_SDK_DISABLED
+Set to "true" to disable the SDK. Default: false
+.TP
+.B OTEL_EXPERIMENTAL_CONFIG_FILE
+Path to a declarative configuration file.
+.SH EXAMPLES
+Manually run a Node.js application with instrumentation:
+.PP
+.RS
+OTEL_SERVICE_NAME=myapp node \\
+  --require /usr/lib/opentelemetry/nodejs/node_modules/@opentelemetry/auto-instrumentations-node/build/src/register.js \\
+  app.js
+.RE
+.SH SEE ALSO
+.BR opentelemetry-injector (8),
+.BR node (1)
+.PP
+https://opentelemetry.io/docs/zero-code/js/
+.SH AUTHORS
+The OpenTelemetry Authors

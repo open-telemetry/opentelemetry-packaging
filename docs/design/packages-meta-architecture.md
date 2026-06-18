@@ -105,7 +105,7 @@ All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfound
 
 /etc/opentelemetry/
 ├── injector/
-│   ├── otelinject.conf
+│   ├── injector.conf
 │   ├── default_env.conf
 │   └── conf.d/
 │       ├── java.conf
@@ -146,7 +146,7 @@ At runtime, the library inspects each process to determine if it is a Java, Node
 | Path | Description |
 |------|-------------|
 | `/usr/lib/opentelemetry/injector/libotelinject.so` | Injector shared library (per-arch) |
-| `/etc/opentelemetry/injector/otelinject.conf` | Main configuration file |
+| `/etc/opentelemetry/injector/injector.conf` | Main configuration file |
 | `/etc/opentelemetry/injector/default_env.conf` | Default `OTEL_*` environment variables for all agents |
 | `/etc/opentelemetry/injector/conf.d/` | Drop-in directory for language agent paths (empty until language packages are installed) |
 | `/usr/share/man/man8/opentelemetry-injector.8.gz` | Man page |
@@ -290,7 +290,7 @@ See [Injector interface versioning](#injector-interface-versioning) for the upgr
 
 ### Hierarchy
 
-1. **`/etc/opentelemetry/injector/otelinject.conf`** — main injector configuration. Points to the default environment file and documents the `conf.d/` mechanism.
+1. **`/etc/opentelemetry/injector/injector.conf`** — main injector configuration. Points to the default environment file and documents the `conf.d/` mechanism.
 
 2. **`/etc/opentelemetry/injector/default_env.conf`** — default `OTEL_*` environment variables applied to all instrumented processes. Format: `KEY=VALUE`, one per line.
 
@@ -305,7 +305,7 @@ See [Injector interface versioning](#injector-interface-versioning) for the upgr
 | `jvm_auto_instrumentation_agent_path` | `conf.d/java.conf` | Absolute path to the Java agent JAR |
 | `nodejs_auto_instrumentation_agent_path` | `conf.d/nodejs.conf` | Absolute path to the Node.js agent entry point |
 | `dotnet_auto_instrumentation_agent_path_prefix` | `conf.d/dotnet.conf` | Directory prefix for the .NET agent (injector appends `glibc/` or `musl/`) |
-| `all_auto_instrumentation_agents_env_path` | `otelinject.conf` | Path to the default environment variables file |
+| `all_auto_instrumentation_agents_env_path` | `injector.conf` | Path to the default environment variables file |
 
 ## Component Versioning
 
@@ -338,7 +338,7 @@ This is critical for `Conflicts`/`Replaces` to work correctly.
 
 | Package | Owns |
 |---------|------|
-| `opentelemetry-injector` | `/usr/lib/opentelemetry/injector/`, `/etc/opentelemetry/injector/otelinject.conf`, `/etc/opentelemetry/injector/default_env.conf`, `/etc/opentelemetry/injector/conf.d/` (directory only) |
+| `opentelemetry-injector` | `/usr/lib/opentelemetry/injector/`, `/etc/opentelemetry/injector/injector.conf`, `/etc/opentelemetry/injector/default_env.conf`, `/etc/opentelemetry/injector/conf.d/` (directory only) |
 | `opentelemetry-java-autoinstrumentation` | `/usr/lib/opentelemetry/java/`, `/etc/opentelemetry/injector/conf.d/java.conf`, `/etc/opentelemetry/java/` |
 | `opentelemetry-nodejs-autoinstrumentation` | `/usr/lib/opentelemetry/nodejs/`, `/etc/opentelemetry/injector/conf.d/nodejs.conf`, `/etc/opentelemetry/nodejs/` |
 | `opentelemetry-dotnet-autoinstrumentation` | `/usr/lib/opentelemetry/dotnet/`, `/etc/opentelemetry/injector/conf.d/dotnet.conf`, `/etc/opentelemetry/dotnet/` |

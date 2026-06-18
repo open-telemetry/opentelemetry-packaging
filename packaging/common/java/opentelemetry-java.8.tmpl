@@ -1,0 +1,66 @@
+.\" Copyright The OpenTelemetry Authors
+.\" SPDX-License-Identifier: Apache-2.0
+.TH OPENTELEMETRY-JAVA 8 "@DATE@" "opentelemetry-java-autoinstrumentation @VERSION@" "System Administration"
+.SH NAME
+opentelemetry-java \- OpenTelemetry Java Auto-Instrumentation Agent
+.SH SYNOPSIS
+The Java agent is loaded automatically by the OpenTelemetry Injector when a
+Java application starts. Manual usage:
+.PP
+.B java -javaagent:/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar
+.I [options]
+.B -jar myapp.jar
+.SH DESCRIPTION
+The OpenTelemetry Java Auto-Instrumentation Agent automatically instruments
+Java applications to collect distributed traces, metrics, and logs without
+requiring code changes.
+.PP
+When used with the OpenTelemetry Injector package, the agent is automatically
+attached to all Java processes.
+.SH FILES
+.TP
+.B /usr/lib/opentelemetry/java/opentelemetry-javaagent.jar
+The Java agent JAR file.
+.TP
+.B /etc/opentelemetry/java/otel-config.yaml
+Optional declarative configuration file.
+.TP
+.B /etc/opentelemetry/injector/conf.d/java.conf
+Drop-in configuration file that registers the Java agent path with the injector.
+.SH ENVIRONMENT
+.TP
+.B OTEL_SERVICE_NAME
+Set the service name for telemetry data.
+.TP
+.B OTEL_EXPORTER_OTLP_ENDPOINT
+Set the OTLP exporter endpoint (e.g., http://localhost:4317).
+.TP
+.B OTEL_TRACES_EXPORTER
+Set the traces exporter (otlp, console, none). Default: otlp
+.TP
+.B OTEL_METRICS_EXPORTER
+Set the metrics exporter (otlp, console, none). Default: otlp
+.TP
+.B OTEL_LOGS_EXPORTER
+Set the logs exporter (otlp, console, none). Default: otlp
+.TP
+.B OTEL_JAVAAGENT_ENABLED
+Set to "false" to disable the agent. Default: true
+.TP
+.B OTEL_EXPERIMENTAL_CONFIG_FILE
+Path to a declarative configuration file.
+.SH EXAMPLES
+Manually run a Java application with the agent:
+.PP
+.RS
+java -javaagent:/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar \\
+  -Dotel.service.name=myapp \\
+  -jar myapp.jar
+.RE
+.SH SEE ALSO
+.BR opentelemetry-injector (8),
+.BR java (1)
+.PP
+https://opentelemetry.io/docs/zero-code/java/agent/
+.SH AUTHORS
+The OpenTelemetry Authors

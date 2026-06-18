@@ -1,0 +1,108 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Publish Package Repositories
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g., v1.0.0)'
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Determine release tag
+        id: release
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download DEB packages from release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p repo/debian/pool
+
+          # Download all .deb files
+          gh release download "${{ steps.release.outputs.tag }}" \
+            --pattern "*.deb" \
+            --dir repo/debian/pool || echo "No .deb files found"
+
+          # List downloaded files
+          echo "=== Downloaded DEB packages ==="
+          ls -la repo/debian/pool/ || true
+
+      - name: Generate APT repository
+        run: |
+          docker run --rm \
+            -v "$PWD/repo/debian:/repo" \
+            -v "$PWD/packaging/repo:/scripts:ro" \
+            debian:bookworm /scripts/generate-apt-repo.sh /repo
+
+      - name: Download RPM packages from release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p repo/rpm/packages
+
+          # Download all .rpm files
+          gh release download "${{ steps.release.outputs.tag }}" \
+            --pattern "*.rpm" \
+            --dir repo/rpm/packages || echo "No .rpm files found"
+
+          # List downloaded files
+          echo "=== Downloaded RPM packages ==="
+          ls -la repo/rpm/packages/ || true
+
+      - name: Generate YUM repository
+        run: |
+          docker run --rm \
+            -v "$PWD/repo/rpm:/repo" \
+            -v "$PWD/packaging/repo:/scripts:ro" \
+            fedora:latest /scripts/generate-rpm-repo.sh /repo
+
+          # Generate .repo file
+          REPO_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          cat > repo/rpm/opentelemetry.repo <<EOF
+          [opentelemetry]
+          name=OpenTelemetry Auto-Instrumentation
+          baseurl=${REPO_URL}/rpm/packages
+          enabled=1
+          gpgcheck=0
+          EOF
+
+      - name: Generate landing page
+        run: |
+          VERSION="${{ steps.release.outputs.tag }}"
+          REPO_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          GITHUB_REPO="https://github.com/${{ github.repository }}"
+
+          # Copy template and substitute placeholders
+          sed -e "s|@@VERSION@@|${VERSION}|g" \
+              -e "s|@@REPO_URL@@|${REPO_URL}|g" \
+              -e "s|@@GITHUB_REPO@@|${GITHUB_REPO}|g" \
+              packaging/repo/index.html > repo/index.html
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./repo
+          force_orphan: true
+          commit_message: "Deploy package repositories for ${{ steps.release.outputs.tag }}"

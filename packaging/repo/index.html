@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenTelemetry Auto-Instrumentation Packages</title>
+  <style>
+    :root {
+      --bg-color: #ffffff;
+      --text-color: #333333;
+      --code-bg: #f4f4f4;
+      --border-color: #e0e0e0;
+      --link-color: #0066cc;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-color: #1a1a1a;
+        --text-color: #e0e0e0;
+        --code-bg: #2d2d2d;
+        --border-color: #404040;
+        --link-color: #66b3ff;
+      }
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      line-height: 1.6;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+    }
+    pre {
+      background: var(--code-bg);
+      padding: 1rem;
+      overflow-x: auto;
+      border-radius: 4px;
+      border: 1px solid var(--border-color);
+    }
+    code {
+      background: var(--code-bg);
+      padding: 0.2rem 0.4rem;
+      border-radius: 2px;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+    }
+    h1, h2 { border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; }
+    h2 { margin-top: 2rem; }
+    a { color: var(--link-color); }
+    .version { color: #666; font-size: 0.9em; }
+    ul { padding-left: 1.5rem; }
+    li { margin: 0.5rem 0; }
+  </style>
+</head>
+<body>
+  <h1>OpenTelemetry Auto-Instrumentation</h1>
+  <p class="version">Current version: <strong>@VERSION@</strong></p>
+  <p>Linux packages for automatic instrumentation of Java, Node.js, and .NET applications using OpenTelemetry.</p>
+
+  <h2>Quick Install (Debian/Ubuntu)</h2>
+  <pre><code># Add the repository
+echo "deb [trusted=yes] @REPO_URL@/debian stable main" | sudo tee /etc/apt/sources.list.d/opentelemetry.list
+
+# Update and install
+sudo apt update
+sudo apt install opentelemetry</code></pre>
+
+  <h2>Quick Install (RHEL/Fedora/Amazon Linux)</h2>
+  <pre><code># Add the repository
+cat &lt;&lt;EOF | sudo tee /etc/yum.repos.d/opentelemetry.repo
+[opentelemetry]
+name=OpenTelemetry Auto-Instrumentation
+baseurl=@REPO_URL@/rpm
+enabled=1
+gpgcheck=0
+EOF
+
+# Install
+sudo dnf install opentelemetry</code></pre>
+
+  <h2>Available Packages</h2>
+  <ul>
+    <li><code>opentelemetry</code> - Metapackage that installs all components</li>
+    <li><code>opentelemetry-injector</code> - LD_PRELOAD-based auto-instrumentation injector</li>
+    <li><code>opentelemetry-java-autoinstrumentation</code> - Java agent for automatic instrumentation</li>
+    <li><code>opentelemetry-nodejs-autoinstrumentation</code> - Node.js agent for automatic instrumentation</li>
+    <li><code>opentelemetry-dotnet-autoinstrumentation</code> - .NET agent for automatic instrumentation</li>
+  </ul>
+
+  <h2>Individual Package Installation</h2>
+  <p>You can install individual packages if you only need specific language support:</p>
+  <pre><code># Install only Java instrumentation
+sudo apt install opentelemetry-injector opentelemetry-java-autoinstrumentation
+
+# Install only Node.js instrumentation
+sudo apt install opentelemetry-injector opentelemetry-nodejs-autoinstrumentation
+
+# Install only .NET instrumentation
+sudo apt install opentelemetry-injector opentelemetry-dotnet-autoinstrumentation</code></pre>
+
+  <h2>Links</h2>
+  <ul>
+    <li><a href="https://github.com/open-telemetry/opentelemetry-packaging">GitHub Repository</a></li>
+    <li><a href="https://github.com/open-telemetry/opentelemetry-packaging/releases">All Releases</a></li>
+    <li><a href="https://github.com/open-telemetry/opentelemetry-packaging/releases/tag/@VERSION@">Release @VERSION@</a></li>
+  </ul>
+
+  <h2>Repository URLs</h2>
+  <ul>
+    <li>APT: <code>@REPO_URL@/debian</code></li>
+    <li>YUM/DNF: <code>@REPO_URL@/rpm</code></li>
+  </ul>
+</body>
+</html>
