@@ -46,9 +46,6 @@ jobs:
             echo "version=0.0.0-dev" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build FPM Docker image
-        run: make fpm-docker-image
-
       - name: Build ${{ matrix.ARCH }} ${{ matrix.SYS_PACKAGE }} packages
         run: make ${{ matrix.SYS_PACKAGE }}-packages ARCH=${{ matrix.ARCH }} VERSION=${{ steps.version.outputs.version }}
 
@@ -83,7 +80,7 @@ jobs:
           path: ./build/packages
 
       - name: Run packaging integration tests for ${{ matrix.SYS_PACKAGE }}/${{ matrix.lang }}/${{ matrix.arch }}
-        run: make packaging-integration-test-${{ matrix.SYS_PACKAGE }}-${{ matrix.lang }} ARCH=${{ matrix.arch }}
+        run: make integration-test-${{ matrix.SYS_PACKAGE }}-${{ matrix.lang }} ARCH=${{ matrix.arch }}
 
   publish-release:
     runs-on: ubuntu-24.04
