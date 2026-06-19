@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented
 
 ## Context
 
@@ -28,7 +28,7 @@ This document describes all packages in the first version of the system packages
 ## Packages overview
 
 The first version ships five packages.
-All are built with [FPM](https://fpm.readthedocs.io/) for both DEB and RPM.
+All are built with [nfpm](https://github.com/goreleaser/nfpm) as a Go library for both DEB and RPM.
 
 | Package | Description | Architecture |
 |---------|-------------|-------------|
@@ -375,7 +375,8 @@ The vendor package then declares `Provides: opentelemetry-java-autoinstrumentati
 
 ### Vendor package recipe
 
-A vendor building a replacement for, say, the Java auto-instrumentation package would use:
+A vendor building a replacement for, say, the Java auto-instrumentation package needs the following metadata.
+The examples below use [FPM](https://fpm.readthedocs.io/) syntax, but any packaging tool (nfpm, rpmbuild, dpkg-buildpackage) works as long as it sets the same fields:
 
 ```bash
 # DEB
@@ -457,9 +458,13 @@ apt install opentelemetry-java-autoinstrumentation
 
 `dpkg` removes the vendor package (symmetric `Conflicts`/`Replaces` if the vendor chose to declare them, or the user runs `apt remove acme-java-autoinstrumentation` first) and installs upstream.
 
-## Current POC gaps
+## Current POC gaps (historical)
 
-The [POC](https://github.com/open-telemetry/opentelemetry-injector/pull/239) in the OpenTelemetry Injector repository implements most of the architecture above but has the following gaps relative to the proposed design:
+> [!NOTE]
+> This section documents gaps in the original [POC](https://github.com/open-telemetry/opentelemetry-injector/pull/239) in the OpenTelemetry Injector repository.
+> All gaps listed below have been addressed in the current implementation in `opentelemetry-packaging` using nfpm (see `packaging/builder/`).
+
+The POC implements most of the architecture above but had the following gaps relative to the proposed design:
 
 ### 1. No interface version on the injector
 
@@ -501,7 +506,7 @@ Because the injector reads files in alphabetical order and the last value wins, 
 But the upstream file still sets the path on every read before the vendor file overrides it, creating a fragile ordering dependency.
 Worse, the upstream JAR is still on disk consuming space, and the upstream package is still installed, making `dpkg -l` / `rpm -qa` output misleading.
 
-## Required changes to the POC
+## Required changes to the POC (historical)
 
 ### Injector build scripts
 
@@ -700,9 +705,11 @@ No longer maintained.
 
 ## Appendix: Implementation notes
 
-### RPM `Suggests` via FPM
+### RPM weak dependencies
 
-FPM does not have a native `--rpm-suggests` flag ([jordansissel/fpm#1457](https://github.com/jordansissel/fpm/issues/1457)).
+The upstream packages use nfpm, which supports `Suggests` and `Recommends` as first-class fields for both DEB and RPM.
+
+Vendors using FPM should note that FPM does not have a native `--rpm-suggests` flag ([jordansissel/fpm#1457](https://github.com/jordansissel/fpm/issues/1457)).
 The `--rpm-tag` flag injects arbitrary directives into the RPM spec header, so `Suggests` is expressed as:
 
 ```bash
