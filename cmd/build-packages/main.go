@@ -94,10 +94,10 @@ func main() {
 		components = []builder.Component{c}
 	}
 
-	for _, fmt := range formats {
+	for _, pkgFormat := range formats {
 		for _, comp := range components {
-			if err := builder.Build(cfg, fmt, comp); err != nil {
-				log.Fatalf("error building %s %s: %v", fmt, comp.Name, err)
+			if err := builder.Build(cfg, pkgFormat, comp); err != nil {
+				log.Fatalf("error building %s %s: %v", pkgFormat, comp.Name, err)
 			}
 		}
 	}
