@@ -107,6 +107,27 @@ func pathsContain(paths []string, substr string) bool {
 	return false
 }
 
+// findRpmByName finds an .rpm file whose package Name() matches exactly.
+// This is needed for the metapackage ("opentelemetry") because filename-prefix
+// matching cannot distinguish it from "opentelemetry-injector", etc.
+func findRpmByName(t *testing.T, name string) string {
+	t.Helper()
+	root := testutil.RepoRoot(t)
+	matches, err := filepath.Glob(filepath.Join(root, "build", "packages", "*.rpm"))
+	require.NoError(t, err)
+	for _, m := range matches {
+		p, err := rpm.Open(m)
+		if err != nil {
+			continue
+		}
+		if p.Name() == name {
+			return m
+		}
+	}
+	t.Fatalf("no .rpm package with Name=%q found in build/packages/", name)
+	return ""
+}
+
 // openRpm opens an .rpm file and returns the parsed Package.
 func openRpm(t *testing.T, path string) *rpm.Package {
 	t.Helper()
@@ -500,7 +521,7 @@ func TestRpmDotnetContents(t *testing.T) {
 func TestRpmMetapackageMetadata(t *testing.T) {
 	skipIfNoRpmPackages(t)
 
-	pkg := findPackage(t, "opentelemetry-0", ".rpm")
+	pkg := findRpmByName(t, "opentelemetry")
 	p := openRpm(t, pkg)
 
 	assert.True(t, rpmDepsContain(p.Requires(), "opentelemetry-injector1"),
@@ -556,7 +577,7 @@ func TestRpmDotnetSuggestsInjector(t *testing.T) {
 func TestRpmMetapackageRecommendsLanguagePackages(t *testing.T) {
 	skipIfNoRpmPackages(t)
 
-	pkg := findPackage(t, "opentelemetry-0", ".rpm")
+	pkg := findRpmByName(t, "opentelemetry")
 	p := openRpm(t, pkg)
 
 	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-java-autoinstrumentation1"))
