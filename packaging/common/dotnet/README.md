@@ -14,11 +14,13 @@ The instrumentation is installed at `/usr/lib/opentelemetry/dotnet/` with the fo
 - `linux-x64/OpenTelemetry.AutoInstrumentation.Native.so` - Native profiler for glibc systems
 - `linux-musl-x64/OpenTelemetry.AutoInstrumentation.Native.so` - Native profiler for musl systems
 
-When combined with the `opentelemetry-injector` package, .NET applications are automatically instrumented. The agent path prefix is registered via a drop-in configuration file at `/etc/opentelemetry/injector/conf.d/dotnet.conf`. The injector selects the correct native profiler variant based on the system's C library.
+When combined with the `opentelemetry-injector` package, .NET applications are automatically instrumented.
+The agent path prefix is registered via a drop-in configuration file at `/etc/opentelemetry/injector/conf.d/dotnet.conf`.
+The injector selects the correct native profiler variant based on the system's C library.
 
 ## Configuration
 
-### Environment Variables
+### Environment variables
 
 - `OTEL_SERVICE_NAME`: Service name for telemetry (required)
 - `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint (default: http://localhost:4317)
@@ -27,15 +29,16 @@ When combined with the `opentelemetry-injector` package, .NET applications are a
 - `OTEL_LOGS_EXPORTER`: Logs exporter (otlp, console, none)
 - `OTEL_DOTNET_AUTO_INSTRUMENTATION_ENABLED`: Set to "false" to disable
 
-### Declarative Configuration
+### Declarative configuration
 
-A configuration file is available at `/etc/opentelemetry/dotnet/otel-config.yaml`. To use it, set:
+A configuration file is available at `/etc/opentelemetry/dotnet/otel-config.yaml`.
+To use it, set:
 
 ```bash
 export OTEL_EXPERIMENTAL_CONFIG_FILE=/etc/opentelemetry/dotnet/otel-config.yaml
 ```
 
-## Supported Libraries
+## Supported libraries
 
 The instrumentation supports automatic instrumentation for:
 

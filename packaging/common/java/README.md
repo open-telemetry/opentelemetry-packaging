@@ -10,11 +10,12 @@ The Java agent automatically instruments popular Java frameworks and libraries t
 
 The agent is installed at `/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar`.
 
-When combined with the `opentelemetry-injector` package, Java applications are automatically instrumented. The agent path is registered via a drop-in configuration file at `/etc/opentelemetry/injector/conf.d/java.conf`.
+When combined with the `opentelemetry-injector` package, Java applications are automatically instrumented.
+The agent path is registered via a drop-in configuration file at `/etc/opentelemetry/injector/conf.d/java.conf`.
 
 ## Configuration
 
-### Environment Variables
+### Environment variables
 
 - `OTEL_SERVICE_NAME`: Service name for telemetry (required)
 - `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint (default: http://localhost:4317)
@@ -23,15 +24,16 @@ When combined with the `opentelemetry-injector` package, Java applications are a
 - `OTEL_LOGS_EXPORTER`: Logs exporter (otlp, console, none)
 - `OTEL_JAVAAGENT_ENABLED`: Set to "false" to disable (default: true)
 
-### Declarative Configuration
+### Declarative configuration
 
-A configuration file is available at `/etc/opentelemetry/java/otel-config.yaml`. To use it, set:
+A configuration file is available at `/etc/opentelemetry/java/otel-config.yaml`.
+To use it, set:
 
 ```bash
 export OTEL_EXPERIMENTAL_CONFIG_FILE=/etc/opentelemetry/java/otel-config.yaml
 ```
 
-## Supported Libraries
+## Supported libraries
 
 The agent supports automatic instrumentation for:
 
@@ -43,7 +45,7 @@ The agent supports automatic instrumentation for:
 - Kafka, RabbitMQ, JMS
 - And many more...
 
-## Manual Usage
+## Manual usage
 
 If not using the injector, you can manually attach the agent:
 

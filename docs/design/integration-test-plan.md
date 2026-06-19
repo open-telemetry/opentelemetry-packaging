@@ -1,4 +1,4 @@
-# Integration Test Plan
+# Integration test plan
 
 ## Status
 
@@ -6,13 +6,14 @@ Proposed
 
 ## Context
 
-The current integration tests only cover end-to-end telemetry: install packages, start an app, send traffic, check that traces appear. This leaves large gaps in coverage around package metadata, lifecycle events, configuration behavior, and vendor replacement.
+The current integration tests only cover end-to-end telemetry: install packages, start an app, send traffic, and check that traces appear.
+This leaves large gaps in coverage around package metadata, lifecycle events, configuration behavior, and vendor replacement.
 
 This document defines the full matrix of tests needed and the implementation approach.
 
-## Test Categories
+## Test categories
 
-### 1. Package Metadata Validation
+### 1. Package metadata validation
 
 Validate that built packages declare the correct metadata fields without starting any containers or installing anything.
 
@@ -29,9 +30,10 @@ Validate that built packages declare the correct metadata fields without startin
 | Injector suggests `opentelemetry-injector1` on Java/Node.js/.NET packages (DEB) | Soft dependency |
 | No `sed` or `grep` dependencies on injector | Scripts use only POSIX builtins |
 
-**Implementation:** Run `dpkg-deb --info` / `rpm -qp --provides --requires --suggests` on the built package files. No containers needed — these are host-side assertions on the `.deb`/`.rpm` artifacts.
+**Implementation:** Run `dpkg-deb --info` / `rpm -qp --provides --requires --suggests` on the built package files.
+No containers needed — these are host-side assertions on the `.deb`/`.rpm` artifacts.
 
-### 2. Package Contents Validation
+### 2. Package contents validation
 
 Validate that packages contain the expected files at the expected paths with correct permissions.
 
@@ -49,9 +51,10 @@ Validate that packages contain the expected files at the expected paths with cor
 | .NET contains `conf.d/dotnet.conf` with correct path prefix | Drop-in references correct prefix |
 | Man pages are present and gzipped | Documentation |
 
-**Implementation:** Run `dpkg-deb --contents` / `rpm -qpl` on the built package files. No containers needed.
+**Implementation:** Run `dpkg-deb --contents` / `rpm -qpl` on the built package files.
+No containers needed.
 
-### 3. Post-Install / Pre-Uninstall Scripts
+### 3. Post-install / pre-uninstall scripts
 
 Validate that the injector's lifecycle scripts correctly manage `/etc/ld.so.preload`.
 
@@ -65,7 +68,7 @@ Validate that the injector's lifecycle scripts correctly manage `/etc/ld.so.prel
 
 **Implementation:** Install/remove the injector package in a container and inspect `/etc/ld.so.preload` at each stage.
 
-### 4. Config File Lifecycle
+### 4. Config file lifecycle
 
 Validate that configuration files are handled correctly across package lifecycle events.
 
@@ -92,9 +95,9 @@ Validate that configuration files are handled correctly across package lifecycle
 | User modifies `default_env.conf` to set `OTEL_SERVICE_NAME`: value is applied | Env var override |
 | User modifies `default_env.conf`: package upgrade preserves the modification | Modified conffile on upgrade |
 
-**Implementation:** Install packages, modify config files, upgrade/remove, assert on file state and application behavior.
+**Implementation:** Install packages, modify config files, upgrade/remove, and assert on file state and application behavior.
 
-### 5. Install Scenarios (beyond metapackage)
+### 5. Install scenarios (beyond metapackage)
 
 Validate that individual packages and combinations install correctly via `apt`/`dnf`.
 
@@ -109,7 +112,7 @@ Validate that individual packages and combinations install correctly via `apt`/`
 
 **Implementation:** Run `apt install`/`apt remove` sequences in containers and verify package state with `dpkg -l`.
 
-### 6. Vendor Replacement
+### 6. Vendor replacement
 
 Validate the vendor override mechanism end-to-end using a mock `acme-java-autoinstrumentation` package.
 
@@ -134,25 +137,29 @@ Build an `acme-java-autoinstrumentation` package that:
 
 **Implementation:** Build a mock vendor package as part of the test setup, then run install/swap/revert sequences in containers.
 
-### 7. End-to-End Telemetry (existing, expanded)
+### 7. E2E telemetry (existing, expanded)
 
-Already implemented for Java, Node.js, .NET across DEB and RPM. No changes needed.
+Already implemented for Java, Node.js, and .NET across DEB and RPM.
+No changes needed.
 
-## Test Infrastructure
+## Test infrastructure
 
 ### Package metadata and contents tests
 
-These run on the host against built artifacts — no containers needed. New test file: `packaging/tests/metadata/metadata_test.go`.
+These run on the host against built artifacts — no containers needed.
+New test file: `packaging/tests/metadata/metadata_test.go`.
 
 ### Lifecycle and install scenario tests
 
-These need a base container with the local repo configured. The test execs `apt`/`dnf` commands and inspects state. These tests share a common Dockerfile per format (DEB/RPM) that just sets up the repo — no application runtime needed.
+These need a base container with the local repo configured.
+The test execs `apt`/`dnf` commands and inspects state.
+These tests share a common Dockerfile per format (DEB/RPM) that just sets up the repo — no application runtime needed.
 
 ### Vendor replacement tests
 
 These need a build step for the mock `acme-*` package, then use the same lifecycle container pattern.
 
-## Makefile Targets
+## Makefile targets
 
 ```
 make integration-tests                    # all tests
@@ -169,11 +176,11 @@ make integration-test-rpm-nodejs          # E2E telemetry (existing)
 make integration-test-rpm-dotnet          # E2E telemetry (existing)
 ```
 
-## Priority Order
+## Priority order
 
-1. **Package metadata validation** — fastest to implement, catches regressions in `--provides`/`--depends` early
-2. **Package contents validation** — fast, no containers
-3. **Post-install / pre-uninstall scripts** — validates the most critical lifecycle event
-4. **Install scenarios** — validates dependency resolution for all install patterns
-5. **Vendor replacement** — validates the design doc's core premise
-6. **Config file lifecycle** — most complex, multiple scenarios per format
+1. **Package metadata validation** — fastest to implement, catches regressions in `--provides`/`--depends` early.
+2. **Package contents validation** — fast, no containers.
+3. **Post-install / pre-uninstall scripts** — validates the most critical lifecycle event.
+4. **Install scenarios** — validates dependency resolution for all install patterns.
+5. **Vendor replacement** — validates the design doc's core premise.
+6. **Config file lifecycle** — most complex, multiple scenarios per format.

@@ -1,4 +1,4 @@
-# Linux System Packages Meta Architecture
+# Linux system packages meta architecture
 
 ## Status
 
@@ -23,9 +23,9 @@ Users who installed everything through the `opentelemetry` metapackage should be
 This document describes all packages in the first version of the system packages, with the changes needed to support vendor overrides.
 
 > [!NOTE]
-> The current [POC](https://github.com/open-telemetry/opentelemetry-injector/pull/239) in the OpenTelemetry Injector repository does not yet support vendor overrides or interface versions. The [Current POC Gaps](#current-poc-gaps) section details the required changes.
+> The current [POC](https://github.com/open-telemetry/opentelemetry-injector/pull/239) in the OpenTelemetry Injector repository does not yet support vendor overrides or interface versions. The [Current POC gaps](#current-poc-gaps) section details the required changes.
 
-## Packages Overview
+## Packages overview
 
 The first version ships five packages.
 All are built with [FPM](https://fpm.readthedocs.io/) for both DEB and RPM.
@@ -65,7 +65,7 @@ opentelemetry-dotnet-autoinstrumentation
 
 Every dependency in the graph uses a virtual package name rather than a concrete one.
 The trailing `1` is not a package release version — it is the **interface generation number**, following the shared-library SONAME convention (`libssl3`, `libgcc-s1`).
-Both patterns are well-established in DEB and RPM (see [Appendix: Prior Art in DEB and RPM](#appendix-prior-art-in-deb-and-rpm)).
+Both patterns are well-established in DEB and RPM (see [Appendix: Prior art in DEB and RPM](#appendix-prior-art-in-deb-and-rpm)).
 
 > [!NOTE]
 > All `Provides` declarations are currently unversioned (e.g., `Provides: opentelemetry-injector1` without `(= X.Y.Z)`).
@@ -84,9 +84,9 @@ Tracks generation 1 of the contract between the injector and each language's aut
 The metapackage depends on these virtual names.
 A vendor can ship a replacement package with a different name (e.g., `acme-java-autoinstrumentation`) that also provides the same virtual name — combined with `Conflicts`/`Replaces` on the concrete upstream name, the package manager handles the swap transparently.
 If the upstream changes what "being a Java auto-instrumentation provider" means, it bumps to `opentelemetry-java-autoinstrumentation2`; existing vendor packages that still provide `…1` cannot satisfy the new dependency.
-See [Vendor Override](#vendor-override) for the recipe and user experience.
+See [Vendor override](#vendor-override) for the recipe and user experience.
 
-## Filesystem Layout
+## Filesystem layout
 
 All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfoundation.org/FHS_3.0/fhs-3.0.html) (FHS).
 
@@ -133,7 +133,7 @@ All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfound
 └── opentelemetry/
 ```
 
-## Package Definitions
+## Package definitions
 
 ### `opentelemetry-injector`
 
@@ -177,9 +177,12 @@ This decouples the API contract from the package's release cadence:
 - **If a future injector release breaks the conf.d contract:** that release stops providing `opentelemetry-injector1` and starts providing `opentelemetry-injector2`. The metapackage still depends on `opentelemetry-injector1`, so the package manager blocks the injector upgrade until the metapackage is also updated.
 - **Updated metapackage and language packages** switch to `opentelemetry-injector2`, and the system can upgrade atomically.
 
-The same logic applies to language package interface generations. When the metapackage moves from `opentelemetry-java-autoinstrumentation1` to `opentelemetry-java-autoinstrumentation2`, the package manager upgrades the upstream language package in the same transaction.
+The same logic applies to language package interface generations.
+When the metapackage moves from `opentelemetry-java-autoinstrumentation1` to `opentelemetry-java-autoinstrumentation2`, the package manager upgrades the upstream language package in the same transaction.
 
-**Impact on vendor packages.** If a user has a vendor package that provides `opentelemetry-java-autoinstrumentation1` but the new metapackage requires `opentelemetry-java-autoinstrumentation2`, the package manager holds back the metapackage upgrade until the vendor ships an updated package providing `…2`. This is the intended safety behavior — it prevents a vendor package from being silently used with an incompatible interface — but it means the user cannot upgrade to the new metapackage until their vendor catches up.
+**Impact on vendor packages.**
+If a user has a vendor package that provides `opentelemetry-java-autoinstrumentation1` but the new metapackage requires `opentelemetry-java-autoinstrumentation2`, the package manager holds back the metapackage upgrade until the vendor ships an updated package providing `…2`.
+This is the intended safety behavior — it prevents a vendor package from being silently used with an incompatible interface — but it means the user cannot upgrade to the new metapackage until their vendor catches up.
 
 This mechanism is self-service for vendors: a vendor package provides a given interface generation and is automatically protected from incompatible upgrades without the upstream needing to know the vendor package exists.
 
@@ -286,7 +289,7 @@ If `Depends` were used instead, removing any single language package would force
 
 See [Injector interface versioning](#injector-interface-versioning) for the upgrade scenario.
 
-## Configuration System
+## Configuration system
 
 ### Hierarchy
 
@@ -307,7 +310,7 @@ See [Injector interface versioning](#injector-interface-versioning) for the upgr
 | `dotnet_auto_instrumentation_agent_path_prefix` | `conf.d/dotnet.conf` | Directory prefix for the .NET agent (injector appends `glibc/` or `musl/`) |
 | `all_auto_instrumentation_agents_env_path` | `injector.conf` | Path to the default environment variables file |
 
-## Component Versioning
+## Component versioning
 
 Each language package bundles pre-built upstream artifacts (a JAR, a `node_modules` tree, .NET binaries).
 Users and security teams need to know which versions are inside a given package without extracting and inspecting the files.
@@ -331,7 +334,7 @@ This is machine-readable and queryable (`rpm -q --provides <package> | grep bund
 **DEB** — Debian has no equivalent of `bundled()` provides.
 Each language package ships an SBOM file under `/usr/share/doc/<package>/` in [SPDX](https://spdx.dev/) or [CycloneDX](https://cyclonedx.org/) format, listing all bundled components and their versions.
 
-## File Ownership Boundaries
+## File ownership boundaries
 
 Each package owns a disjoint set of paths.
 This is critical for `Conflicts`/`Replaces` to work correctly.
@@ -347,7 +350,7 @@ This is critical for `Conflicts`/`Replaces` to work correctly.
 A vendor replacement package *must* own the same set of paths as the upstream package it replaces.
 This is what makes `--replaces` work: `dpkg` allows the new package to overwrite files owned by the replaced package.
 
-## Vendor Override
+## Vendor override
 
 ### Virtual package names
 
@@ -454,7 +457,7 @@ apt install opentelemetry-java-autoinstrumentation
 
 `dpkg` removes the vendor package (symmetric `Conflicts`/`Replaces` if the vendor chose to declare them, or the user runs `apt remove acme-java-autoinstrumentation` first) and installs upstream.
 
-## Current POC Gaps
+## Current POC gaps
 
 The [POC](https://github.com/open-telemetry/opentelemetry-injector/pull/239) in the OpenTelemetry Injector repository implements most of the architecture above but has the following gaps relative to the proposed design:
 
@@ -498,7 +501,7 @@ Because the injector reads files in alphabetical order and the last value wins, 
 But the upstream file still sets the path on every read before the vendor file overrides it, creating a fragile ordering dependency.
 Worse, the upstream JAR is still on disk consuming space, and the upstream package is still installed, making `dpkg -l` / `rpm -qa` output misleading.
 
-## Required Changes to the POC
+## Required changes to the POC
 
 ### Injector build scripts
 
@@ -537,7 +540,7 @@ Worse, the upstream JAR is still on disk consuming space, and the upstream packa
 - **Runtime configuration system**: the `conf.d/` mechanism already supports the override model. No code changes needed in the injector binary.
 - **Installation scripts** (`postinstall-injector.sh`, `preuninstall-injector.sh`): unaffected.
 
-## Alternatives Considered
+## Alternatives considered
 
 ### Conf.d-only override (no package metadata changes)
 
@@ -559,7 +562,8 @@ Rejected because:
 
 ### SONAME versioning and multiarch paths for the injector
 
-Standard shared libraries use a SONAME symlink chain (`libfoo.so → libfoo.so.1 → libfoo.so.1.2.3`) so the dynamic linker can resolve the correct ABI version at load time. Architecture-dependent binaries are typically installed under [multiarch triplet paths](https://wiki.debian.org/Multiarch/HOWTO) (e.g., `/usr/lib/x86_64-linux-gnu/`) to allow co-installation of multiple architectures.
+Standard shared libraries use a SONAME symlink chain (`libfoo.so → libfoo.so.1 → libfoo.so.1.2.3`) so the dynamic linker can resolve the correct ABI version at load time.
+Architecture-dependent binaries are typically installed under [multiarch triplet paths](https://wiki.debian.org/Multiarch/HOWTO) (e.g., `/usr/lib/x86_64-linux-gnu/`) to allow co-installation of multiple architectures.
 
 Neither convention applies to `libotelinject.so`:
 
@@ -571,12 +575,13 @@ Neither convention applies to `libotelinject.so`:
 We do not plan to make different interface generations of the same language package co-installable (e.g., `opentelemetry-java-autoinstrumentation1` and `opentelemetry-java-autoinstrumentation2` installed side by side), following the shared-library co-installability pattern (`libssl1.1` and `libssl3`).
 
 The rationale is the following:
-- The injector hooks into `/etc/ld.so.preload` and only one version should be active system-wide.
-  Since the injector can only speak one interface generation at a time, there is no scenario where both gen 1 and gen 2 language packages would be active simultaneously.
+
+- The injector hooks into `/etc/ld.so.preload` and only one version should be active system-wide. Since the injector can only speak one interface generation at a time, there is no scenario where both gen 1 and gen 2 language packages would be active simultaneously.
 - Co-installability would require versioned filesystem paths, adding complexity for a scenario that the single-generation injector makes unnecessary.
 - Different generations of the same language package use `Conflicts`/`Replaces` instead, and the package manager handles the transition atomically.
 
-While in some corner-cases, the end user may wish for multiple interface generations of language packages to be installable in parallel (one to be used by the injector, the others manually), that would require embedding the interface version in the file paths (e.g., `/usr/lib/opentelemetry/java-1/...`) and that is guaranteed to confuse the end users, who would see the index suffix as related with the runtime version (e.g., Java v1) instead of the much more obscure package interface version, which is well hidden in package metadata and effectively only a concern of the package manager.
+While in some corner-cases, the end user may wish for multiple interface generations of language packages to be installable in parallel (one to be used by the injector, the others manually), that would require embedding the interface version in the file paths (e.g., `/usr/lib/opentelemetry/java-1/...`).
+That is guaranteed to confuse the end users, who would see the index suffix as related with the runtime version (e.g., Java v1) instead of the much more obscure package interface version, which is well hidden in package metadata and effectively only a concern of the package manager.
 
 (And, technically, if we want to take the decision back and make language packages across interface versions co-installable, v2+ can add a suffix in the path, and we keep it clean for v1.)
 
@@ -585,11 +590,12 @@ While in some corner-cases, the end user may wish for multiple interface generat
 Making the injector itself swappable by vendors, the same way language packages are (i.e., a vendor could ship an alternative injector that provides `opentelemetry-injector1`).
 
 Deferred because:
+
 - The injector is a single binary with a well-defined configuration interface.
 - There is no current demand for vendor-alternative injectors.
 - The `opentelemetry-injector1` virtual provides is already in place for interface versioning, so adding vendor swappability later only requires vendors to declare `Conflicts`/`Replaces` on the concrete name — no further changes to the upstream packages.
 
-## Appendix: Prior Art in DEB and RPM
+## Appendix: Prior art in DEB and RPM
 
 ### Swappable alternatives (vendor override)
 
@@ -689,9 +695,10 @@ This pattern has prior art in the Debian ecosystem:
 **[`snoopy`](https://packages.debian.org/sid/snoopy)** — a command-logging library loaded via `/etc/ld.so.preload`.
 Its [`postinst`](https://salsa.debian.org/pkg-security-team/snoopy/-/blob/debian/master/debian/snoopy.postinst.in) appends the library path and its [`prerm`](https://salsa.debian.org/pkg-security-team/snoopy/-/blob/debian/master/debian/snoopy.prerm) removes it.
 
-**[`ld.so.preload-manager`](https://launchpad.net/ubuntu/+source/ld.so.preload-manager)** — an Ubuntu package that provided a dedicated tool for managing `/etc/ld.so.preload` entries. No longer maintained.
+**[`ld.so.preload-manager`](https://launchpad.net/ubuntu/+source/ld.so.preload-manager)** — an Ubuntu package that provided a dedicated tool for managing `/etc/ld.so.preload` entries.
+No longer maintained.
 
-## Appendix: Implementation Notes
+## Appendix: Implementation notes
 
 ### RPM `Suggests` via FPM
 

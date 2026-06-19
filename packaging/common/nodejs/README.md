@@ -10,11 +10,12 @@ The Node.js instrumentation automatically instruments popular Node.js frameworks
 
 The instrumentation packages are installed at `/usr/lib/opentelemetry/nodejs/`.
 
-When combined with the `opentelemetry-injector` package, Node.js applications are automatically instrumented. The agent path is registered via a drop-in configuration file at `/etc/opentelemetry/injector/conf.d/nodejs.conf`.
+When combined with the `opentelemetry-injector` package, Node.js applications are automatically instrumented.
+The agent path is registered via a drop-in configuration file at `/etc/opentelemetry/injector/conf.d/nodejs.conf`.
 
 ## Configuration
 
-### Environment Variables
+### Environment variables
 
 - `OTEL_SERVICE_NAME`: Service name for telemetry (required)
 - `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint (default: http://localhost:4317)
@@ -23,15 +24,16 @@ When combined with the `opentelemetry-injector` package, Node.js applications ar
 - `OTEL_LOGS_EXPORTER`: Logs exporter (otlp, console, none)
 - `OTEL_SDK_DISABLED`: Set to "true" to disable (default: false)
 
-### Declarative Configuration
+### Declarative configuration
 
-A configuration file is available at `/etc/opentelemetry/nodejs/otel-config.yaml`. To use it, set:
+A configuration file is available at `/etc/opentelemetry/nodejs/otel-config.yaml`.
+To use it, set:
 
 ```bash
 export OTEL_EXPERIMENTAL_CONFIG_FILE=/etc/opentelemetry/nodejs/otel-config.yaml
 ```
 
-## Supported Libraries
+## Supported libraries
 
 The instrumentation supports automatic instrumentation for:
 
@@ -42,7 +44,7 @@ The instrumentation supports automatic instrumentation for:
 - AWS SDK, GraphQL
 - And many more...
 
-## Manual Usage
+## Manual usage
 
 If not using the injector, you can manually load the instrumentation:
 

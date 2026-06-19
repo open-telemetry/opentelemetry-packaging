@@ -8,13 +8,17 @@ date: 2026-06-17
 
 ## Summary
 
-Build the complete packaging infrastructure in `opentelemetry-packaging` to produce five DEB and RPM packages — injector, three language auto-instrumentation packages, and a metapackage — with the virtual-package dependency model, vendor-override support, and interface versioning defined in the [design doc](docs/design/packages-meta-architecture.md). Packages are created using [nfpm](https://github.com/goreleaser/nfpm) as a Go library — no FPM, Ruby, or Docker required for package creation. All upstream artifacts (including `libotelinject.so`) are fetched as pre-built releases. The repo ships with CI/CD workflows, Makefile orchestration, APT/YUM repo generation, and packaging integration tests.
+Build the complete packaging infrastructure in `opentelemetry-packaging` to produce five DEB and RPM packages — injector, three language auto-instrumentation packages, and a metapackage — with the virtual-package dependency model, vendor-override support, and interface versioning defined in the [design doc](docs/design/packages-meta-architecture.md).
+Packages are created using [nfpm](https://github.com/goreleaser/nfpm) as a Go library — no FPM, Ruby, or Docker required for package creation.
+All upstream artifacts (including `libotelinject.so`) are fetched as pre-built releases.
+The repo ships with CI/CD workflows, Makefile orchestration, APT/YUM repo generation, and packaging integration tests.
 
 ---
 
-## Problem Frame
+## Problem frame
 
-The [design doc](docs/design/packages-meta-architecture.md) defines the target package architecture but the existing POC lives in the `opentelemetry-injector` repo and has six gaps: no interface versioning, concrete version-pinned dependencies, hard dependencies instead of `Suggests`/`Recommends`, unnecessary `sed`/`grep` dependencies, and no vendor override support. Rather than patching the POC, this plan implements the packaging from scratch in `opentelemetry-packaging` where it belongs, treating all upstream components as pre-built artifacts.
+The [design doc](docs/design/packages-meta-architecture.md) defines the target package architecture but the existing POC lives in the `opentelemetry-injector` repo and has six gaps: no interface versioning, concrete version-pinned dependencies, hard dependencies instead of `Suggests`/`Recommends`, unnecessary `sed`/`grep` dependencies, and no vendor override support.
+Rather than patching the POC, this plan implements the packaging from scratch in `opentelemetry-packaging` where it belongs, treating all upstream components as pre-built artifacts.
 
 ---
 
@@ -53,7 +57,7 @@ The [design doc](docs/design/packages-meta-architecture.md) defines the target p
 
 ---
 
-## Key Technical Decisions
+## Key technical decisions
 
 - **Fresh implementation, not a POC port.** The injector repo's POC has a different package structure and mixes injector source builds with packaging. Starting fresh avoids carrying forward incorrect dependency metadata and build coupling.
 - **All artifacts are pre-built.** `libotelinject.so` is fetched from the injector repo's GitHub releases, same as Java/Node.js/.NET agents. This keeps the packaging repo focused on packaging.
@@ -67,7 +71,7 @@ The [design doc](docs/design/packages-meta-architecture.md) defines the target p
 
 ---
 
-## High-Level Technical Design
+## High-level technical design
 
 ```mermaid
 flowchart TB
@@ -150,7 +154,7 @@ flowchart TB
 
 ---
 
-## Output Structure
+## Output structure
 
 ```
 cmd/
@@ -209,7 +213,7 @@ Makefile
 
 ---
 
-## Scope Boundaries
+## Scope boundaries
 
 ### In scope
 
@@ -222,7 +226,7 @@ Makefile
 - APT and YUM repository generation
 - Packaging integration tests
 
-### Deferred to Follow-Up Work
+### Deferred to follow-up work
 
 - Package versioning scheme (tracked in [#11](https://github.com/open-telemetry/opentelemetry-packaging/issues/11))
 - Versioned `Provides` declarations (deferred until versioning scheme is defined)
@@ -231,7 +235,7 @@ Makefile
 
 ---
 
-## Implementation Units
+## Implementation units
 
 ### U1. Common packaging assets
 
@@ -262,9 +266,14 @@ Makefile
 - `packaging/common/dotnet/README.md`
 
 **Approach:**
-- Lifecycle scripts must use only POSIX builtins. The postinstall script reads `/etc/ld.so.preload` line-by-line with `while read` and `case` to check if the entry exists, appends if not. The preuninstall script reads line-by-line, writes non-matching lines to a temp file, then moves it back. No `grep`, `sed`, or pipes to external commands.
-- Man page templates use `@VERSION@` and `@DATE@` placeholders, all in section 8.
-- The .NET injector.conf uses `dotnet_auto_instrumentation_agent_path_prefix=/usr/lib/opentelemetry/dotnet` — the injector selects glibc/musl at runtime.
+
+Lifecycle scripts must use only POSIX builtins.
+The postinstall script reads `/etc/ld.so.preload` line-by-line with `while read` and `case` to check if the entry exists, appends if not.
+The preuninstall script reads line-by-line, writes non-matching lines to a temp file, then moves it back.
+No `grep`, `sed`, or pipes to external commands.
+
+Man page templates use `@VERSION@` and `@DATE@` placeholders, all in section 8.
+The .NET injector.conf uses `dotnet_auto_instrumentation_agent_path_prefix=/usr/lib/opentelemetry/dotnet` — the injector selects glibc/musl at runtime.
 
 **Patterns to follow:** Man page template format and config file structure from the injector repo POC (`packaging/common/` in `opentelemetry-injector`).
 
@@ -276,7 +285,8 @@ Makefile
 - Preuninstall is safe when `/etc/ld.so.preload` does not exist.
 - No `grep`, `sed`, or other non-builtin commands appear in the scripts (verified by `shellcheck` and manual inspection).
 
-**Verification:** `shellcheck` passes on all scripts. Manual review confirms POSIX-only builtins.
+**Verification:** `shellcheck` passes on all scripts.
+Manual review confirms POSIX-only builtins.
 
 ---
 
@@ -295,11 +305,14 @@ Makefile
 - `packaging/dotnet-agent-release.txt`
 
 **Approach:**
-- Each release file has a Renovate-compatible comment and a version tag. The injector release file points to `open-telemetry/opentelemetry-injector` GitHub releases.
+
+Each release file has a Renovate-compatible comment and a version tag.
+The injector release file points to `open-telemetry/opentelemetry-injector` GitHub releases.
 
 **Patterns to follow:** Release file format from the injector repo.
 
-**Test expectation:** none — infrastructure scaffolding. Verified by downstream build targets.
+**Test expectation:** none — infrastructure scaffolding.
+Verified by downstream build targets.
 
 ---
 
@@ -318,15 +331,18 @@ Makefile
 - `packaging/builder/download.go`
 
 **Approach:**
-- `builder.go` provides the `Build` function, `Config` struct, `Component` type, and common helpers (nfpm.Info construction, file content helpers).
-- `components.go` defines each component's `InfoFunc` which builds an `nfpm.Info` with the correct metadata:
+
+`builder.go` provides the `Build` function, `Config` struct, `Component` type, and common helpers (nfpm.Info construction, file content helpers).
+`components.go` defines each component's `InfoFunc` which builds an `nfpm.Info` with the correct metadata:
   - Injector: `Provides: opentelemetry-injector1`, no Depends on sed/grep, PostInstall/PreRemove scripts
   - Language packages: `Provides: opentelemetry-<lang>-autoinstrumentation1`, `Suggests: opentelemetry-injector1`
   - Metapackage: `Depends: opentelemetry-injector1`, `Recommends: opentelemetry-{java,nodejs,dotnet}-autoinstrumentation1`
-- `download.go` handles fetching upstream artifacts (HTTP for injector/Java/.NET, npm for Node.js).
-- The .NET download extracts glibc fully, then overlays only the musl native library directory — shared managed assemblies stored once.
-- nfpm handles all format-specific differences internally (architecture naming, version normalization, control file vs spec header, weak dependency encoding).
-- `main.go` provides the CLI: `-version`, `-arch`, `-format` (deb/rpm/all), `-component` (injector/java/nodejs/dotnet/meta/all), `-output`.
+
+`download.go` handles fetching upstream artifacts (HTTP for injector/Java/.NET, npm for Node.js).
+The .NET download extracts glibc fully, then overlays only the musl native library directory — shared managed assemblies stored once.
+
+nfpm handles all format-specific differences internally (architecture naming, version normalization, control file vs spec header, weak dependency encoding).
+`main.go` provides the CLI: `-version`, `-arch`, `-format` (deb/rpm/all), `-component` (injector/java/nodejs/dotnet/meta/all), `-output`.
 
 **Test scenarios:**
 - Injector DEB/RPM declares `Provides: opentelemetry-injector1`, has no dependency on `sed` or `grep`.
@@ -334,7 +350,8 @@ Makefile
 - Metapackage DEB/RPM uses `Depends` for injector and `Recommends` for language packages.
 - All tests run natively in Go using `pault.ag/go/debian` and `github.com/cavaliergopher/rpm` — no CLI tools needed.
 
-**Verification:** `go vet ./cmd/build-packages/ ./packaging/builder/` passes. Built packages pass metadata tests.
+**Verification:** `go vet ./cmd/build-packages/ ./packaging/builder/` passes.
+Built packages pass metadata tests.
 
 ---
 
@@ -350,11 +367,14 @@ Makefile
 - `Makefile`
 
 **Approach:**
-- Package build targets use `go run ./cmd/build-packages` with `-version`, `-arch`, `-format`, `-component` flags. No Docker needed for package creation.
-- Targets: `deb-package-%`, `deb-packages`, `rpm-package-%`, `rpm-packages`, `packages`, `local-apt-repo`, `local-rpm-repo`, `local-repos`, `integration-test-metadata`, `integration-test-{deb,rpm}-{java,nodejs,dotnet}`, `integration-tests`, `lint`, `clean`.
-- Local repo targets still use containers for `dpkg-scanpackages` and `createrepo_c`.
 
-**Test expectation:** none — orchestration glue. Verified by running `make packages` end-to-end.
+Package build targets use `go run ./cmd/build-packages` with `-version`, `-arch`, `-format`, `-component` flags.
+No Docker needed for package creation.
+Targets: `deb-package-%`, `deb-packages`, `rpm-package-%`, `rpm-packages`, `packages`, `local-apt-repo`, `local-rpm-repo`, `local-repos`, `integration-test-metadata`, `integration-test-{deb,rpm}-{java,nodejs,dotnet}`, `integration-tests`, `lint`, `clean`.
+Local repo targets still use containers for `dpkg-scanpackages` and `createrepo_c`.
+
+**Test expectation:** none — orchestration glue.
+Verified by running `make packages` end-to-end.
 
 ---
 
@@ -372,9 +392,10 @@ Makefile
 - `packaging/repo/index.html`
 
 **Approach:**
-- APT script: runs `dpkg-scanpackages` per architecture (`amd64`, `arm64`, `all`), generates `Release` file with MD5Sum and SHA256 checksums.
-- YUM script: runs `createrepo_c` (not legacy `createrepo`) to preserve weak dependency metadata in the repo index.
-- Landing page template with install instructions, substituted with version/URLs at publish time.
+
+APT script: runs `dpkg-scanpackages` per architecture (`amd64`, `arm64`, `all`), generates `Release` file with MD5Sum and SHA256 checksums.
+YUM script: runs `createrepo_c` (not legacy `createrepo`) to preserve weak dependency metadata in the repo index.
+Landing page template with install instructions, substituted with version/URLs at publish time.
 
 **Patterns to follow:** Repo generation scripts from the injector repo.
 
@@ -413,9 +434,10 @@ Makefile
 - `packaging/tests/shared/dotnet/test.sh`
 
 **Approach:**
-- Each test builds a Docker image that installs the packages from the local repo, starts an application (Tomcat for Java, a Node.js HTTP server, a .NET app), and verifies telemetry output appears.
-- DEB tests use Debian-based images, RPM tests use Fedora/RHEL-based images.
-- Shared test scripts contain the application startup and verification logic, reused by both DEB and RPM test runners.
+
+Each test builds a Docker image that installs the packages from the local repo, starts an application (Tomcat for Java, a Node.js HTTP server, a .NET app), and verifies telemetry output appears.
+DEB tests use Debian-based images, RPM tests use Fedora/RHEL-based images.
+Shared test scripts contain the application startup and verification logic, reused by both DEB and RPM test runners.
 
 **Patterns to follow:** Test structure from the injector repo (`packaging/tests/`).
 
@@ -426,7 +448,8 @@ Makefile
 - Same three scenarios for RPM.
 - Install a language package without the metapackage — verify it installs without pulling the injector (Suggests, not Depends).
 
-**Verification:** All test containers exit 0. CI matrix covers all language x format combinations.
+**Verification:** All test containers exit 0.
+CI matrix covers all language x format combinations.
 
 ---
 
@@ -443,11 +466,15 @@ Makefile
 - `.github/workflows/publish-repos.yml`
 
 **Approach:**
-- `build.yml`:
-  - Job 1 (`build-packages`): matrix over `{deb,rpm}` x `{amd64,arm64}`. Builds all packages, uploads artifacts.
-  - Job 2 (`integration-tests`): matrix over `{deb,rpm}` x `{java,nodejs,dotnet}` x `{amd64,arm64}`, excluding .NET on arm64. Downloads packages, runs integration tests.
+
+`build.yml`:
+  - Job 1 (`build-packages`): matrix over `{deb,rpm}` x `{amd64,arm64}`.
+Builds all packages, uploads artifacts.
+  - Job 2 (`integration-tests`): matrix over `{deb,rpm}` x `{java,nodejs,dotnet}` x `{amd64,arm64}`, excluding .NET on arm64.
+Downloads packages, runs integration tests.
   - Job 3 (`publish-release`): on tag push matching `v[0-9]+.[0-9]+.[0-9]+*`, downloads all artifacts, creates GitHub Release.
-- `publish-repos.yml`:
+
+`publish-repos.yml`:
   - Triggers on release publish or manual dispatch.
   - Downloads DEBs and RPMs from the release.
   - Generates APT and YUM repos.
@@ -455,13 +482,23 @@ Makefile
 
 **Patterns to follow:** Workflow structure from the injector repo, adapted to remove the binary build job (all artifacts are pre-built).
 
-**Test expectation:** none — CI infrastructure. Verified by running the workflows on a test PR.
+**Test expectation:** none — CI infrastructure.
+Verified by running the workflows on a test PR.
 
 ---
 
-## Risks & Dependencies
+## Risks and dependencies
 
-- **Upstream release availability.** The injector repo must have GitHub Releases with `libotelinject.so` artifacts before this infrastructure can produce working packages. If those releases don't exist yet, the builder will fail at download time. Mitigate by using the injector repo's existing CI artifacts or by creating a release from the POC branch.
-- **nfpm weak dependency support.** nfpm supports `Suggests` and `Recommends` as first-class fields for both DEB and RPM. This eliminates the FPM `--rpm-tag` workaround risk, but should be verified in built packages.
-- **`createrepo_c` for weak deps.** Legacy `createrepo` silently drops weak dependency metadata. The repo generation script must use `createrepo_c` and tests must verify the metadata survives.
-- **Node.js npm dependency.** The Node.js agent is fetched via npm, so npm must be available on the build host. This is the only external tool dependency beyond Go itself.
+Upstream release availability is a risk.
+The injector repo must have GitHub Releases with `libotelinject.so` artifacts before this infrastructure can produce working packages.
+If those releases don't exist yet, the builder will fail at download time.
+Mitigate by using the injector repo's existing CI artifacts or by creating a release from the POC branch.
+
+nfpm supports `Suggests` and `Recommends` as first-class fields for both DEB and RPM.
+This eliminates the FPM `--rpm-tag` workaround risk, but should be verified in built packages.
+
+Legacy `createrepo` silently drops weak dependency metadata.
+The repo generation script must use `createrepo_c`, and tests must verify the metadata survives.
+
+The Node.js agent is fetched via npm, so npm must be available on the build host.
+This is the only external tool dependency beyond Go itself.
