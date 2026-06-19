@@ -6,6 +6,7 @@ package builder
 import (
 	"archive/zip"
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,7 +14,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+// npmTimeout is the maximum duration for a single npm subprocess.
+const npmTimeout = 10 * time.Minute
+
+// httpClient is used for all artifact downloads. It sets a generous timeout
+// to avoid hanging indefinitely on stalled upstream responses.
+var httpClient = &http.Client{Timeout: 10 * time.Minute}
 
 // readReleaseVersion reads a pinned version from a release file.
 // Lines starting with "#" and blank lines are skipped.
@@ -43,13 +52,14 @@ func readReleaseVersion(path string) (string, error) {
 	return version, nil
 }
 
-// downloadFile fetches a URL and writes it to dest.
-func downloadFile(url, dest string) error {
+// downloadFile fetches a URL and writes it to dest. On any error after the
+// file is created, the partial file is removed.
+func downloadFile(url, dest string) (retErr error) {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
 	fmt.Printf("  Downloading %s\n", url)
-	resp, err := http.Get(url)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return fmt.Errorf("fetching %s: %w", url, err)
 	}
@@ -61,9 +71,17 @@ func downloadFile(url, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	_, err = io.Copy(f, resp.Body)
-	return err
+	defer func() {
+		closeErr := f.Close()
+		if retErr == nil {
+			retErr = closeErr
+		}
+		if retErr != nil {
+			os.Remove(dest)
+		}
+	}()
+	_, retErr = io.Copy(f, resp.Body)
+	return retErr
 }
 
 // downloadInjector fetches libotelinject.so from GitHub releases.
@@ -103,11 +121,17 @@ func downloadNodejsAgent(cfg Config, destDir string) error {
 
 	fmt.Printf("  Installing @opentelemetry/auto-instrumentations-node@%s via npm\n", ver)
 
+	npmEnv := append(os.Environ(), "NPM_CONFIG_UPDATE_NOTIFIER=false")
+
 	// npm pack + npm install to get a clean node_modules tree.
-	packCmd := exec.Command("npm", "--loglevel=warn", "pack",
+	// Both commands use a context timeout to avoid hanging on a stuck registry.
+	packCtx, packCancel := context.WithTimeout(context.Background(), npmTimeout)
+	defer packCancel()
+
+	packCmd := exec.CommandContext(packCtx, "npm", "--loglevel=warn", "pack",
 		fmt.Sprintf("@opentelemetry/auto-instrumentations-node@%s", ver))
 	packCmd.Dir = nodejsDir
-	packCmd.Env = append(os.Environ(), "NPM_CONFIG_UPDATE_NOTIFIER=false")
+	packCmd.Env = npmEnv
 	if out, err := packCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("npm pack failed: %s\n%w", string(out), err)
 	}
@@ -119,10 +143,13 @@ func downloadNodejsAgent(cfg Config, destDir string) error {
 	}
 	tgz := tgzMatches[0]
 
-	installCmd := exec.Command("npm", "--loglevel=warn", "--no-fund",
-		"install", "--global=false", filepath.Base(tgz))
+	installCtx, installCancel := context.WithTimeout(context.Background(), npmTimeout)
+	defer installCancel()
+
+	installCmd := exec.CommandContext(installCtx, "npm", "--loglevel=warn", "--no-fund",
+		"install", "--ignore-scripts", "--global=false", filepath.Base(tgz))
 	installCmd.Dir = nodejsDir
-	installCmd.Env = append(os.Environ(), "NPM_CONFIG_UPDATE_NOTIFIER=false")
+	installCmd.Env = npmEnv
 	if out, err := installCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("npm install failed: %s\n%w", string(out), err)
 	}
@@ -155,26 +182,36 @@ func downloadDotnetAgent(cfg Config, destDir string) error {
 	// Download and extract glibc archive fully.
 	glibcPkg := fmt.Sprintf("opentelemetry-dotnet-instrumentation-linux-glibc-%s.zip", dotnetArch)
 	glibcURL := fmt.Sprintf("%s/%s/%s", baseURL, tag, glibcPkg)
-	glibcZip := filepath.Join(os.TempDir(), glibcPkg)
-	if err := downloadFile(glibcURL, glibcZip); err != nil {
+	glibcZip, err := os.CreateTemp("", "otel-dotnet-glibc-*.zip")
+	if err != nil {
 		return err
 	}
-	defer os.Remove(glibcZip)
-	if err := extractZip(glibcZip, destDir); err != nil {
+	glibcZip.Close()
+	glibcZipPath := glibcZip.Name()
+	defer os.Remove(glibcZipPath)
+	if err := downloadFile(glibcURL, glibcZipPath); err != nil {
+		return err
+	}
+	if err := extractZip(glibcZipPath, destDir); err != nil {
 		return fmt.Errorf("extracting glibc archive: %w", err)
 	}
 
 	// Download musl archive and extract only the native library directory.
 	muslPkg := fmt.Sprintf("opentelemetry-dotnet-instrumentation-linux-musl-%s.zip", dotnetArch)
 	muslURL := fmt.Sprintf("%s/%s/%s", baseURL, tag, muslPkg)
-	muslZip := filepath.Join(os.TempDir(), muslPkg)
-	if err := downloadFile(muslURL, muslZip); err != nil {
+	muslZip, err := os.CreateTemp("", "otel-dotnet-musl-*.zip")
+	if err != nil {
 		return err
 	}
-	defer os.Remove(muslZip)
+	muslZip.Close()
+	muslZipPath := muslZip.Name()
+	defer os.Remove(muslZipPath)
+	if err := downloadFile(muslURL, muslZipPath); err != nil {
+		return err
+	}
 
 	muslNativeDir := fmt.Sprintf("linux-musl-%s/", dotnetArch)
-	if err := extractZipPrefix(muslZip, destDir, muslNativeDir); err != nil {
+	if err := extractZipPrefix(muslZipPath, destDir, muslNativeDir); err != nil {
 		return fmt.Errorf("extracting musl native dir: %w", err)
 	}
 
