@@ -1,0 +1,2 @@
+# renovate: datasource=github-releases depName=open-telemetry/opentelemetry-injector
+v0.9.0

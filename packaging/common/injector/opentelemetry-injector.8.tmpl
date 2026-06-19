@@ -1,0 +1,79 @@
+.\" Copyright The OpenTelemetry Authors
+.\" SPDX-License-Identifier: Apache-2.0
+.TH OPENTELEMETRY-INJECTOR 8 "@DATE@" "opentelemetry-injector @VERSION@" "System Administration"
+.SH NAME
+opentelemetry-injector \- LD_PRELOAD-based automatic instrumentation injector
+.SH SYNOPSIS
+The OpenTelemetry Injector is loaded automatically via
+.B /etc/ld.so.preload
+and requires no manual invocation.
+.SH DESCRIPTION
+.B opentelemetry-injector
+is an LD_PRELOAD-based mechanism that automatically injects OpenTelemetry
+auto-instrumentation agents into processes at startup. It supports Java,
+Node.js, and .NET runtimes.
+.PP
+When a process starts, the injector library detects the runtime environment
+and loads the appropriate OpenTelemetry agent to enable automatic telemetry
+collection without code changes.
+.SH FILES
+.TP
+.B /usr/lib/opentelemetry/injector/libotelinject.so
+The injector shared library that is preloaded into processes.
+.TP
+.B /etc/opentelemetry/injector/injector.conf
+Main configuration file specifying the default environment variables path
+and documenting the conf.d drop-in mechanism.
+.TP
+.B /etc/opentelemetry/injector/default_env.conf
+Default environment variables applied to all instrumented processes.
+.TP
+.B /etc/opentelemetry/injector/conf.d/
+Directory for drop-in configuration files. Each language auto-instrumentation
+package installs a file here to register its agent path. Files are read in
+alphabetical order.
+.TP
+.B /etc/ld.so.preload
+System file listing libraries to preload. The injector adds itself here
+during installation.
+.SH CONFIGURATION
+The injector reads its main configuration from
+.BR /etc/opentelemetry/injector/injector.conf .
+Agent paths are registered via drop-in files in
+.BR /etc/opentelemetry/injector/conf.d/ :
+.TP
+.B jvm_auto_instrumentation_agent_path
+Path to the Java agent JAR file.
+.TP
+.B nodejs_auto_instrumentation_agent_path
+Path to the Node.js agent entry point.
+.TP
+.B dotnet_auto_instrumentation_agent_path_prefix
+Path prefix for .NET agent binaries (contains linux-x64/ and linux-musl-x64/
+subdirectories for native profiler libraries).
+.SH ENVIRONMENT
+The following environment variables can be used to control instrumentation:
+.TP
+.B OTEL_SERVICE_NAME
+Set the service name for telemetry data.
+.TP
+.B OTEL_EXPORTER_OTLP_ENDPOINT
+Set the OTLP exporter endpoint (e.g., http://localhost:4317).
+.TP
+.B OTEL_TRACES_EXPORTER
+Set the traces exporter (e.g., otlp, console, none).
+.TP
+.B OTEL_METRICS_EXPORTER
+Set the metrics exporter (e.g., otlp, console, none).
+.TP
+.B OTEL_LOGS_EXPORTER
+Set the logs exporter (e.g., otlp, console, none).
+.SH SEE ALSO
+.BR ld.so (8),
+.BR opentelemetry-java (8),
+.BR opentelemetry-nodejs (8),
+.BR opentelemetry-dotnet (8)
+.SH AUTHORS
+The OpenTelemetry Authors
+.SH BUGS
+Report bugs at https://github.com/open-telemetry/opentelemetry-packaging/issues
