@@ -35,9 +35,10 @@ type Config struct {
 type Component struct {
 	Name        string
 	Description string
-	// InfoFunc builds an nfpm.Info for this component.
-	// The format ("deb" or "rpm") is passed so format-specific metadata can be set.
-	InfoFunc func(cfg Config, format string) (*nfpm.Info, error)
+	// InfoFunc builds an nfpm.Info for this component. It returns the info,
+	// a cleanup function that removes any staging directories, and an error.
+	// The cleanup function must be called after packaging completes.
+	InfoFunc func(cfg Config, format string) (info *nfpm.Info, cleanup func(), err error)
 }
 
 // ComponentByName returns the Component with the given name.
@@ -61,7 +62,10 @@ var AllComponents = []Component{
 
 // Build creates a single package file.
 func Build(cfg Config, format string, comp Component) error {
-	info, err := comp.InfoFunc(cfg, format)
+	info, cleanup, err := comp.InfoFunc(cfg, format)
+	if cleanup != nil {
+		defer cleanup()
+	}
 	if err != nil {
 		return fmt.Errorf("building info for %s: %w", comp.Name, err)
 	}
@@ -79,11 +83,16 @@ func Build(cfg Config, format string, comp Component) error {
 	if err != nil {
 		return fmt.Errorf("creating %s: %w", outPath, err)
 	}
-	defer f.Close()
 
 	if err := packager.Package(info, f); err != nil {
+		f.Close()
 		os.Remove(outPath)
 		return fmt.Errorf("packaging %s: %w", comp.Name, err)
+	}
+
+	if err := f.Close(); err != nil {
+		os.Remove(outPath)
+		return fmt.Errorf("closing %s: %w", outPath, err)
 	}
 
 	fmt.Printf("  -> %s\n", outPath)
