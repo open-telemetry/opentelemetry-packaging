@@ -2,9 +2,14 @@
 title: "feat: Implement Linux system packages build infrastructure"
 type: feat
 date: 2026-06-17
+status: implemented
 ---
 
 # feat: Implement Linux system packages build infrastructure
+
+> **Status:** Implemented on the `packages-poc` branch.
+> All files described below exist in the codebase.
+> This document serves as the design record for the packaging infrastructure.
 
 ## Summary
 
@@ -17,7 +22,7 @@ The repo ships with CI/CD workflows, Makefile orchestration, APT/YUM repo genera
 
 ## Problem frame
 
-The [design doc](docs/design/packages-meta-architecture.md) defines the target package architecture but the existing POC lives in the `opentelemetry-injector` repo and has six gaps: no interface versioning, concrete version-pinned dependencies, hard dependencies instead of `Suggests`/`Recommends`, unnecessary `sed`/`grep` dependencies, and no vendor override support.
+The [design doc](docs/design/packages-meta-architecture.md) defines the target package architecture but the existing POC lives in the `opentelemetry-injector` repo and has five gaps: no interface versioning, concrete version-pinned dependencies, hard dependencies instead of `Suggests`/`Recommends`, unnecessary `sed`/`grep` dependencies, and no vendor override support.
 Rather than patching the POC, this plan implements the packaging from scratch in `opentelemetry-packaging` where it belongs, treating all upstream components as pre-built artifacts.
 
 ---
@@ -68,6 +73,7 @@ Rather than patching the POC, this plan implements the packaging from scratch in
 - **POSIX-only lifecycle scripts.** Post-install and pre-uninstall scripts use `read`, `case`, and shell redirection — no `grep`, `sed`, or other external commands — to avoid unnecessary package dependencies across both DEB and RPM.
 - **`createrepo_c` for RPM repos.** Required (not legacy `createrepo`) to preserve weak dependency metadata (`Suggests`, `Recommends`) in repository indices.
 - **Man pages in section 8.** All man pages use section 8 (system administration), per the design doc's decision that these are admin-facing tools, not user commands.
+- **Design doc FPM references superseded.** The [design doc](docs/design/packages-meta-architecture.md) still references FPM as the build tool and includes FPM command-line examples in the vendor recipe section. Those references are superseded by the nfpm decision above for upstream package builds. Updating the design doc is a follow-up task; vendors may use any packaging tool they prefer.
 
 ---
 
@@ -89,9 +95,9 @@ flowchart TB
         NET_VER["dotnet-agent-release.txt"]
     end
 
-    subgraph "Build (FPM Docker)"
-        DEB_BUILD["DEB build scripts"]
-        RPM_BUILD["RPM build scripts"]
+    subgraph "Build (nfpm / Go)"
+        DEB_BUILD["cmd/build-packages -format deb"]
+        RPM_BUILD["cmd/build-packages -format rpm"]
     end
 
     subgraph "Packages"
@@ -220,7 +226,7 @@ Makefile
 - All five packages (injector, Java, Node.js, .NET, metapackage) for DEB and RPM
 - Full dependency model with virtual packages, `Provides`, `Suggests`, `Recommends`
 - POSIX-only lifecycle scripts
-- FPM Docker build environment
+- nfpm-based Go package builder (`cmd/build-packages`)
 - Makefile orchestration
 - CI/CD workflows (build, test, release, repo publish)
 - APT and YUM repository generation
@@ -228,7 +234,10 @@ Makefile
 
 ### Deferred to follow-up work
 
-- Package versioning scheme (tracked in [#11](https://github.com/open-telemetry/opentelemetry-packaging/issues/11))
+- Package versioning scheme (tracked in [#11](https://github.com/open-telemetry/opentelemetry-packaging/issues/11)).
+  During this phase, packages use a placeholder version: `0.0.0-dev` for local builds, or a tag-derived version (from `v*` git tags) in CI.
+  Man page `@VERSION@` placeholders are substituted at build time with the same value.
+  The long-term versioning strategy is deferred to issue #11.
 - Versioned `Provides` declarations (deferred until versioning scheme is defined)
 - `bundled()` RPM provides and DEB SBOM files (tracked in [#13](https://github.com/open-telemetry/opentelemetry-packaging/issues/13))
 - Vendor package example/template (the metadata supports it; a vendor recipe example is deferred)
@@ -248,7 +257,7 @@ Makefile
 **Files:**
 - `packaging/common/scripts/postinstall-injector.sh`
 - `packaging/common/scripts/preuninstall-injector.sh`
-- `packaging/common/injector/otelinject.conf`
+- `packaging/common/injector/injector.conf`
 - `packaging/common/injector/default_env.conf`
 - `packaging/common/injector/opentelemetry-injector.8.tmpl`
 - `packaging/common/injector/README.md`
@@ -270,6 +279,7 @@ Makefile
 Lifecycle scripts must use only POSIX builtins.
 The postinstall script reads `/etc/ld.so.preload` line-by-line with `while read` and `case` to check if the entry exists, appends if not.
 The preuninstall script reads line-by-line, writes non-matching lines to a temp file, then moves it back.
+After the move, if the resulting file is empty (`! [ -s file ]`), the script removes it entirely.
 No `grep`, `sed`, or pipes to external commands.
 
 Man page templates use `@VERSION@` and `@DATE@` placeholders, all in section 8.
@@ -308,6 +318,7 @@ Manual review confirms POSIX-only builtins.
 
 Each release file has a Renovate-compatible comment and a version tag.
 The injector release file points to `open-telemetry/opentelemetry-injector` GitHub releases.
+The .NET release file points to `open-telemetry/opentelemetry-dotnet-instrumentation` GitHub releases.
 
 **Patterns to follow:** Release file format from the injector repo.
 
@@ -341,6 +352,7 @@ Verified by downstream build targets.
 `download.go` handles fetching upstream artifacts (HTTP for injector/Java/.NET, npm for Node.js).
 The .NET download extracts glibc fully, then overlays only the musl native library directory — shared managed assemblies stored once.
 
+All nfpm.Info structures explicitly set `Platform: "linux"` to ensure correct `Architecture` field encoding in DEB packages.
 nfpm handles all format-specific differences internally (architecture naming, version normalization, control file vs spec header, weak dependency encoding).
 `main.go` provides the CLI: `-version`, `-arch`, `-format` (deb/rpm/all), `-component` (injector/java/nodejs/dotnet/meta/all), `-output`.
 
@@ -417,27 +429,31 @@ Landing page template with install instructions, substituted with version/URLs a
 **Dependencies:** U3, U4, U5
 
 **Files:**
+- `packaging/tests/metadata/metadata_test.go`
 - `packaging/tests/deb/java/Dockerfile`
-- `packaging/tests/deb/java/run.sh`
+- `packaging/tests/deb/java/java_test.go`
 - `packaging/tests/deb/nodejs/Dockerfile`
-- `packaging/tests/deb/nodejs/run.sh`
+- `packaging/tests/deb/nodejs/nodejs_test.go`
 - `packaging/tests/deb/dotnet/Dockerfile`
-- `packaging/tests/deb/dotnet/run.sh`
+- `packaging/tests/deb/dotnet/dotnet_test.go`
 - `packaging/tests/rpm/java/Dockerfile`
-- `packaging/tests/rpm/java/run.sh`
+- `packaging/tests/rpm/java/java_test.go`
 - `packaging/tests/rpm/nodejs/Dockerfile`
-- `packaging/tests/rpm/nodejs/run.sh`
+- `packaging/tests/rpm/nodejs/nodejs_test.go`
 - `packaging/tests/rpm/dotnet/Dockerfile`
-- `packaging/tests/rpm/dotnet/run.sh`
-- `packaging/tests/shared/java/test.sh`
-- `packaging/tests/shared/nodejs/test.sh`
-- `packaging/tests/shared/dotnet/test.sh`
+- `packaging/tests/rpm/dotnet/dotnet_test.go`
+- `packaging/tests/shared/nodejs/server.js`
+- `packaging/tests/shared/dotnet/Program.cs`
+- `packaging/tests/shared/dotnet/testapp.csproj`
 
 **Approach:**
 
-Each test builds a Docker image that installs the packages from the local repo, starts an application (Tomcat for Java, a Node.js HTTP server, a .NET app), and verifies telemetry output appears.
+Host-side metadata tests (`metadata_test.go`) use native Go parsers (`pault.ag/go/debian` and `github.com/cavaliergopher/rpm`) to verify package metadata fields, dependency declarations, `Provides` virtual names, and architecture fields without requiring `dpkg-deb` or `rpm` CLI tools.
+
+E2E tests use [Testcontainers](https://golang.testcontainers.org/) in Go (`*_test.go`) with per-language Dockerfiles.
+Each test builds a container that installs the packages from the local repo, starts an application (Tomcat for Java, a Node.js HTTP server, a .NET app), and verifies telemetry output appears.
 DEB tests use Debian-based images, RPM tests use Fedora/RHEL-based images.
-Shared test scripts contain the application startup and verification logic, reused by both DEB and RPM test runners.
+Shared test app sources (`shared/nodejs/`, `shared/dotnet/`) are reused by both DEB and RPM test containers.
 
 **Patterns to follow:** Test structure from the injector repo (`packaging/tests/`).
 
