@@ -93,7 +93,7 @@ func Build(cfg Config, format string, comp Component) error {
 // Common package metadata.
 const (
 	pkgVendor     = "OpenTelemetry"
-	pkgMaintainer = "OpenTelemetry"
+	pkgMaintainer = "The OpenTelemetry Authors"
 	pkgLicense    = "Apache-2.0"
 	pkgHomepage   = "https://github.com/open-telemetry/opentelemetry-packaging"
 )
