@@ -72,22 +72,21 @@ const (
 	metaDescription     = "OpenTelemetry Auto-Instrumentation Suite (metapackage)"
 )
 
-func injectorInfo(cfg Config, format string) (*nfpm.Info, error) {
-	// Download libotelinject.so to a staging directory.
+func injectorInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 	staging, err := os.MkdirTemp("", "otel-injector-*")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	// Caller (Build) will package and we're done; staging is temp.
+	cleanup := func() { os.RemoveAll(staging) }
 
 	soPath := filepath.Join(staging, "libotelinject.so")
 	if err := downloadInjector(cfg, soPath); err != nil {
-		return nil, fmt.Errorf("downloading injector: %w", err)
+		return nil, cleanup, fmt.Errorf("downloading injector: %w", err)
 	}
 
-	manPath, err := generateManPage(cfg, "injector")
+	manPath, err := generateManPage(cfg, staging, "injector")
 	if err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
 
 	commonDir := filepath.Join(cfg.PackagingDir, "common")
@@ -107,23 +106,24 @@ func injectorInfo(cfg Config, format string) (*nfpm.Info, error) {
 		regularFile(filepath.Join(commonDir, "injector", "README.md"), "/usr/share/doc/opentelemetry-injector/README.md", 0o644),
 	}
 
-	return info, nil
+	return info, cleanup, nil
 }
 
-func javaInfo(cfg Config, format string) (*nfpm.Info, error) {
+func javaInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 	staging, err := os.MkdirTemp("", "otel-java-*")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	cleanup := func() { os.RemoveAll(staging) }
 
 	jarPath := filepath.Join(staging, "opentelemetry-javaagent.jar")
 	if err := downloadJavaAgent(cfg, jarPath); err != nil {
-		return nil, fmt.Errorf("downloading Java agent: %w", err)
+		return nil, cleanup, fmt.Errorf("downloading Java agent: %w", err)
 	}
 
-	manPath, err := generateManPage(cfg, "java")
+	manPath, err := generateManPage(cfg, staging, "java")
 	if err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
 
 	commonDir := filepath.Join(cfg.PackagingDir, "common")
@@ -142,22 +142,23 @@ func javaInfo(cfg Config, format string) (*nfpm.Info, error) {
 		regularFile(filepath.Join(commonDir, "java", "README.md"), "/usr/share/doc/opentelemetry-java-autoinstrumentation/README.md", 0o644),
 	}
 
-	return info, nil
+	return info, cleanup, nil
 }
 
-func nodejsInfo(cfg Config, format string) (*nfpm.Info, error) {
+func nodejsInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 	staging, err := os.MkdirTemp("", "otel-nodejs-*")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	cleanup := func() { os.RemoveAll(staging) }
 
 	if err := downloadNodejsAgent(cfg, staging); err != nil {
-		return nil, fmt.Errorf("downloading Node.js agent: %w", err)
+		return nil, cleanup, fmt.Errorf("downloading Node.js agent: %w", err)
 	}
 
-	manPath, err := generateManPage(cfg, "nodejs")
+	manPath, err := generateManPage(cfg, staging, "nodejs")
 	if err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
 
 	commonDir := filepath.Join(cfg.PackagingDir, "common")
@@ -176,26 +177,27 @@ func nodejsInfo(cfg Config, format string) (*nfpm.Info, error) {
 		regularFile(filepath.Join(commonDir, "nodejs", "README.md"), "/usr/share/doc/opentelemetry-nodejs-autoinstrumentation/README.md", 0o644),
 	}
 
-	return info, nil
+	return info, cleanup, nil
 }
 
-func dotnetInfo(cfg Config, format string) (*nfpm.Info, error) {
+func dotnetInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 	staging, err := os.MkdirTemp("", "otel-dotnet-*")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	cleanup := func() { os.RemoveAll(staging) }
 
 	dotnetDir := filepath.Join(staging, "dotnet")
 	if err := os.MkdirAll(dotnetDir, 0o755); err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
 	if err := downloadDotnetAgent(cfg, dotnetDir); err != nil {
-		return nil, fmt.Errorf("downloading .NET agent: %w", err)
+		return nil, cleanup, fmt.Errorf("downloading .NET agent: %w", err)
 	}
 
-	manPath, err := generateManPage(cfg, "dotnet")
+	manPath, err := generateManPage(cfg, staging, "dotnet")
 	if err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
 
 	commonDir := filepath.Join(cfg.PackagingDir, "common")
@@ -211,19 +213,19 @@ func dotnetInfo(cfg Config, format string) (*nfpm.Info, error) {
 		regularFile(filepath.Join(commonDir, "dotnet", "README.md"), "/usr/share/doc/opentelemetry-dotnet-autoinstrumentation/README.md", 0o644),
 	}
 
-	return info, nil
+	return info, cleanup, nil
 }
 
-func metaInfo(cfg Config, format string) (*nfpm.Info, error) {
-	// The metapackage has no files of its own besides a README.
+func metaInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 	staging, err := os.MkdirTemp("", "otel-meta-*")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	cleanup := func() { os.RemoveAll(staging) }
 
 	readmePath := filepath.Join(staging, "README")
 	if err := os.WriteFile(readmePath, []byte("OpenTelemetry Auto-Instrumentation Suite\n"), 0o644); err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
 
 	arch := "all"
@@ -242,25 +244,14 @@ func metaInfo(cfg Config, format string) (*nfpm.Info, error) {
 		regularFile(readmePath, "/usr/share/doc/opentelemetry/README", 0o644),
 	}
 
-	return info, nil
+	return info, cleanup, nil
 }
 
 // generateManPage expands @VERSION@ and @DATE@ placeholders in a man page
-// template and compresses with gzip. Returns the path to the gzipped file.
-func generateManPage(cfg Config, component string) (string, error) {
-	var templateName string
-	switch component {
-	case "injector":
-		templateName = "opentelemetry-injector.8.tmpl"
-	case "java":
-		templateName = "opentelemetry-java.8.tmpl"
-	case "nodejs":
-		templateName = "opentelemetry-nodejs.8.tmpl"
-	case "dotnet":
-		templateName = "opentelemetry-dotnet.8.tmpl"
-	default:
-		return "", fmt.Errorf("unknown component for man page: %s", component)
-	}
+// template, compresses with gzip, and writes the result into stagingDir.
+// Returns the path to the gzipped file.
+func generateManPage(cfg Config, stagingDir, component string) (string, error) {
+	templateName := fmt.Sprintf("opentelemetry-%s.8.tmpl", component)
 
 	templatePath := filepath.Join(cfg.PackagingDir, "common", component, templateName)
 	tmplData, err := os.ReadFile(templatePath)
@@ -272,7 +263,7 @@ func generateManPage(cfg Config, component string) (string, error) {
 	content = strings.ReplaceAll(content, "@VERSION@", cfg.Version)
 	content = strings.ReplaceAll(content, "@DATE@", time.Now().Format("January 2006"))
 
-	outPath := filepath.Join(os.TempDir(), templateName[:len(templateName)-5]+".gz")
+	outPath := filepath.Join(stagingDir, templateName[:len(templateName)-5]+".gz")
 	f, err := os.Create(outPath)
 	if err != nil {
 		return "", err
