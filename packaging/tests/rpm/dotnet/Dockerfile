@@ -6,7 +6,7 @@
 # export traces to stdout (console exporter), then starts a minimal ASP.NET
 # HTTP server. The Go test sends HTTP traffic and asserts on the trace output.
 
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 
 # Build the test app
 COPY packaging/tests/shared/dotnet/ /src/
@@ -21,7 +21,7 @@ ENV LANG=C.UTF-8
 
 # Install .NET ASP.NET runtime and utilities
 RUN dnf -y update \
-    && dnf -y install dotnet-runtime-8.0 aspnetcore-runtime-8.0 curl \
+    && dnf -y install dotnet-runtime-9.0 aspnetcore-runtime-9.0 curl \
     && dnf clean all
 
 # Copy the published app
