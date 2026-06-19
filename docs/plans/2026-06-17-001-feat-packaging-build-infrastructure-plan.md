@@ -8,7 +8,7 @@ date: 2026-06-17
 
 ## Summary
 
-Build the complete packaging infrastructure in `opentelemetry-packaging` to produce five FPM-based DEB and RPM packages — injector, three language auto-instrumentation packages, and a metapackage — with the virtual-package dependency model, vendor-override support, and interface versioning defined in the [design doc](docs/design/packages-meta-architecture.md). All upstream artifacts (including `libotelinject.so`) are fetched as pre-built releases. The repo ships with CI/CD workflows, Makefile orchestration, APT/YUM repo generation, and packaging integration tests.
+Build the complete packaging infrastructure in `opentelemetry-packaging` to produce five DEB and RPM packages — injector, three language auto-instrumentation packages, and a metapackage — with the virtual-package dependency model, vendor-override support, and interface versioning defined in the [design doc](docs/design/packages-meta-architecture.md). Packages are created using [nfpm](https://github.com/goreleaser/nfpm) as a Go library — no FPM, Ruby, or Docker required for package creation. All upstream artifacts (including `libotelinject.so`) are fetched as pre-built releases. The repo ships with CI/CD workflows, Makefile orchestration, APT/YUM repo generation, and packaging integration tests.
 
 ---
 
@@ -22,11 +22,11 @@ The [design doc](docs/design/packages-meta-architecture.md) defines the target p
 
 **Package metadata**
 
-- R1. Each of the five packages is buildable as both DEB and RPM via FPM.
+- R1. Each of the five packages is buildable as both DEB and RPM via nfpm (Go library).
 - R2. The injector package declares `Provides: opentelemetry-injector1` and has no dependencies on `sed` or `grep`.
 - R3. Each language package declares `Provides: opentelemetry-<lang>-autoinstrumentation1` and uses `Suggests` (not `Depends`) for `opentelemetry-injector1`.
 - R4. The metapackage uses `Depends: opentelemetry-injector1` and `Recommends` (not `Depends`) for each language virtual name.
-- R5. RPM `Suggests` and `Recommends` are expressed via `--rpm-tag` (FPM has no native flags for these).
+- R5. RPM `Suggests` and `Recommends` are expressed natively (nfpm supports these as first-class fields, unlike FPM which required `--rpm-tag` workarounds).
 
 **Lifecycle scripts**
 
@@ -34,8 +34,8 @@ The [design doc](docs/design/packages-meta-architecture.md) defines the target p
 
 **Build infrastructure**
 
-- R7. A Makefile provides targets for building individual and all packages, building the FPM Docker image, generating local repos, and running integration tests.
-- R8. An FPM Docker image (Dockerfile + Gemfile) provides a reproducible build environment with FPM 1.17.0.
+- R7. A Makefile provides targets for building individual and all packages, generating local repos, and running integration tests.
+- R8. Package creation uses `goreleaser/nfpm` as a Go library (`go run ./cmd/build-packages`), eliminating the need for an FPM Docker image.
 - R9. Upstream artifact versions are pinned in per-language release files managed by Renovate.
 - R10. An injector release file pins the `libotelinject.so` version fetched from the injector repo's GitHub releases.
 
@@ -57,7 +57,10 @@ The [design doc](docs/design/packages-meta-architecture.md) defines the target p
 
 - **Fresh implementation, not a POC port.** The injector repo's POC has a different package structure and mixes injector source builds with packaging. Starting fresh avoids carrying forward incorrect dependency metadata and build coupling.
 - **All artifacts are pre-built.** `libotelinject.so` is fetched from the injector repo's GitHub releases, same as Java/Node.js/.NET agents. This keeps the packaging repo focused on packaging.
-- **DEB and RPM share common helpers.** A `packaging/common/` directory holds config files, lifecycle scripts, man page templates, and agent download functions. Format-specific helpers (`packaging/deb/common.sh`, `packaging/rpm/common.sh`) handle DEB/RPM differences (architecture naming, version normalization, format-specific FPM flags).
+- **nfpm as a Go library, not FPM.** Package creation is implemented as a Go program (`cmd/build-packages`) using `goreleaser/nfpm` v2 as a library. This eliminates the Ruby/FPM/Docker dependency, makes package creation cross-platform (works on macOS, Linux, CI without containers), and gives first-class support for weak dependencies (`Suggests`, `Recommends`) without `--rpm-tag` workarounds.
+- **Unified builder for DEB and RPM.** A single `packaging/builder/` Go package defines each component's metadata, file contents, and scripts. nfpm handles format-specific differences (architecture naming, version normalization, control file vs spec header) internally.
+- **Native Go package parsing in tests.** Metadata tests use `pault.ag/go/debian` and `github.com/cavaliergopher/rpm` to parse built packages natively — no `dpkg-deb` or `rpm` CLI tools required on the host.
+- **`packaging/common/` holds shared assets.** Config files, lifecycle scripts, man page templates, and READMEs live here and are referenced by the Go builder.
 - **POSIX-only lifecycle scripts.** Post-install and pre-uninstall scripts use `read`, `case`, and shell redirection — no `grep`, `sed`, or other external commands — to avoid unnecessary package dependencies across both DEB and RPM.
 - **`createrepo_c` for RPM repos.** Required (not legacy `createrepo`) to preserve weak dependency metadata (`Suggests`, `Recommends`) in repository indices.
 - **Man pages in section 8.** All man pages use section 8 (system administration), per the design doc's decision that these are admin-facing tools, not user commands.
@@ -150,17 +153,21 @@ flowchart TB
 ## Output Structure
 
 ```
+cmd/
+└── build-packages/
+    └── main.go                    # CLI entry point for nfpm-based package creation
+
 packaging/
+├── builder/
+│   ├── builder.go                 # Build orchestration, nfpm packager interface
+│   ├── components.go              # Component definitions (injector, java, nodejs, dotnet, meta)
+│   └── download.go                # Upstream artifact download helpers
 ├── common/
-│   ├── fpm/
-│   │   ├── Dockerfile
-│   │   ├── Gemfile
-│   │   └── install-deps.sh
 │   ├── scripts/
 │   │   ├── postinstall-injector.sh
 │   │   └── preuninstall-injector.sh
 │   ├── injector/
-│   │   ├── otelinject.conf
+│   │   ├── injector.conf
 │   │   ├── default_env.conf
 │   │   ├── opentelemetry-injector.8.tmpl
 │   │   └── README.md
@@ -179,28 +186,15 @@ packaging/
 │       ├── injector.conf
 │       ├── opentelemetry-dotnet.8.tmpl
 │       └── README.md
-├── deb/
-│   ├── common.sh
-│   ├── injector/build.sh
-│   ├── java/build.sh
-│   ├── nodejs/build.sh
-│   ├── dotnet/build.sh
-│   └── meta/build.sh
-├── rpm/
-│   ├── common.sh
-│   ├── injector/build.sh
-│   ├── java/build.sh
-│   ├── nodejs/build.sh
-│   ├── dotnet/build.sh
-│   └── meta/build.sh
 ├── repo/
 │   ├── generate-apt-repo.sh
 │   ├── generate-rpm-repo.sh
 │   └── index.html
 ├── tests/
-│   ├── deb/{java,nodejs,dotnet}/{Dockerfile,run.sh}
-│   ├── rpm/{java,nodejs,dotnet}/{Dockerfile,run.sh}
-│   └── shared/{java,nodejs,dotnet}/test.sh
+│   ├── metadata/metadata_test.go  # Host-side metadata tests (native Go parsers)
+│   ├── deb/{java,nodejs,dotnet}/  # Testcontainers E2E tests
+│   ├── rpm/{java,nodejs,dotnet}/  # Testcontainers E2E tests
+│   └── shared/{nodejs,dotnet}/    # Shared test app sources
 ├── injector-release.txt
 ├── java-agent-release.txt
 ├── nodejs-agent-release.txt
@@ -286,11 +280,11 @@ Makefile
 
 ---
 
-### U2. Version pin files and FPM Docker image
+### U2. Version pin files
 
-**Goal:** Create the artifact version pin files and the reproducible FPM build environment.
+**Goal:** Create the artifact version pin files for upstream releases.
 
-**Requirements:** R8, R9, R10
+**Requirements:** R9, R10
 
 **Dependencies:** None
 
@@ -299,125 +293,78 @@ Makefile
 - `packaging/java-agent-release.txt`
 - `packaging/nodejs-agent-release.txt`
 - `packaging/dotnet-agent-release.txt`
-- `packaging/common/fpm/Dockerfile`
-- `packaging/common/fpm/Gemfile`
-- `packaging/common/fpm/install-deps.sh`
 
 **Approach:**
 - Each release file has a Renovate-compatible comment and a version tag. The injector release file points to `open-telemetry/opentelemetry-injector` GitHub releases.
-- The FPM Dockerfile uses `node:24-bookworm` as base (Node.js needed for npm-based Node.js agent download), installs Ruby, FPM 1.17.0, `rpm`, `curl`, `jq`, `unzip`, and `createrepo_c`.
 
-**Patterns to follow:** Release file format and Dockerfile structure from the injector repo.
+**Patterns to follow:** Release file format from the injector repo.
 
 **Test expectation:** none — infrastructure scaffolding. Verified by downstream build targets.
 
 ---
 
-### U3. DEB common helpers and build scripts
+### U3. Go package builder (nfpm)
 
-**Goal:** Implement `packaging/deb/common.sh` and the five DEB build scripts with correct virtual-package metadata.
+**Goal:** Implement `cmd/build-packages` and `packaging/builder/` to create all five packages in both DEB and RPM formats using nfpm as a Go library.
 
-**Requirements:** R1, R2, R3, R4, R5, R13
-
-**Dependencies:** U1, U2
-
-**Files:**
-- `packaging/deb/common.sh`
-- `packaging/deb/injector/build.sh`
-- `packaging/deb/java/build.sh`
-- `packaging/deb/nodejs/build.sh`
-- `packaging/deb/dotnet/build.sh`
-- `packaging/deb/meta/build.sh`
-
-**Approach:**
-- `common.sh` provides: `get_version`, `download_java_agent`, `download_nodejs_agent`, `download_dotnet_agent`, `download_injector`, `generate_man_page`, and `setup_*_buildroot` functions. The injector download function fetches `libotelinject.so` from GitHub releases based on the version in `injector-release.txt`.
-- The .NET `setup_dotnet_buildroot` downloads both glibc and musl archives, extracts glibc fully, then overlays only `linux-musl-x64/` from the musl archive — shared managed assemblies are stored once.
-- Each build script calls `setup_*_buildroot` then runs `fpm` with the correct flags:
-  - Injector: `--provides "opentelemetry-injector1"`, no `--depends sed/grep`, `--after-install`, `--before-remove`
-  - Language packages: `--provides "opentelemetry-<lang>-autoinstrumentation1"`, `--deb-suggests "opentelemetry-injector1"`
-  - Java additionally: `--deb-suggests "default-jre"`
-  - Node.js additionally: `--deb-suggests "nodejs (>= 18)"`
-  - Metapackage: `--depends "opentelemetry-injector1"`, `--deb-recommends "opentelemetry-java-autoinstrumentation1"` (same for nodejs, dotnet)
-
-**Patterns to follow:** Build script structure from the injector repo, adapted with the design doc's dependency model.
-
-**Test scenarios:**
-- The injector DEB declares `Provides: opentelemetry-injector1` (verified with `dpkg -I`).
-- The injector DEB has no dependency on `sed` or `grep`.
-- Each language DEB declares the correct `Provides` virtual name.
-- Each language DEB uses `Suggests` (not `Depends`) for `opentelemetry-injector1`.
-- The metapackage DEB uses `Depends` for the injector and `Recommends` for language packages — all via virtual names.
-- The .NET package contains `linux-x64/OpenTelemetry.AutoInstrumentation.Native.so` and `linux-musl-x64/OpenTelemetry.AutoInstrumentation.Native.so` as separate native libraries with shared managed assemblies at the top level.
-
-**Verification:** Built packages pass `dpkg -I` inspection showing correct `Provides`, `Depends`, `Suggests`, and `Recommends` fields. Package contents match the filesystem layout in the design doc.
-
----
-
-### U4. RPM common helpers and build scripts
-
-**Goal:** Implement `packaging/rpm/common.sh` and the five RPM build scripts with correct virtual-package metadata using `--rpm-tag` for weak dependencies.
-
-**Requirements:** R1, R2, R3, R4, R5, R13
+**Requirements:** R1, R2, R3, R4, R5, R8, R13
 
 **Dependencies:** U1, U2
 
 **Files:**
-- `packaging/rpm/common.sh`
-- `packaging/rpm/injector/build.sh`
-- `packaging/rpm/java/build.sh`
-- `packaging/rpm/nodejs/build.sh`
-- `packaging/rpm/dotnet/build.sh`
-- `packaging/rpm/meta/build.sh`
+- `cmd/build-packages/main.go`
+- `packaging/builder/builder.go`
+- `packaging/builder/components.go`
+- `packaging/builder/download.go`
 
 **Approach:**
-- `common.sh` adds `normalize_rpm_version` (dashes to underscores, strip leading `v`) and `convert_arch_for_rpm` (amd64→x86_64, arm64→aarch64) on top of the shared download/setup functions.
-- FPM flags:
-  - Injector: `--provides "opentelemetry-injector1"`, no `--depends sed/grep`
-  - Language packages: `--provides "opentelemetry-<lang>-autoinstrumentation1"`, `--rpm-tag "Suggests: opentelemetry-injector1"`
-  - Metapackage: `--depends "opentelemetry-injector1"`, `--rpm-tag "Recommends: opentelemetry-java-autoinstrumentation1"` (same for nodejs, dotnet)
-
-**Patterns to follow:** RPM-specific handling from the injector repo (`normalize_rpm_version`, `convert_arch_for_rpm`), adapted with `--rpm-tag` for weak dependencies.
+- `builder.go` provides the `Build` function, `Config` struct, `Component` type, and common helpers (nfpm.Info construction, file content helpers).
+- `components.go` defines each component's `InfoFunc` which builds an `nfpm.Info` with the correct metadata:
+  - Injector: `Provides: opentelemetry-injector1`, no Depends on sed/grep, PostInstall/PreRemove scripts
+  - Language packages: `Provides: opentelemetry-<lang>-autoinstrumentation1`, `Suggests: opentelemetry-injector1`
+  - Metapackage: `Depends: opentelemetry-injector1`, `Recommends: opentelemetry-{java,nodejs,dotnet}-autoinstrumentation1`
+- `download.go` handles fetching upstream artifacts (HTTP for injector/Java/.NET, npm for Node.js).
+- The .NET download extracts glibc fully, then overlays only the musl native library directory — shared managed assemblies stored once.
+- nfpm handles all format-specific differences internally (architecture naming, version normalization, control file vs spec header, weak dependency encoding).
+- `main.go` provides the CLI: `-version`, `-arch`, `-format` (deb/rpm/all), `-component` (injector/java/nodejs/dotnet/meta/all), `-output`.
 
 **Test scenarios:**
-- The injector RPM declares `Provides: opentelemetry-injector1` (verified with `rpm -qp --provides`).
-- The injector RPM has no dependency on `sed` or `grep`.
-- Each language RPM declares the correct `Provides` virtual name.
-- Each language RPM uses `Suggests` (via `--rpm-tag`) for `opentelemetry-injector1`.
-- The metapackage RPM uses `Requires` for the injector and `Recommends` (via `--rpm-tag`) for language packages.
+- Injector DEB/RPM declares `Provides: opentelemetry-injector1`, has no dependency on `sed` or `grep`.
+- Each language DEB/RPM declares the correct `Provides` virtual name and `Suggests: opentelemetry-injector1`.
+- Metapackage DEB/RPM uses `Depends` for injector and `Recommends` for language packages.
+- All tests run natively in Go using `pault.ag/go/debian` and `github.com/cavaliergopher/rpm` — no CLI tools needed.
 
-**Verification:** Built packages pass `rpm -qp --provides` / `rpm -qp --requires` / `rpm -qe --supplements` inspection.
+**Verification:** `go vet ./cmd/build-packages/ ./packaging/builder/` passes. Built packages pass metadata tests.
 
 ---
 
-### U5. Makefile
+### U4. Makefile
 
 **Goal:** Provide orchestration targets for building packages, generating repos, and running tests.
 
 **Requirements:** R7
 
-**Dependencies:** U2, U3, U4
+**Dependencies:** U3
 
 **Files:**
 - `Makefile`
 
 **Approach:**
-- Targets: `fpm-docker-image`, `deb-package-{injector,java,nodejs,dotnet,meta}`, `deb-packages`, `rpm-package-{injector,java,nodejs,dotnet,meta}`, `rpm-packages`, `packages`, `local-apt-repo`, `local-rpm-repo`, `local-repos`, `packaging-integration-test-deb-{java,nodejs,dotnet}`, `packaging-integration-test-rpm-{java,nodejs,dotnet}`, `lint`, `clean`.
-- Each package build target runs the corresponding build script inside the FPM Docker container, passing `VERSION`, `ARCH`, and `OUTPUT_DIR`.
-- Local repo targets run `generate-apt-repo.sh` and `generate-rpm-repo.sh` against `build/packages/`.
+- Package build targets use `go run ./cmd/build-packages` with `-version`, `-arch`, `-format`, `-component` flags. No Docker needed for package creation.
+- Targets: `deb-package-%`, `deb-packages`, `rpm-package-%`, `rpm-packages`, `packages`, `local-apt-repo`, `local-rpm-repo`, `local-repos`, `integration-test-metadata`, `integration-test-{deb,rpm}-{java,nodejs,dotnet}`, `integration-tests`, `lint`, `clean`.
+- Local repo targets still use containers for `dpkg-scanpackages` and `createrepo_c`.
 
-**Patterns to follow:** Makefile structure from the injector repo.
-
-**Test expectation:** none — orchestration glue. Verified by running `make deb-packages` and `make rpm-packages` end-to-end.
+**Test expectation:** none — orchestration glue. Verified by running `make packages` end-to-end.
 
 ---
 
-### U6. Repository generation scripts
+### U5. Repository generation scripts
 
 **Goal:** Generate APT and YUM repository metadata from built packages.
 
 **Requirements:** R11
 
-**Dependencies:** U3, U4
+**Dependencies:** U3
 
 **Files:**
 - `packaging/repo/generate-apt-repo.sh`
@@ -440,13 +387,13 @@ Makefile
 
 ---
 
-### U7. Packaging integration tests
+### U6. Packaging integration tests
 
 **Goal:** Automated tests that install packages in containers and verify auto-instrumentation works end-to-end.
 
 **Requirements:** R1 (indirectly — validates the packages work)
 
-**Dependencies:** U3, U4, U5, U6
+**Dependencies:** U3, U4, U5
 
 **Files:**
 - `packaging/tests/deb/java/Dockerfile`
@@ -483,13 +430,13 @@ Makefile
 
 ---
 
-### U8. CI/CD workflows
+### U7. CI/CD workflows
 
 **Goal:** GitHub Actions workflows for building, testing, releasing, and publishing packages.
 
 **Requirements:** R12
 
-**Dependencies:** U5, U6, U7
+**Dependencies:** U4, U5, U6
 
 **Files:**
 - `.github/workflows/build.yml`
@@ -514,6 +461,7 @@ Makefile
 
 ## Risks & Dependencies
 
-- **Upstream release availability.** The injector repo must have GitHub Releases with `libotelinject.so` artifacts before this infrastructure can produce working packages. If those releases don't exist yet, the build scripts will fail at download time. Mitigate by using the injector repo's existing CI artifacts or by creating a release from the POC branch.
-- **FPM `--rpm-tag` compatibility.** The `Suggests` and `Recommends` RPM tags depend on FPM 1.17.0 correctly injecting them into the spec header. The injector repo POC does not use this feature. Mitigate by verifying early in U4 that the tags appear in built RPMs.
+- **Upstream release availability.** The injector repo must have GitHub Releases with `libotelinject.so` artifacts before this infrastructure can produce working packages. If those releases don't exist yet, the builder will fail at download time. Mitigate by using the injector repo's existing CI artifacts or by creating a release from the POC branch.
+- **nfpm weak dependency support.** nfpm supports `Suggests` and `Recommends` as first-class fields for both DEB and RPM. This eliminates the FPM `--rpm-tag` workaround risk, but should be verified in built packages.
 - **`createrepo_c` for weak deps.** Legacy `createrepo` silently drops weak dependency metadata. The repo generation script must use `createrepo_c` and tests must verify the metadata survives.
+- **Node.js npm dependency.** The Node.js agent is fetched via npm, so npm must be available on the build host. This is the only external tool dependency beyond Go itself.
