@@ -6,13 +6,13 @@
 # export traces to stdout (console exporter), then starts a minimal ASP.NET
 # HTTP server. The Go test sends HTTP traffic and asserts on the trace output.
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS build
 
 # Build the test app
 COPY packaging/tests/shared/dotnet/ /src/
 RUN dotnet publish /src/testapp.csproj -c Release -o /app/published --self-contained false
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim
 
 ARG ARCH=amd64
 
