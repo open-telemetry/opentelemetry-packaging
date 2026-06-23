@@ -159,8 +159,10 @@ func downloadNodejsAgent(cfg Config, destDir string) error {
 }
 
 // downloadDotnetAgent fetches the .NET auto-instrumentation for both glibc
-// and musl. The glibc archive is extracted fully; only the native library
-// directory from the musl archive is overlaid.
+// and musl. The glibc archive is extracted fully, then its native library
+// directory is moved under a glibc/ prefix to match the layout expected by
+// the OpenTelemetry injector. Only the native library directory from the
+// musl archive is extracted, placed under a musl/ prefix.
 func downloadDotnetAgent(cfg Config, destDir string) error {
 	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "dotnet-agent-release.txt"))
 	if err != nil {
@@ -179,7 +181,9 @@ func downloadDotnetAgent(cfg Config, destDir string) error {
 
 	baseURL := "https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/download"
 
-	// Download and extract glibc archive fully.
+	// Download and extract glibc archive into a glibc/ subdirectory.
+	// The injector expects all glibc files (managed DLLs and native library)
+	// under <prefix>/glibc/.
 	glibcPkg := fmt.Sprintf("opentelemetry-dotnet-instrumentation-linux-glibc-%s.zip", dotnetArch)
 	glibcURL := fmt.Sprintf("%s/%s/%s", baseURL, tag, glibcPkg)
 	glibcZip, err := os.CreateTemp("", "otel-dotnet-glibc-*.zip")
@@ -192,11 +196,16 @@ func downloadDotnetAgent(cfg Config, destDir string) error {
 	if err := downloadFile(glibcURL, glibcZipPath); err != nil {
 		return err
 	}
-	if err := extractZip(glibcZipPath, destDir); err != nil {
+	glibcDest := filepath.Join(destDir, "glibc")
+	if err := os.MkdirAll(glibcDest, 0o755); err != nil {
+		return fmt.Errorf("creating glibc dir: %w", err)
+	}
+	if err := extractZip(glibcZipPath, glibcDest); err != nil {
 		return fmt.Errorf("extracting glibc archive: %w", err)
 	}
 
-	// Download musl archive and extract only the native library directory.
+	// Download musl archive and extract only the native library directory,
+	// placing it under musl/ to match the injector's expected layout.
 	muslPkg := fmt.Sprintf("opentelemetry-dotnet-instrumentation-linux-musl-%s.zip", dotnetArch)
 	muslURL := fmt.Sprintf("%s/%s/%s", baseURL, tag, muslPkg)
 	muslZip, err := os.CreateTemp("", "otel-dotnet-musl-*.zip")
@@ -211,7 +220,11 @@ func downloadDotnetAgent(cfg Config, destDir string) error {
 	}
 
 	muslNativeDir := fmt.Sprintf("linux-musl-%s/", dotnetArch)
-	if err := extractZipPrefix(muslZipPath, destDir, muslNativeDir); err != nil {
+	muslDest := filepath.Join(destDir, "musl")
+	if err := os.MkdirAll(muslDest, 0o755); err != nil {
+		return fmt.Errorf("creating musl dir: %w", err)
+	}
+	if err := extractZipPrefix(muslZipPath, muslDest, muslNativeDir); err != nil {
 		return fmt.Errorf("extracting musl native dir: %w", err)
 	}
 

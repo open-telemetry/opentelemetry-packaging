@@ -6,13 +6,13 @@
 # export traces to stdout (console exporter), then starts a minimal ASP.NET
 # HTTP server. The Go test sends HTTP traffic and asserts on the trace output.
 
-FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
 
 # Build the test app
 COPY packaging/tests/shared/dotnet/ /src/
 RUN dotnet publish /src/testapp.csproj -c Release -o /app/published --self-contained false
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble
 
 ARG ARCH=amd64
 
@@ -43,4 +43,4 @@ RUN echo 'OTEL_TRACES_EXPORTER=console' >> /etc/opentelemetry/injector/default_e
 
 EXPOSE 5000
 
-CMD ["/bin/sh", "-c", "dotnet /app/published/testapp.dll 2>&1 | tee /tmp/app-output.log"]
+CMD ["/bin/sh", "-c", "dotnet /app/testapp.dll 2>&1 | tee /tmp/app-output.log"]

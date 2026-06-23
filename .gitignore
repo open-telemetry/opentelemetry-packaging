@@ -4,3 +4,7 @@
 
 # Go
 *.exe
+
+# .NET
+bin/
+obj/

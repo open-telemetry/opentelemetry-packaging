@@ -51,10 +51,11 @@ func RunPackageTest(
 
 	req := testcontainers.ContainerRequest{
 		FromDockerfile: testcontainers.FromDockerfile{
-			Context:    root,
-			Dockerfile: dockerfilePath,
-			BuildArgs:  buildArgs,
-			KeepImage:  true,
+			Context:       root,
+			Dockerfile:    dockerfilePath,
+			BuildArgs:     buildArgs,
+			KeepImage:     true,
+			PrintBuildLog: true,
 		},
 		WaitingFor: wait.ForExit().WithExitTimeout(5 * time.Minute),
 	}
@@ -100,10 +101,11 @@ func StartServiceContainer(
 
 	req := testcontainers.ContainerRequest{
 		FromDockerfile: testcontainers.FromDockerfile{
-			Context:    root,
-			Dockerfile: dockerfilePath,
-			BuildArgs:  buildArgs,
-			KeepImage:  true,
+			Context:       root,
+			Dockerfile:    dockerfilePath,
+			BuildArgs:     buildArgs,
+			KeepImage:     true,
+			PrintBuildLog: true,
 		},
 		ExposedPorts: exposedPorts,
 		WaitingFor:   wait.ForHTTP(waitPath).WithPort(waitPort).WithStartupTimeout(2 * time.Minute),
@@ -135,10 +137,11 @@ func StartContainer(
 
 	req := testcontainers.ContainerRequest{
 		FromDockerfile: testcontainers.FromDockerfile{
-			Context:    root,
-			Dockerfile: dockerfilePath,
-			BuildArgs:  buildArgs,
-			KeepImage:  true,
+			Context:       root,
+			Dockerfile:    dockerfilePath,
+			BuildArgs:     buildArgs,
+			KeepImage:     true,
+			PrintBuildLog: true,
 		},
 		WaitingFor: wait.ForLog("").WithStartupTimeout(2 * time.Minute),
 	}
