@@ -81,7 +81,7 @@ jobs:
           REPO_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           cat > repo/rpm/opentelemetry.repo <<EOF
           [opentelemetry]
-          name=OpenTelemetry Auto-Instrumentation
+          name=OpenTelemetry Auto-Instrumentation System Packages
           baseurl=${REPO_URL}/rpm/packages
           enabled=1
           gpgcheck=0
