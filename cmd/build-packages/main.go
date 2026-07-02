@@ -44,6 +44,13 @@ func main() {
 		log.Fatal("error: -version is required")
 	}
 
+	switch *arch {
+	case "amd64", "arm64":
+		// valid
+	default:
+		log.Fatalf("error: unknown architecture %q (expected amd64 or arm64)", *arch)
+	}
+
 	// Auto-detect packaging dir relative to the working directory or the binary.
 	pkgDir := *packagingDir
 	if pkgDir == "" {

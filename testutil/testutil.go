@@ -16,6 +16,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/moby/moby/api/types/build"
+	"github.com/moby/moby/client"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -37,6 +40,46 @@ func RepoRoot(t *testing.T) string {
 	}
 }
 
+// TargetArch returns the CPU architecture the test containers should be built
+// and run for. It mirrors the Makefile's ARCH variable (read from the ARCH
+// environment variable), defaulting to amd64 — the same default the package
+// build uses. The container platform must match the architecture the packages
+// under test were built for, otherwise apt/dnf cannot resolve them.
+func TargetArch() string {
+	if arch := os.Getenv("ARCH"); arch != "" {
+		return arch
+	}
+	return "amd64"
+}
+
+// dockerfileBuild returns a FromDockerfile that pins the build to the target
+// architecture. testcontainers-go does not otherwise set the build platform,
+// so on a host whose native architecture differs from the packages under test
+// (e.g. arm64 Apple Silicon building amd64 packages), Docker would build the
+// image for the host architecture and the package installation would fail with
+// unresolvable dependencies. Setting the BuildKit build platform here — and
+// ImagePlatform on the request — forces the correct architecture.
+func dockerfileBuild(root, dockerfilePath string, buildArgs map[string]*string) testcontainers.FromDockerfile {
+	arch := TargetArch()
+	return testcontainers.FromDockerfile{
+		Context:       root,
+		Dockerfile:    dockerfilePath,
+		BuildArgs:     buildArgs,
+		KeepImage:     true,
+		PrintBuildLog: true,
+		BuildOptionsModifier: func(opts *client.ImageBuildOptions) {
+			opts.Platforms = []ocispec.Platform{{OS: "linux", Architecture: arch}}
+			opts.Version = build.BuilderBuildKit
+		},
+	}
+}
+
+// imagePlatform returns the "linux/<arch>" platform string for the target
+// architecture, used to run the built image.
+func imagePlatform() string {
+	return "linux/" + TargetArch()
+}
+
 // RunPackageTest builds a Docker image from the given Dockerfile (path relative
 // to the repo root), runs it, and returns the container's combined output.
 // The container is expected to exit on its own; a non-zero exit code fails the test.
@@ -50,14 +93,9 @@ func RunPackageTest(
 	root := RepoRoot(t)
 
 	req := testcontainers.ContainerRequest{
-		FromDockerfile: testcontainers.FromDockerfile{
-			Context:       root,
-			Dockerfile:    dockerfilePath,
-			BuildArgs:     buildArgs,
-			KeepImage:     true,
-			PrintBuildLog: true,
-		},
-		WaitingFor: wait.ForExit().WithExitTimeout(5 * time.Minute),
+		FromDockerfile: dockerfileBuild(root, dockerfilePath, buildArgs),
+		ImagePlatform:  imagePlatform(),
+		WaitingFor:     wait.ForExit().WithExitTimeout(5 * time.Minute),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -100,15 +138,10 @@ func StartServiceContainer(
 	root := RepoRoot(t)
 
 	req := testcontainers.ContainerRequest{
-		FromDockerfile: testcontainers.FromDockerfile{
-			Context:       root,
-			Dockerfile:    dockerfilePath,
-			BuildArgs:     buildArgs,
-			KeepImage:     true,
-			PrintBuildLog: true,
-		},
-		ExposedPorts: exposedPorts,
-		WaitingFor:   wait.ForHTTP(waitPath).WithPort(waitPort).WithStartupTimeout(2 * time.Minute),
+		FromDockerfile: dockerfileBuild(root, dockerfilePath, buildArgs),
+		ImagePlatform:  imagePlatform(),
+		ExposedPorts:   exposedPorts,
+		WaitingFor:     wait.ForHTTP(waitPath).WithPort(waitPort).WithStartupTimeout(2 * time.Minute),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -136,14 +169,9 @@ func StartContainer(
 	root := RepoRoot(t)
 
 	req := testcontainers.ContainerRequest{
-		FromDockerfile: testcontainers.FromDockerfile{
-			Context:       root,
-			Dockerfile:    dockerfilePath,
-			BuildArgs:     buildArgs,
-			KeepImage:     true,
-			PrintBuildLog: true,
-		},
-		WaitingFor: wait.ForLog("").WithStartupTimeout(2 * time.Minute),
+		FromDockerfile: dockerfileBuild(root, dockerfilePath, buildArgs),
+		ImagePlatform:  imagePlatform(),
+		WaitingFor:     wait.ForLog("").WithStartupTimeout(2 * time.Minute),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{

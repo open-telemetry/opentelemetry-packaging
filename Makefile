@@ -22,6 +22,12 @@ VERSION ?= $(shell v=`git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/nu
 # Target CPU architecture (amd64 or arm64).
 ARCH ?= amd64
 
+# Export ARCH so the integration tests (go test) build and run their containers
+# for the same architecture the packages were built for. Without this, Docker
+# builds images for the host architecture (e.g. arm64 on Apple Silicon) and
+# package installation fails against amd64 packages.
+export ARCH
+
 # Directory where built packages (.deb, .rpm) are placed.
 OUTPUT_DIR ?= build/packages
 
