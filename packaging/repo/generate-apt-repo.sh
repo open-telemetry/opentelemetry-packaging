@@ -61,6 +61,11 @@ Components: main
 Description: OpenTelemetry auto-instrumentation packages for Linux
 EOF
 
+# APT requires a valid Date field. Without it, newer apt versions reject the
+# repository metadata ("W: Invalid 'Date' entry in Release file") and fail to
+# locate any package. The date must be in RFC 5322 format and in UTC.
+echo "Date: $(date -u '+%a, %d %b %Y %H:%M:%S UTC')" >> Release
+
 # Add checksums to Release file
 echo "MD5Sum:" >> Release
 for f in main/binary-*/Packages*; do
