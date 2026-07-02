@@ -4,6 +4,7 @@
 
 - **Go 1.22+** (package builds and tests are pure Go)
 - **npm** (needed to fetch the Node.js auto-instrumentation agent from the npm registry)
+- **Python 3 with pip** (needed to fetch the Python auto-instrumentation packages; invoked as `python3 -m pip`)
 - **A container engine** (Podman or Docker — needed for local repository generation and integration tests)
 
 No Ruby, FPM, or special Docker images are required to build packages.
@@ -15,7 +16,7 @@ cmd/build-packages/          CLI entry point for building .deb and .rpm packages
 packaging/
   builder/                   Go library that drives nfpm to create packages
     builder.go               Build orchestration, common metadata
-    components.go            Per-component definitions (injector, java, nodejs, dotnet, meta)
+    components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
     download.go              Upstream artifact download helpers
   common/                    Shared assets referenced by the builder
     scripts/                 POSIX lifecycle scripts (postinstall, preuninstall)
@@ -23,12 +24,13 @@ packaging/
     java/                    "
     nodejs/                  "
     dotnet/                  "
+    python/                  Config, man page template, README, requirements.txt, sitecustomize.py
   repo/                      APT and YUM repository generation scripts
   tests/                     Integration tests
-    metadata/                Host-side metadata validation (no containers needed)
-    deb/{java,nodejs,dotnet} Testcontainers-based DEB E2E tests
-    rpm/{java,nodejs,dotnet} Testcontainers-based RPM E2E tests
-    shared/                  Shared test application sources
+    metadata/                       Host-side metadata validation (no containers needed)
+    deb/{java,nodejs,dotnet,python} Testcontainers-based DEB E2E tests
+    rpm/{java,nodejs,dotnet,python} Testcontainers-based RPM E2E tests
+    shared/                         Shared test application sources
   *-release.txt              Version pins for upstream artifacts (Renovate-managed)
 testutil/                    Shared Go test helpers
 docs/design/                 Architecture and design documents
@@ -44,6 +46,15 @@ The `cmd/build-packages` program:
    - Java agent JAR from [opentelemetry-java-instrumentation](https://github.com/open-telemetry/opentelemetry-java-instrumentation) GitHub Releases
    - Node.js agent from npm (`@opentelemetry/auto-instrumentations-node`)
    - .NET agent from [opentelemetry-dotnet-instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation) GitHub Releases (glibc + musl)
+   - Python packages via `pip`, as defined by `packaging/common/python/requirements.txt`
+
+   The Python package bundles compiled C extensions, so its wheels are fetched
+   for a fixed target architecture and Python version (`targetPythonVersion` in
+   `download.go`) rather than for the build host. PyPI requirements are installed
+   binary-only (manylinux wheels for the target arch); any unpublished pure-Python
+   requirements pinned to a git branch are built from source in a second pass and
+   merged in. This keeps the produced package correct regardless of the build
+   host's OS, architecture, or Python version.
 
 2. **Constructs an `nfpm.Info`** for each component with the correct metadata:
    - `Provides` virtual package names (e.g., `opentelemetry-injector1`)
@@ -110,7 +121,20 @@ make integration-tests
 # Run a specific test
 make integration-test-deb-java
 make integration-test-rpm-nodejs
+make integration-test-deb-python
 ```
+
+The Python integration tests run on the architecture of the containers your
+engine starts. The package is architecture-specific, so build it for that
+architecture — for example, on an arm64 host:
+
+```sh
+make ARCH=arm64 integration-test-rpm-python
+```
+
+The Python tests activate the agent by prepending its directory to `PYTHONPATH`
+(the documented manual-activation path), because the injector does not yet
+implement the Python `python_auto_instrumentation_agent_path_prefix` conf.d key.
 
 ### Linting
 

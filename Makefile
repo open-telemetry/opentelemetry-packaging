@@ -38,10 +38,10 @@ CONTAINER_ENGINE ?= $(shell command -v podman 2>/dev/null || command -v docker 2
 LOCAL_REPO_DIR := $(CURDIR)/build/local-repo
 
 # Components that have packages.
-COMPONENTS := injector java nodejs dotnet meta
+COMPONENTS := injector java nodejs dotnet python meta
 
 # Languages that have integration tests (meta is excluded).
-TEST_LANGUAGES := java nodejs dotnet
+TEST_LANGUAGES := java nodejs dotnet python
 
 # ============================================================================
 # Package Build Targets (nfpm, pure Go)
@@ -142,6 +142,10 @@ integration-test-deb-nodejs: local-apt-repo
 integration-test-deb-dotnet: local-apt-repo
 	go test -v -timeout 30m ./packaging/tests/deb/dotnet/
 
+.PHONY: integration-test-deb-python
+integration-test-deb-python: local-apt-repo
+	go test -v -timeout 30m ./packaging/tests/deb/python/
+
 .PHONY: integration-test-rpm-java
 integration-test-rpm-java: local-rpm-repo
 	go test -v -timeout 30m ./packaging/tests/rpm/java/
@@ -153,6 +157,10 @@ integration-test-rpm-nodejs: local-rpm-repo
 .PHONY: integration-test-rpm-dotnet
 integration-test-rpm-dotnet: local-rpm-repo
 	go test -v -timeout 30m ./packaging/tests/rpm/dotnet/
+
+.PHONY: integration-test-rpm-python
+integration-test-rpm-python: local-rpm-repo
+	go test -v -timeout 30m ./packaging/tests/rpm/python/
 
 # ============================================================================
 # Lint

@@ -1,0 +1,103 @@
+.\" Copyright The OpenTelemetry Authors
+.\" SPDX-License-Identifier: Apache-2.0
+.TH OPENTELEMETRY-PYTHON 8 "@DATE@" "opentelemetry-python-autoinstrumentation @VERSION@" "System Administration"
+.SH NAME
+opentelemetry-python \- OpenTelemetry Python Auto-Instrumentation
+.SH SYNOPSIS
+Python auto-instrumentation is activated automatically by the OpenTelemetry Injector
+via
+.B PYTHONPATH
+when a Python 3.10+ application starts.
+.SH DESCRIPTION
+The OpenTelemetry Python Auto-Instrumentation automatically instruments Python
+applications to collect distributed traces, metrics, and logs without requiring
+code changes.
+.PP
+When used with the OpenTelemetry Injector package, the injector prepends
+.I /usr/lib/opentelemetry/python
+to
+.B PYTHONPATH
+for every process. Python then automatically executes the
+.B sitecustomize.py
+module found there before the application starts. That module performs safety checks
+(Python version, OTLP protocol, double-instrumentation, dependency conflicts) and, if
+all pass, calls
+.B opentelemetry.instrumentation.auto_instrumentation.initialize()
+to activate all discovered instrumentation plug-ins.
+.PP
+The package bundles the
+.B opentelemetry-exporter-otlp-pyproto-http
+exporter, a pure-Python protobuf implementation that carries no C-extension
+dependency on
+.B google-protobuf
+and therefore avoids version conflicts with application dependencies.
+.SH FILES
+.TP
+.B /usr/lib/opentelemetry/python/sitecustomize.py
+Auto-instrumentation entry point, executed by Python at startup.
+.TP
+.B /usr/lib/opentelemetry/python/all-dependencies.txt
+Pinned dependency manifest used at runtime to detect version conflicts.
+.TP
+.B /etc/opentelemetry/python/otel-config.yaml
+Optional declarative configuration file.
+.TP
+.B /etc/opentelemetry/injector/conf.d/python.conf
+Drop-in configuration file that registers the Python agent path with the injector.
+.SH ENVIRONMENT
+.TP
+.B OTEL_SERVICE_NAME
+Set the service name for telemetry data.
+.TP
+.B OTEL_EXPORTER_OTLP_ENDPOINT
+Set the OTLP exporter endpoint (e.g., http://localhost:4318).
+.TP
+.B OTEL_EXPORTER_OTLP_PROTOCOL
+Must be set to
+.B http/protobuf
+or
+.B http/json
+(grpc is not supported by this package).
+.TP
+.B OTEL_TRACES_EXPORTER
+Set the traces exporter (default: otlp_pyproto_http).
+.TP
+.B OTEL_METRICS_EXPORTER
+Set the metrics exporter (default: otlp_pyproto_http).
+.TP
+.B OTEL_LOGS_EXPORTER
+Set the logs exporter (default: otlp_pyproto_http).
+.TP
+.B OTEL_PYTHON_DISABLED_INSTRUMENTATIONS
+Comma-separated list of instrumentation packages to disable.
+.TP
+.B OTEL_INJECTOR_LOG_LEVEL
+Set to
+.B debug
+to enable verbose logging from sitecustomize.py.
+.TP
+.B OTEL_EXPERIMENTAL_CONFIG_FILE
+Path to a declarative configuration file.
+.SH EXAMPLES
+Run a Python application with the injector active:
+.PP
+.RS
+# (With opentelemetry-injector installed, this happens automatically)
+PYTHONPATH=/usr/lib/opentelemetry/python:$PYTHONPATH \\
+  OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \\
+  OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \\
+  python myapp.py
+.RE
+.SH NOTES
+Python 3.10 or later is required. Earlier versions are detected and skipped
+without crashing the instrumented process.
+.PP
+If the application already carries OpenTelemetry SDK dependencies, the
+auto-instrumentation detects this (double-instrumentation check) and
+self-deactivates gracefully.
+.SH SEE ALSO
+.BR opentelemetry-injector (8)
+.PP
+https://opentelemetry.io/docs/zero-code/python/
+.SH AUTHORS
+The OpenTelemetry Authors

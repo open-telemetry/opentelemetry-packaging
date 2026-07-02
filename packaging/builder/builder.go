@@ -57,6 +57,7 @@ var AllComponents = []Component{
 	Java,
 	Nodejs,
 	Dotnet,
+	Python,
 	Meta,
 }
 

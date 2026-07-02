@@ -161,19 +161,29 @@ These need a build step for the mock `acme-*` package, then use the same lifecyc
 
 ## Makefile targets
 
+The following targets are implemented today:
+
 ```
 make integration-tests                    # all tests
 make integration-test-metadata            # package metadata + contents
+make integration-test-deb-java            # E2E telemetry
+make integration-test-deb-nodejs          # E2E telemetry
+make integration-test-deb-dotnet          # E2E telemetry
+make integration-test-deb-python          # E2E telemetry
+make integration-test-rpm-java            # E2E telemetry
+make integration-test-rpm-nodejs          # E2E telemetry
+make integration-test-rpm-dotnet          # E2E telemetry
+make integration-test-rpm-python          # E2E telemetry
+```
+
+The lifecycle and vendor-replacement categories above are not yet implemented.
+They are planned as the following targets:
+
+```
 make integration-test-deb-lifecycle       # DEB install/remove/upgrade/config
 make integration-test-rpm-lifecycle       # RPM install/remove/upgrade/config
 make integration-test-deb-vendor          # DEB vendor replacement
 make integration-test-rpm-vendor          # RPM vendor replacement
-make integration-test-deb-java            # E2E telemetry (existing)
-make integration-test-deb-nodejs          # E2E telemetry (existing)
-make integration-test-deb-dotnet          # E2E telemetry (existing)
-make integration-test-rpm-java            # E2E telemetry (existing)
-make integration-test-rpm-nodejs          # E2E telemetry (existing)
-make integration-test-rpm-dotnet          # E2E telemetry (existing)
 ```
 
 ## Priority order

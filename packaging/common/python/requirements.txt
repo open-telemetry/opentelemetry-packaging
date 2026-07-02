@@ -1,0 +1,77 @@
+# Modelled after
+# https://github.com/dash0hq/dash0-operator/blob/main/images/instrumentation/python/requirements.txt
+# with opentelemetry-exporter-otlp-proto-http replaced by opentelemetry-exporter-otlp-pyproto-http
+# (pure-Python protobuf, no google-protobuf C-extension dependency).
+
+opentelemetry-distro==0.60b1
+
+urllib3 <2.6.4
+
+# TODO: publish the pure-Python pyproto exporter chain to PyPI and replace the
+# three git+ requirements below with a single pinned release, e.g.:
+#   opentelemetry-exporter-otlp-pyproto-http==<version>
+#
+# Until published, the exporter and its two pyproto-only dependencies live in a
+# fork branch and pin each other at 1.43.0.dev. They are pure-Python (no
+# google-protobuf C extension) and are installed from source by the build's VCS
+# pass. The build installs git+ requirements with --no-deps, so the exporter's
+# own runtime dependency on `requests` is declared explicitly below.
+opentelemetry-exporter-otlp-pyproto-http @ git+https://github.com/ocelotl/opentelemetry-python.git@pyproto#subdirectory=exporter/opentelemetry-exporter-otlp-pyproto-http
+opentelemetry-exporter-otlp-pyproto-common @ git+https://github.com/ocelotl/opentelemetry-python.git@pyproto#subdirectory=exporter/opentelemetry-exporter-otlp-pyproto-common
+opentelemetry-pyproto @ git+https://github.com/ocelotl/opentelemetry-python.git@pyproto#subdirectory=opentelemetry-pyproto
+requests
+
+opentelemetry-propagator-aws-xray==1.0.2
+
+opentelemetry-instrumentation==0.60b1
+opentelemetry-propagator-ot-trace==0.60b1
+
+opentelemetry-instrumentation-aio-pika==0.60b1
+opentelemetry-instrumentation-aiohttp-client==0.60b1
+opentelemetry-instrumentation-aiohttp-server==0.60b1
+opentelemetry-instrumentation-aiokafka==0.60b1
+opentelemetry-instrumentation-aiopg==0.60b1
+opentelemetry-instrumentation-asgi==0.60b1
+opentelemetry-instrumentation-asyncio==0.60b1
+opentelemetry-instrumentation-asyncpg==0.60b1
+opentelemetry-instrumentation-aws-lambda==0.60b1
+opentelemetry-instrumentation-boto==0.60b1
+opentelemetry-instrumentation-boto3sqs==0.60b1
+opentelemetry-instrumentation-botocore==0.60b1
+opentelemetry-instrumentation-cassandra==0.60b1
+opentelemetry-instrumentation-celery==0.60b1
+opentelemetry-instrumentation-click==0.60b1
+opentelemetry-instrumentation-confluent-kafka==0.60b1
+opentelemetry-instrumentation-dbapi==0.60b1
+opentelemetry-instrumentation-django==0.60b1
+opentelemetry-instrumentation-elasticsearch==0.60b1
+opentelemetry-instrumentation-falcon==0.60b1
+opentelemetry-instrumentation-fastapi==0.60b1
+opentelemetry-instrumentation-flask==0.60b1
+opentelemetry-instrumentation-grpc==0.60b1
+opentelemetry-instrumentation-httpx==0.60b1
+opentelemetry-instrumentation-jinja2==0.60b1
+opentelemetry-instrumentation-kafka-python==0.60b1
+opentelemetry-instrumentation-logging==0.60b1
+opentelemetry-instrumentation-mysql==0.60b1
+opentelemetry-instrumentation-mysqlclient==0.60b1
+opentelemetry-instrumentation-pika==0.60b1
+opentelemetry-instrumentation-psycopg==0.60b1
+opentelemetry-instrumentation-psycopg2==0.60b1
+opentelemetry-instrumentation-pymemcache==0.60b1
+opentelemetry-instrumentation-pymongo==0.60b1
+opentelemetry-instrumentation-pymysql==0.60b1
+opentelemetry-instrumentation-pyramid==0.60b1
+opentelemetry-instrumentation-redis==0.60b1
+opentelemetry-instrumentation-remoulade==0.60b1
+opentelemetry-instrumentation-requests==0.60b1
+opentelemetry-instrumentation-sqlalchemy==0.60b1
+opentelemetry-instrumentation-sqlite3==0.60b1
+opentelemetry-instrumentation-starlette==0.60b1
+opentelemetry-instrumentation-system-metrics==0.60b1
+opentelemetry-instrumentation-threading==0.60b1
+opentelemetry-instrumentation-tornado==0.60b1
+opentelemetry-instrumentation-tortoiseorm==0.60b1
+opentelemetry-instrumentation-urllib==0.60b1
+opentelemetry-instrumentation-urllib3==0.60b1
+opentelemetry-instrumentation-wsgi==0.60b1

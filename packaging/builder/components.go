@@ -27,6 +27,8 @@ const (
 	nodejsConfigDir    = configDir + "/nodejs"
 	dotnetInstallDir   = installDir + "/dotnet"
 	dotnetConfigDir    = configDir + "/dotnet"
+	pythonInstallDir   = installDir + "/python"
+	pythonConfigDir    = configDir + "/python"
 )
 
 // Injector is the opentelemetry-injector package component.
@@ -57,6 +59,13 @@ var Dotnet = Component{
 	InfoFunc:    dotnetInfo,
 }
 
+// Python is the opentelemetry-python-autoinstrumentation package component.
+var Python = Component{
+	Name:        "python",
+	Description: pythonDescription,
+	InfoFunc:    pythonInfo,
+}
+
 // Meta is the opentelemetry metapackage component.
 var Meta = Component{
 	Name:        "meta",
@@ -69,6 +78,7 @@ const (
 	javaDescription     = "OpenTelemetry Java Auto-Instrumentation Agent"
 	nodejsDescription   = "OpenTelemetry Node.js Auto-Instrumentation"
 	dotnetDescription   = "OpenTelemetry .NET Automatic Instrumentation (glibc + musl)"
+	pythonDescription   = "OpenTelemetry Python Auto-Instrumentation"
 	metaDescription     = "OpenTelemetry Auto-Instrumentation Suite (metapackage)"
 )
 
@@ -216,6 +226,58 @@ func dotnetInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 	return info, cleanup, nil
 }
 
+func pythonInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
+	staging, err := os.MkdirTemp("", "otel-python-*")
+	if err != nil {
+		return nil, nil, err
+	}
+	cleanup := func() { os.RemoveAll(staging) }
+
+	pythonDir := filepath.Join(staging, "python")
+	if err := os.MkdirAll(pythonDir, 0o755); err != nil {
+		return nil, cleanup, err
+	}
+	if err := downloadPythonAgent(cfg, pythonDir); err != nil {
+		return nil, cleanup, fmt.Errorf("downloading Python agent: %w", err)
+	}
+
+	commonDir := filepath.Join(cfg.PackagingDir, "common")
+
+	// Copy sitecustomize.py into the package root alongside the installed packages.
+	// Python executes this file automatically when the directory is on PYTHONPATH.
+	if err := copyFile(
+		filepath.Join(commonDir, "python", "sitecustomize.py"),
+		filepath.Join(pythonDir, "sitecustomize.py"),
+	); err != nil {
+		return nil, cleanup, fmt.Errorf("copying sitecustomize.py: %w", err)
+	}
+
+	// Generate the dependency manifest from the installed dist-info directories.
+	// sitecustomize.py reads this at runtime to detect version conflicts with the application.
+	if err := generateAllDependencies(pythonDir, filepath.Join(pythonDir, "all-dependencies.txt")); err != nil {
+		return nil, cleanup, fmt.Errorf("generating all-dependencies.txt: %w", err)
+	}
+
+	manPath, err := generateManPage(cfg, staging, "python")
+	if err != nil {
+		return nil, cleanup, err
+	}
+
+	// Python packages may include compiled C extensions, so the package is architecture-specific.
+	info := commonInfo(cfg, "opentelemetry-python-autoinstrumentation", pythonDescription, cfg.Arch)
+	info.Overridables.Provides = []string{"opentelemetry-python-autoinstrumentation1"}
+	info.Overridables.Suggests = []string{"opentelemetry-injector1"}
+	info.Overridables.Contents = files.Contents{
+		tree(pythonDir, pythonInstallDir),
+		configFile(filepath.Join(commonDir, "python", "otel-config.yaml"), pythonConfigDir+"/otel-config.yaml"),
+		regularFile(filepath.Join(commonDir, "python", "injector.conf"), injectorConfigDir+"/conf.d/python.conf", 0o644),
+		regularFile(manPath, "/usr/share/man/man8/opentelemetry-python.8.gz", 0o644),
+		regularFile(filepath.Join(commonDir, "python", "README.md"), "/usr/share/doc/opentelemetry-python-autoinstrumentation/README.md", 0o644),
+	}
+
+	return info, cleanup, nil
+}
+
 func metaInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 	staging, err := os.MkdirTemp("", "otel-meta-*")
 	if err != nil {
@@ -239,6 +301,7 @@ func metaInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 		"opentelemetry-java-autoinstrumentation1",
 		"opentelemetry-nodejs-autoinstrumentation1",
 		"opentelemetry-dotnet-autoinstrumentation1",
+		"opentelemetry-python-autoinstrumentation1",
 	}
 	info.Overridables.Contents = files.Contents{
 		regularFile(readmePath, "/usr/share/doc/opentelemetry/README", 0o644),

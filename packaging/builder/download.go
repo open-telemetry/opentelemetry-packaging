@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -296,4 +297,282 @@ func extractZipFile(f *zip.File, destDir string) error {
 
 	_, err = io.Copy(out, rc)
 	return err
+}
+
+// pipTimeout is the maximum duration for a pip subprocess.
+const pipTimeout = 10 * time.Minute
+
+// Target Python interpreter the bundled wheels are fetched for. The bundle
+// contains version-specific compiled C extensions (e.g. wrapt), so it is tied
+// to one Python minor version; consumers must run this interpreter version.
+// Keep this in sync with the Python version used by the integration tests
+// (packaging/tests/{deb,rpm}/python/Dockerfile).
+const (
+	targetPythonVersion = "3.11"
+	targetPythonABI     = "cp311"
+)
+
+// pythonExecutable returns the Python interpreter used to drive pip. It prefers
+// "python3" and falls back to "python". The interpreter only runs pip itself;
+// the target Python version for the bundled wheels is pinned independently via
+// pip's --python-version/--abi flags, so the host interpreter version is
+// irrelevant to the produced package.
+func pythonExecutable() string {
+	if path, err := exec.LookPath("python3"); err == nil {
+		return path
+	}
+	return "python"
+}
+
+// manylinuxPlatforms returns the manylinux platform tags pip should accept for
+// the given target architecture. We avoid host-platform wheels entirely so the
+// produced package is correct regardless of the build host's OS/arch.
+func manylinuxPlatforms(arch string) ([]string, error) {
+	var machine string
+	switch arch {
+	case "amd64":
+		machine = "x86_64"
+	case "arm64":
+		machine = "aarch64"
+	default:
+		return nil, fmt.Errorf("unsupported architecture for Python: %s", arch)
+	}
+	return []string{
+		"manylinux2014_" + machine,
+		"manylinux_2_17_" + machine,
+		"manylinux_2_28_" + machine,
+		"manylinux1_" + machine,
+	}, nil
+}
+
+// splitRequirements reads a pip requirements file and partitions its entries
+// into PyPI requirements and VCS (git+) requirements. Comments and blank lines
+// are skipped. VCS requirements (e.g. unpublished packages installed from a git
+// branch) must be built from source and therefore cannot be fetched with pip's
+// cross-platform binary-only download; they are installed in a separate pass.
+func splitRequirements(requirementsFile string) (pypi, vcs []string, err error) {
+	data, err := os.ReadFile(requirementsFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.Contains(trimmed, "git+") {
+			vcs = append(vcs, trimmed)
+		} else {
+			pypi = append(pypi, trimmed)
+		}
+	}
+	return pypi, vcs, nil
+}
+
+// downloadPythonAgent installs Python auto-instrumentation packages into destDir.
+// The packages are defined by packaging/common/python/requirements.txt.
+//
+// Installation happens in two passes so the resulting package is correct for the
+// target Linux architecture and Python version regardless of the build host:
+//
+//  1. PyPI requirements are installed binary-only, pinned to manylinux wheels for
+//     the target arch and to the target Python version/ABI. This prevents the
+//     build host's OS (e.g. macOS) and Python version from leaking compiled
+//     extensions into the package.
+//  2. VCS requirements (unpublished pure-Python packages on a git branch) are
+//     built from source with --no-deps into a separate directory, then merged in.
+//     Their dependencies must therefore be present among the PyPI requirements.
+//
+// When all requirements are published to PyPI (no git+ entries), pass 2 is a
+// no-op and pass 1 installs everything.
+func downloadPythonAgent(cfg Config, destDir string) error {
+	requirementsFile := filepath.Join(cfg.PackagingDir, "common", "python", "requirements.txt")
+
+	pypiReqs, vcsReqs, err := splitRequirements(requirementsFile)
+	if err != nil {
+		return fmt.Errorf("reading requirements: %w", err)
+	}
+
+	platforms, err := manylinuxPlatforms(cfg.Arch)
+	if err != nil {
+		return err
+	}
+
+	python := pythonExecutable()
+
+	// Pass 1: PyPI requirements as cross-platform manylinux wheels.
+	fmt.Printf("  Installing Python OTel packages (PyPI, linux/%s, py%s) into %s\n", cfg.Arch, targetPythonVersion, destDir)
+
+	pypiReqFile := filepath.Join(filepath.Dir(destDir), "requirements-pypi.txt")
+	if err := os.WriteFile(pypiReqFile, []byte(strings.Join(pypiReqs, "\n")+"\n"), 0o644); err != nil {
+		return fmt.Errorf("writing PyPI requirements file: %w", err)
+	}
+
+	pass1Args := []string{
+		"-m", "pip", "install",
+		"--target", destDir,
+		"--no-compile",
+		"--quiet",
+		"--only-binary=:all:",
+		"--python-version", targetPythonVersion,
+		"--implementation", "cp",
+		"--abi", targetPythonABI,
+		"--abi", "abi3",
+		"--abi", "none",
+	}
+	for _, p := range platforms {
+		pass1Args = append(pass1Args, "--platform", p)
+	}
+	pass1Args = append(pass1Args, "-r", pypiReqFile)
+
+	if err := runPip(python, pass1Args); err != nil {
+		return err
+	}
+
+	// Pass 2: VCS requirements built from source (pure-Python, host-agnostic).
+	if len(vcsReqs) > 0 {
+		fmt.Printf("  Installing %d Python OTel package(s) from VCS sources\n", len(vcsReqs))
+
+		vcsDir, err := os.MkdirTemp("", "otel-python-vcs-*")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(vcsDir)
+
+		pass2Args := []string{
+			"-m", "pip", "install",
+			"--target", vcsDir,
+			"--no-compile",
+			"--quiet",
+			"--no-deps",
+		}
+		pass2Args = append(pass2Args, vcsReqs...)
+
+		if err := runPip(python, pass2Args); err != nil {
+			return err
+		}
+
+		// Merge the VCS packages into the main bundle. The pyproto packages add
+		// new paths under the opentelemetry/ namespace and new dist-info dirs,
+		// so this is a pure overlay with no file collisions.
+		if err := mergeTree(vcsDir, destDir); err != nil {
+			return fmt.Errorf("merging VCS packages: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// runPip runs "python -m pip ..." with a timeout and returns a descriptive error
+// on failure.
+func runPip(python string, args []string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), pipTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, python, args...)
+	cmd.Env = append(os.Environ(), "PIP_DISABLE_PIP_VERSION_CHECK=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("pip install failed: %s\n%w", string(out), err)
+	}
+	return nil
+}
+
+// mergeTree recursively copies the contents of src into dst, creating
+// directories as needed and overwriting existing files.
+func mergeTree(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			return os.MkdirAll(target, info.Mode().Perm())
+		}
+		return copyFile(path, target)
+	})
+}
+
+// copyFile copies src to dst, creating dst with the same permissions as src.
+func copyFile(src, dst string) (retErr error) {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	info, err := in.Stat()
+	if err != nil {
+		return err
+	}
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
+	if err != nil {
+		return err
+	}
+	defer func() {
+		closeErr := out.Close()
+		if retErr == nil {
+			retErr = closeErr
+		}
+	}()
+
+	_, retErr = io.Copy(out, in)
+	return retErr
+}
+
+// generateAllDependencies walks installDir for *.dist-info/METADATA files, parses the
+// Name and Version fields, and writes a sorted list of "name==version" requirement
+// strings to outputPath. sitecustomize.py reads this file at runtime to detect version
+// conflicts between the bundled packages and the application's own dependencies.
+func generateAllDependencies(installDir, outputPath string) error {
+	entries, err := os.ReadDir(installDir)
+	if err != nil {
+		return err
+	}
+
+	var lines []string
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasSuffix(entry.Name(), ".dist-info") {
+			continue
+		}
+		metadataPath := filepath.Join(installDir, entry.Name(), "METADATA")
+		data, err := os.ReadFile(metadataPath)
+		if err != nil {
+			continue
+		}
+		name, version := parseMetadata(string(data))
+		if name != "" && version != "" {
+			lines = append(lines, fmt.Sprintf("%s==%s", name, version))
+		}
+	}
+
+	sort.Strings(lines)
+	content := strings.Join(lines, "\n")
+	if len(lines) > 0 {
+		content += "\n"
+	}
+	return os.WriteFile(outputPath, []byte(content), 0o644)
+}
+
+// parseMetadata extracts the Name and Version from a PEP 566 METADATA file (RFC 822 format).
+func parseMetadata(data string) (name, version string) {
+	for _, line := range strings.Split(data, "\n") {
+		if name != "" && version != "" {
+			break
+		}
+		if rest, ok := strings.CutPrefix(line, "Name: "); ok {
+			name = strings.TrimSpace(rest)
+		} else if rest, ok := strings.CutPrefix(line, "Version: "); ok {
+			version = strings.TrimSpace(rest)
+		}
+	}
+	return name, version
 }

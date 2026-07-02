@@ -7,7 +7,7 @@
 // producing identical packages as pure Go — no Ruby, FPM, or Docker required
 // for package creation itself. Upstream artifacts (libotelinject.so, Java agent
 // JAR, Node.js agent, .NET agent) are still fetched from their respective
-// release channels.
+// release channels. Python packages are fetched via pip at build time.
 //
 // Usage:
 //
@@ -96,7 +96,7 @@ func main() {
 	if *component != "all" {
 		c, ok := builder.ComponentByName(*component)
 		if !ok {
-			log.Fatalf("error: unknown component %q (expected injector, java, nodejs, dotnet, meta, or all)", *component)
+			log.Fatalf("error: unknown component %q (expected injector, java, nodejs, dotnet, python, meta, or all)", *component)
 		}
 		components = []builder.Component{c}
 	}
