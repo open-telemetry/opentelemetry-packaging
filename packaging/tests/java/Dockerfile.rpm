@@ -1,0 +1,61 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# End-to-end integration test image for the Java auto-instrumentation RPM
+# packages, on a dnf-based base image. Installs the injector and Java agent from
+# a local YUM repository, then runs Apache Tomcat. The injector activates the
+# agent, which exports OTLP over HTTP to the otel-sink on the host; the Go test
+# drives traffic and asserts on the exported telemetry.
+#
+# BASE_IMAGE is a build arg so the same Dockerfile covers multiple dnf-based base
+# images. The OTLP endpoint and per-test test.id come from the sink's Env at run
+# time.
+
+ARG BASE_IMAGE=fedora:41
+FROM ${BASE_IMAGE}
+
+ARG ARCH=amd64
+ARG RPM_ARCH=x86_64
+
+ENV LANG=C.UTF-8
+
+# Install JRE and utilities.
+RUN dnf -y update \
+    && dnf -y install java-21-openjdk curl procps-ng \
+    && dnf clean all
+
+# Download and install Apache Tomcat.
+# renovate: datasource=github-tags depName=apache/tomcat versioning=semver
+ARG TOMCAT_VERSION=10.1.41
+ADD https://archive.apache.org/dist/tomcat/tomcat-10/v${TOMCAT_VERSION}/bin/apache-tomcat-${TOMCAT_VERSION}.tar.gz /tmp/apache-tomcat.tar.gz
+RUN tar xzf /tmp/apache-tomcat.tar.gz -C / \
+    && mv /apache-tomcat-${TOMCAT_VERSION} /apache-tomcat \
+    && rm /tmp/apache-tomcat.tar.gz \
+    && chmod +x /apache-tomcat/bin/*.sh
+
+# Copy pre-built packages and repository metadata.
+COPY build/local-repo/rpm /local-repo
+RUN printf '[opentelemetry-local]\nname=OpenTelemetry Local\nbaseurl=file:///local-repo/packages\nenabled=1\ngpgcheck=0\n' \
+    > /etc/yum.repos.d/opentelemetry-local.repo
+
+# Install the injector and Java auto-instrumentation packages from the local repo.
+RUN dnf install -y \
+    opentelemetry-injector \
+    opentelemetry-java-autoinstrumentation
+
+# Export OTLP for all signals. The endpoint, protocol, and test.id come from the
+# sink's Env at run time; the shortened intervals get telemetry to the sink
+# within the test window.
+RUN { \
+      echo 'OTEL_TRACES_EXPORTER=otlp'; \
+      echo 'OTEL_METRICS_EXPORTER=otlp'; \
+      echo 'OTEL_LOGS_EXPORTER=otlp'; \
+      echo 'OTEL_SERVICE_NAME=java-testapp'; \
+      echo 'OTEL_BSP_SCHEDULE_DELAY=1000'; \
+      echo 'OTEL_METRIC_EXPORT_INTERVAL=1000'; \
+    } >> /etc/opentelemetry/injector/default_env.conf
+
+EXPOSE 8080
+
+# Start Tomcat, teeing stdout to a file for debugging.
+CMD ["/bin/sh", "-c", "/apache-tomcat/bin/catalina.sh run 2>&1 | tee /tmp/app-output.log"]

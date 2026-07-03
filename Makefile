@@ -132,7 +132,7 @@ integration-tests: local-repos
 
 .PHONY: integration-test-deb-java
 integration-test-deb-java: local-apt-repo
-	go test -v -timeout 30m ./packaging/tests/deb/java/
+	go test -v -timeout 30m -run 'TestJavaAutoInstrumentation/deb' ./packaging/tests/java/
 
 .PHONY: integration-test-deb-nodejs
 integration-test-deb-nodejs: local-apt-repo
@@ -148,7 +148,7 @@ integration-test-deb-python: local-apt-repo
 
 .PHONY: integration-test-rpm-java
 integration-test-rpm-java: local-rpm-repo
-	go test -v -timeout 30m ./packaging/tests/rpm/java/
+	go test -v -timeout 30m -run 'TestJavaAutoInstrumentation/rpm' ./packaging/tests/java/
 
 .PHONY: integration-test-rpm-nodejs
 integration-test-rpm-nodejs: local-rpm-repo
