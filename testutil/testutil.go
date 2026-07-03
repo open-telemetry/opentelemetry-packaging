@@ -135,13 +135,48 @@ func StartServiceContainer(
 	waitPath string,
 ) testcontainers.Container {
 	t.Helper()
+	return StartServiceContainerOpts(t, ctx, ServiceContainerOptions{
+		DockerfilePath: dockerfilePath,
+		BuildArgs:      buildArgs,
+		ExposedPorts:   exposedPorts,
+		WaitPort:       waitPort,
+		WaitPath:       waitPath,
+	})
+}
+
+// ServiceContainerOptions configures a long-running service container.
+type ServiceContainerOptions struct {
+	// DockerfilePath is the path to the Dockerfile relative to the repo root.
+	DockerfilePath string
+	// BuildArgs are passed to the image build.
+	BuildArgs map[string]*string
+	// ExposedPorts are published to the host (e.g. "8080/tcp").
+	ExposedPorts []string
+	// WaitPort/WaitPath define the HTTP readiness probe.
+	WaitPort string
+	WaitPath string
+	// Env sets environment variables inside the container.
+	Env map[string]string
+	// HostAccessPorts are host ports the container may reach at
+	// host.testcontainers.internal — used to point a workload at an
+	// otelsink.Sink listening on the host.
+	HostAccessPorts []int
+}
+
+// StartServiceContainerOpts builds and starts a service container per the given
+// options, waiting for its HTTP endpoint to become ready. Returns the running
+// container.
+func StartServiceContainerOpts(t *testing.T, ctx context.Context, opts ServiceContainerOptions) testcontainers.Container {
+	t.Helper()
 	root := RepoRoot(t)
 
 	req := testcontainers.ContainerRequest{
-		FromDockerfile: dockerfileBuild(root, dockerfilePath, buildArgs),
-		ImagePlatform:  imagePlatform(),
-		ExposedPorts:   exposedPorts,
-		WaitingFor:     wait.ForHTTP(waitPath).WithPort(waitPort).WithStartupTimeout(2 * time.Minute),
+		FromDockerfile:  dockerfileBuild(root, opts.DockerfilePath, opts.BuildArgs),
+		ImagePlatform:   imagePlatform(),
+		ExposedPorts:    opts.ExposedPorts,
+		Env:             opts.Env,
+		HostAccessPorts: opts.HostAccessPorts,
+		WaitingFor:      wait.ForHTTP(opts.WaitPath).WithPort(opts.WaitPort).WithStartupTimeout(2 * time.Minute),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
