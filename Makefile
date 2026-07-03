@@ -136,7 +136,7 @@ integration-test-deb-java: local-apt-repo
 
 .PHONY: integration-test-deb-nodejs
 integration-test-deb-nodejs: local-apt-repo
-	go test -v -timeout 30m ./packaging/tests/deb/nodejs/
+	go test -v -timeout 30m -run 'TestNodejsAutoInstrumentation/deb' ./packaging/tests/nodejs/
 
 .PHONY: integration-test-deb-dotnet
 integration-test-deb-dotnet: local-apt-repo
@@ -152,7 +152,7 @@ integration-test-rpm-java: local-rpm-repo
 
 .PHONY: integration-test-rpm-nodejs
 integration-test-rpm-nodejs: local-rpm-repo
-	go test -v -timeout 30m ./packaging/tests/rpm/nodejs/
+	go test -v -timeout 30m -run 'TestNodejsAutoInstrumentation/rpm' ./packaging/tests/nodejs/
 
 .PHONY: integration-test-rpm-dotnet
 integration-test-rpm-dotnet: local-rpm-repo

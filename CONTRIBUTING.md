@@ -28,9 +28,8 @@ packaging/
   repo/                      APT and YUM repository generation scripts
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
-    python/                         Matrix E2E test (deb+rpm × base images) asserting via the otel-sink
-    deb/{java,nodejs,dotnet}        Testcontainers-based DEB E2E tests
-    rpm/{java,nodejs,dotnet}        Testcontainers-based RPM E2E tests
+    {python,java,nodejs,dotnet}/    Matrix E2E tests (deb+rpm × base images) asserting via the otel-sink
+    deb/lifecycle/                  Package lifecycle (install/upgrade/remove) tests
     shared/                         Shared test application sources
 testutil/                    Shared Go test helpers
   otelsink/                  In-process OTLP sink + typed assertion API for E2E tests
@@ -165,4 +164,4 @@ To add a new language auto-instrumentation package:
 4. Add a component definition in `packaging/builder/components.go` (follow the pattern of `javaInfo`).
 5. Register the component in the `AllComponents` slice.
 6. Add metadata tests in `packaging/tests/metadata/metadata_test.go`.
-7. Add integration tests in `packaging/tests/{deb,rpm}/<lang>/`.
+7. Add a matrix integration test in `packaging/tests/<lang>/`: one `<lang>_test.go` with a `{deb, rpm} × base image` matrix, plus `Dockerfile.deb` and `Dockerfile.rpm` parameterized by `BASE_IMAGE`. Assert on the exported telemetry via `testutil/otelsink`.
