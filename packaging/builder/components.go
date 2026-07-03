@@ -268,7 +268,11 @@ func pythonInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 	info.Overridables.Provides = []string{"opentelemetry-python-autoinstrumentation1"}
 	info.Overridables.Suggests = []string{"opentelemetry-injector1"}
 	info.Overridables.Contents = files.Contents{
-		tree(pythonDir, pythonInstallDir),
+		// The injector resolves the agent path as <prefix>/<libc> (the same scheme
+		// as .NET), so the bundle installs under a glibc/ subdirectory while the
+		// conf.d prefix stays pythonInstallDir. The bundled wheels are glibc
+		// manylinux; a musl/ variant would sit alongside for musl-based distros.
+		tree(pythonDir, pythonInstallDir+"/glibc"),
 		configFile(filepath.Join(commonDir, "python", "otel-config.yaml"), pythonConfigDir+"/otel-config.yaml"),
 		regularFile(filepath.Join(commonDir, "python", "injector.conf"), injectorConfigDir+"/conf.d/python.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-python.8.gz", 0o644),
