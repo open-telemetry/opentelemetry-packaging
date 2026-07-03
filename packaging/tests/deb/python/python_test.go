@@ -9,39 +9,56 @@ import (
 	"time"
 
 	"github.com/open-telemetry/opentelemetry-packaging/testutil"
+	"github.com/open-telemetry/opentelemetry-packaging/testutil/otelsink"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+
+	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 )
+
+// exportTimeout bounds how long we wait for each signal to reach the sink. The
+// workload flushes on ~1s schedules (see the Dockerfile), so this is generous.
+const exportTimeout = 90 * time.Second
 
 func TestPythonAutoInstrumentation(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	container := testutil.StartServiceContainer(t, ctx,
-		"packaging/tests/deb/python/Dockerfile",
-		nil,
-		[]string{"8080/tcp"},
-		"8080/tcp",
-		"/",
-	)
+	sink := otelsink.Start(t)
 
-	// Send HTTP requests; each handler runs a sqlite3 query to generate spans.
+	container := testutil.StartServiceContainerOpts(t, ctx, testutil.ServiceContainerOptions{
+		DockerfilePath:  "packaging/tests/deb/python/Dockerfile",
+		ExposedPorts:    []string{"8080/tcp"},
+		WaitPort:        "8080/tcp",
+		WaitPath:        "/",
+		Env:             sink.Env(),
+		HostAccessPorts: sink.HostAccessPorts(),
+	})
+
+	// Drive traffic; each request runs a sqlite3 query and emits a log record.
 	for range 3 {
 		status := testutil.ContainerHTTPGet(t, ctx, container, "8080/tcp", "/")
 		assert.Equal(t, 200, status)
 	}
 
-	// Wait for the console exporter to write a span carrying the service name.
-	// Python's ConsoleSpanExporter prints span.to_json() (multi-line JSON).
-	output := testutil.WaitForFileContaining(t, ctx, container, "/tmp/app-output.log", "python-testapp", 60*time.Second)
+	// Traces: the bundled sqlite3 instrumentation produces a database client span.
+	traces := sink.WaitForTraces(t, exportTimeout, func(tr *otelsink.Traces) bool {
+		return tr.WithKind(tracepb.Span_SPAN_KIND_CLIENT).Len() > 0
+	})
+	assert.NotEmpty(t, traces.WithSpanAttributeValue("db.system", "sqlite").Spans(),
+		"expected a sqlite db.system client span")
+	assert.NotEmpty(t, traces.WithResourceAttribute("service.name", "python-testapp").Spans(),
+		"spans should carry the configured service.name resource")
 
-	// The agent activated and did not self-deactivate (version/protocol/conflict guards passed).
-	require.NotContains(t, output, "cannot auto-instrument", "agent should not self-deactivate")
+	// Logs: the stdlib logging record is exported via the agent's log handler.
+	logs := sink.WaitForLogs(t, exportTimeout, func(l *otelsink.Logs) bool {
+		return l.WithBodyContaining("request handled").Len() > 0
+	})
+	assert.GreaterOrEqual(t,
+		logs.WithSeverityAtLeast(logspb.SeverityNumber_SEVERITY_NUMBER_ERROR).Len(), 1,
+		"expected an ERROR-severity log record")
 
-	// service.name from OTEL_SERVICE_NAME is present in the exported resource.
-	assert.Contains(t, output, "service.name", "expected service.name in resource attributes")
-
-	// The bundled sqlite3 auto-instrumentation produced a database client span.
-	assert.Contains(t, output, "sqlite", "expected sqlite db.system from sqlite3 instrumentation")
-	assert.Contains(t, output, "SpanKind.CLIENT", "expected CLIENT span kind from a database query")
+	// Metrics: the bundled system-metrics instrumentation exports periodically.
+	metrics := sink.WaitForMetrics(t, exportTimeout, otelsink.NonEmpty)
+	assert.NotEmpty(t, metrics.Names(), "expected at least one exported metric")
 }

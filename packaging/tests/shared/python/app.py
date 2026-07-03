@@ -7,15 +7,22 @@
 # prepending /usr/lib/opentelemetry/python to PYTHONPATH so the interpreter runs
 # the bundled sitecustomize.py at startup. Each GET handler runs an in-memory
 # sqlite3 query; the bundled opentelemetry-instrumentation-sqlite3 turns that
-# into a database client span, which the console exporter writes to stdout. The
-# Go test drives HTTP traffic and asserts on the exported spans.
+# into a database client span. The handler also emits a stdlib logging record,
+# which the agent's log auto-instrumentation exports as an OTLP log. The Go test
+# drives HTTP traffic and asserts on the exported telemetry via the otel-sink.
 #
 # Only the standard library is used so the application environment carries no
 # OpenTelemetry packages of its own. That keeps the agent's double-instrumentation
 # and dependency-conflict safety guards from self-deactivating.
 
+import logging
 import sqlite3
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+# When the agent's log auto-instrumentation is enabled it attaches an OTLP
+# LoggingHandler to the root logger, so these records are exported as OTLP logs
+# without the application importing any OpenTelemetry package.
+logger = logging.getLogger("python-testapp")
 
 
 def run_query():
@@ -33,6 +40,7 @@ def run_query():
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         rows = run_query()
+        logger.error("request handled: %s", rows)
         body = ("OK {}\n".format(rows)).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
