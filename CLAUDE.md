@@ -30,7 +30,7 @@ make clean                     # Remove build/
 - `packaging/repo/` — APT/YUM repo generation scripts (run in containers)
 - `packaging/tests/metadata/` — Host-side tests using native Go parsers (no CLI tools)
 - `packaging/tests/{deb,rpm}/` — Testcontainers-based E2E tests
-- `packaging/*-release.txt` — Renovate-managed upstream version pins
+- `packaging/common/<component>/release.txt` — Renovate-managed upstream version pins (Python pins live in `packaging/common/python/requirements.txt`)
 
 ## Coding conventions
 

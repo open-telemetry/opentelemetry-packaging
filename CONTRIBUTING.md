@@ -20,18 +20,17 @@ packaging/
     download.go              Upstream artifact download helpers
   common/                    Shared assets referenced by the builder
     scripts/                 POSIX lifecycle scripts (postinstall, preuninstall)
-    injector/                Config files, man page template, README
+    injector/                Config files, man page template, README, release.txt (version pin)
     java/                    "
     nodejs/                  "
     dotnet/                  "
-    python/                  Config, man page template, README, requirements.txt, sitecustomize.py
+    python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py
   repo/                      APT and YUM repository generation scripts
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
     deb/{java,nodejs,dotnet,python} Testcontainers-based DEB E2E tests
     rpm/{java,nodejs,dotnet,python} Testcontainers-based RPM E2E tests
     shared/                         Shared test application sources
-  *-release.txt              Version pins for upstream artifacts (Renovate-managed)
 testutil/                    Shared Go test helpers
 docs/design/                 Architecture and design documents
 ```
@@ -66,7 +65,7 @@ The `cmd/build-packages` program:
 
 ### Upstream version pins
 
-Each upstream artifact version is pinned in a `packaging/*-release.txt` file:
+Each upstream artifact version is pinned in a `packaging/common/<component>/release.txt` file (Python instead pins its packages in `packaging/common/python/requirements.txt`):
 
 ```
 # renovate: datasource=github-releases depName=open-telemetry/opentelemetry-java-instrumentation
@@ -159,7 +158,7 @@ See [docs/design/packages-meta-architecture.md](docs/design/packages-meta-archit
 To add a new language auto-instrumentation package:
 
 1. Create config files in `packaging/common/<lang>/` (injector.conf, otel-config.yaml, man page template, and README).
-2. Add a version pin file `packaging/<lang>-agent-release.txt`.
+2. Add a version pin file `packaging/common/<lang>/release.txt`.
 3. Add a download function in `packaging/builder/download.go`.
 4. Add a component definition in `packaging/builder/components.go` (follow the pattern of `javaInfo`).
 5. Register the component in the `AllComponents` slice.

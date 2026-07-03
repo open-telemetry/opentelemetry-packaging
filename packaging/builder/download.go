@@ -87,7 +87,7 @@ func downloadFile(url, dest string) (retErr error) {
 
 // downloadInjector fetches libotelinject.so from GitHub releases.
 func downloadInjector(cfg Config, dest string) error {
-	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "injector-release.txt"))
+	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", "injector", "release.txt"))
 	if err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func downloadInjector(cfg Config, dest string) error {
 
 // downloadJavaAgent fetches the Java agent JAR from GitHub releases.
 func downloadJavaAgent(cfg Config, dest string) error {
-	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "java-agent-release.txt"))
+	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", "java", "release.txt"))
 	if err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ func downloadJavaAgent(cfg Config, dest string) error {
 // This shells out to npm because the npm registry protocol and package
 // installation logic (with native dependencies) is non-trivial.
 func downloadNodejsAgent(cfg Config, destDir string) error {
-	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "nodejs-agent-release.txt"))
+	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", "nodejs", "release.txt"))
 	if err != nil {
 		return err
 	}
@@ -165,7 +165,7 @@ func downloadNodejsAgent(cfg Config, destDir string) error {
 // the OpenTelemetry injector. Only the native library directory from the
 // musl archive is extracted, placed under a musl/ prefix.
 func downloadDotnetAgent(cfg Config, destDir string) error {
-	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "dotnet-agent-release.txt"))
+	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", "dotnet", "release.txt"))
 	if err != nil {
 		return err
 	}
