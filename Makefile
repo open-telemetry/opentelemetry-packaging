@@ -140,7 +140,7 @@ integration-test-deb-nodejs: local-apt-repo
 
 .PHONY: integration-test-deb-dotnet
 integration-test-deb-dotnet: local-apt-repo
-	go test -v -timeout 30m ./packaging/tests/deb/dotnet/
+	go test -v -timeout 30m -run 'TestDotnetAutoInstrumentation/deb' ./packaging/tests/dotnet/
 
 .PHONY: integration-test-deb-python
 integration-test-deb-python: local-apt-repo
@@ -156,7 +156,7 @@ integration-test-rpm-nodejs: local-rpm-repo
 
 .PHONY: integration-test-rpm-dotnet
 integration-test-rpm-dotnet: local-rpm-repo
-	go test -v -timeout 30m ./packaging/tests/rpm/dotnet/
+	go test -v -timeout 30m -run 'TestDotnetAutoInstrumentation/rpm' ./packaging/tests/dotnet/
 
 .PHONY: integration-test-rpm-python
 integration-test-rpm-python: local-rpm-repo
