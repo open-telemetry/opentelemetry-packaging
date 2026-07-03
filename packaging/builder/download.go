@@ -159,11 +159,11 @@ func downloadNodejsAgent(cfg Config, destDir string) error {
 	return nil
 }
 
-// downloadDotnetAgent fetches the .NET auto-instrumentation for both glibc
-// and musl. The glibc archive is extracted fully, then its native library
-// directory is moved under a glibc/ prefix to match the layout expected by
-// the OpenTelemetry injector. Only the native library directory from the
-// musl archive is extracted, placed under a musl/ prefix.
+// downloadDotnetAgent fetches the .NET auto-instrumentation (glibc) and extracts
+// it under a glibc/ prefix, matching the layout the OpenTelemetry injector
+// expects (<prefix>/<libc>). Only glibc is bundled: musl-based distros (Alpine)
+// use apk, which this project does not build, so the injector never resolves a
+// musl/ path on any supported (deb/rpm) target.
 func downloadDotnetAgent(cfg Config, destDir string) error {
 	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", "dotnet", "release.txt"))
 	if err != nil {
@@ -205,30 +205,6 @@ func downloadDotnetAgent(cfg Config, destDir string) error {
 		return fmt.Errorf("extracting glibc archive: %w", err)
 	}
 
-	// Download musl archive and extract only the native library directory,
-	// placing it under musl/ to match the injector's expected layout.
-	muslPkg := fmt.Sprintf("opentelemetry-dotnet-instrumentation-linux-musl-%s.zip", dotnetArch)
-	muslURL := fmt.Sprintf("%s/%s/%s", baseURL, tag, muslPkg)
-	muslZip, err := os.CreateTemp("", "otel-dotnet-musl-*.zip")
-	if err != nil {
-		return err
-	}
-	muslZip.Close()
-	muslZipPath := muslZip.Name()
-	defer os.Remove(muslZipPath)
-	if err := downloadFile(muslURL, muslZipPath); err != nil {
-		return err
-	}
-
-	muslNativeDir := fmt.Sprintf("linux-musl-%s/", dotnetArch)
-	muslDest := filepath.Join(destDir, "musl")
-	if err := os.MkdirAll(muslDest, 0o755); err != nil {
-		return fmt.Errorf("creating musl dir: %w", err)
-	}
-	if err := extractZipPrefix(muslZipPath, muslDest, muslNativeDir); err != nil {
-		return fmt.Errorf("extracting musl native dir: %w", err)
-	}
-
 	return nil
 }
 
@@ -241,25 +217,6 @@ func extractZip(zipPath, destDir string) error {
 	defer r.Close()
 
 	for _, f := range r.File {
-		if err := extractZipFile(f, destDir); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// extractZipPrefix extracts only files whose name starts with prefix.
-func extractZipPrefix(zipPath, destDir, prefix string) error {
-	r, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-
-	for _, f := range r.File {
-		if !strings.HasPrefix(f.Name, prefix) {
-			continue
-		}
 		if err := extractZipFile(f, destDir); err != nil {
 			return err
 		}

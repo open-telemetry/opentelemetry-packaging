@@ -77,7 +77,7 @@ const (
 	injectorDescription = "OpenTelemetry LD_PRELOAD-based automatic instrumentation injector"
 	javaDescription     = "OpenTelemetry Java Auto-Instrumentation Agent"
 	nodejsDescription   = "OpenTelemetry Node.js Auto-Instrumentation"
-	dotnetDescription   = "OpenTelemetry .NET Automatic Instrumentation (glibc + musl)"
+	dotnetDescription   = "OpenTelemetry .NET Automatic Instrumentation"
 	pythonDescription   = "OpenTelemetry Python Auto-Instrumentation"
 	metaDescription     = "OpenTelemetry Auto-Instrumentation Suite (metapackage)"
 )
