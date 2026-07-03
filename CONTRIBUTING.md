@@ -28,10 +28,12 @@ packaging/
   repo/                      APT and YUM repository generation scripts
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
-    deb/{java,nodejs,dotnet,python} Testcontainers-based DEB E2E tests
-    rpm/{java,nodejs,dotnet,python} Testcontainers-based RPM E2E tests
+    python/                         Matrix E2E test (deb+rpm × base images) asserting via the otel-sink
+    deb/{java,nodejs,dotnet}        Testcontainers-based DEB E2E tests
+    rpm/{java,nodejs,dotnet}        Testcontainers-based RPM E2E tests
     shared/                         Shared test application sources
 testutil/                    Shared Go test helpers
+  otelsink/                  In-process OTLP sink + typed assertion API for E2E tests
 docs/design/                 Architecture and design documents
 ```
 

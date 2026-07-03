@@ -1,0 +1,64 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# End-to-end integration test image for the Python auto-instrumentation RPM
+# package, on a dnf-based base image. Installs the package from a local YUM
+# repository, activates the agent by prepending its directory to PYTHONPATH,
+# then runs a minimal HTTP server that issues sqlite3 queries and emits a log
+# record. The workload exports OTLP over HTTP to the otel-sink on the host.
+#
+# BASE_IMAGE and PYTHON_BIN are build args so the same Dockerfile covers multiple
+# dnf-based base images. PYTHON_BIN is installed explicitly so the interpreter
+# matches the bundled cp311 wheels even when the base image defaults to a newer
+# Python (e.g. fedora:41 defaults to 3.13, so python3.11 is installed). The OTLP
+# endpoint and per-test test.id come from the sink's Env at run time.
+#
+# NOTE: activation is via PYTHONPATH rather than the opentelemetry-injector,
+# because the injector does not yet implement the Python
+# (python_auto_instrumentation_agent_path_prefix) conf.d key. Once it does, this
+# image should install opentelemetry-injector and rely on it.
+
+ARG BASE_IMAGE=fedora:41
+FROM ${BASE_IMAGE}
+
+ARG ARCH=amd64
+ARG RPM_ARCH=x86_64
+ARG PYTHON_BIN=python3.11
+ENV PYTHON_BIN=${PYTHON_BIN}
+ENV LANG=C.UTF-8
+
+# Install the target Python and utilities.
+RUN dnf -y install ${PYTHON_BIN} \
+    && dnf clean all
+
+# Copy pre-built packages and repository metadata.
+COPY build/local-repo/rpm /local-repo
+RUN printf '[opentelemetry-local]\nname=OpenTelemetry Local\nbaseurl=file:///local-repo/packages\nenabled=1\ngpgcheck=0\n' \
+    > /etc/yum.repos.d/opentelemetry-local.repo
+
+# Install the Python auto-instrumentation package from the local repo.
+# Using dnf install (not rpm -i) validates that the repository metadata
+# is correct and dependency resolution works.
+RUN dnf install -y \
+    opentelemetry-python-autoinstrumentation
+
+# Copy the test server.
+COPY packaging/tests/shared/python/app.py /app/app.py
+
+# Export all three signals over OTLP. The exporter is intentionally left unset:
+# sitecustomize.py defaults all signals to the bundled pure-Python exporter
+# (otlp_pyproto_http); OTEL_EXPORTER_OTLP_PROTOCOL is set to http/protobuf by the
+# sink's Env. Shortened schedule delays get telemetry to the sink within the test
+# window, and log auto-instrumentation exports stdlib logging records as OTLP logs.
+ENV PYTHONPATH=/usr/lib/opentelemetry/python \
+    OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true \
+    OTEL_SERVICE_NAME=python-testapp \
+    OTEL_BSP_SCHEDULE_DELAY=1000 \
+    OTEL_BLRP_SCHEDULE_DELAY=1000 \
+    OTEL_METRIC_EXPORT_INTERVAL=1000 \
+    OTEL_INJECTOR_LOG_LEVEL=debug
+
+EXPOSE 8080
+
+# Tee stdout/stderr to a file so container output is available for debugging.
+CMD ["/bin/sh", "-c", "$PYTHON_BIN /app/app.py 2>&1 | tee /tmp/app-output.log"]
