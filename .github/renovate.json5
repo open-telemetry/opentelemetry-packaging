@@ -4,6 +4,21 @@
     "config:best-practices",
     "helpers:pinGitHubActionDigestsToSemver"
   ],
+  "customManagers": [
+    {
+      // Track the per-component upstream version pins in
+      // packaging/common/<component>/release.txt. Each file carries a
+      // "# renovate: datasource=... depName=..." annotation on the line above
+      // the pinned version, which this regex manager parses.
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/packaging/common/[^/]+/release\\.txt$/"
+      ],
+      "matchStrings": [
+        "# renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(?:\\s+versioning=(?<versioning>\\S+))?\\s+(?<currentValue>\\S+)"
+      ]
+    }
+  ],
   "packageRules": [
     {
       "groupName": "all patch versions",
