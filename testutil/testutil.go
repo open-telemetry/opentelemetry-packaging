@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/moby/moby/api/types/build"
 	"github.com/moby/moby/client"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/require"
@@ -57,8 +56,14 @@ func TargetArch() string {
 // so on a host whose native architecture differs from the packages under test
 // (e.g. arm64 Apple Silicon building amd64 packages), Docker would build the
 // image for the host architecture and the package installation would fail with
-// unresolvable dependencies. Setting the BuildKit build platform here — and
+// unresolvable dependencies. Setting the build platform here — and
 // ImagePlatform on the request — forces the correct architecture.
+//
+// The builder version must be left at the default (classic builder): forcing
+// BuildKit makes the daemon resolve docker.io base images through the client's
+// BuildKit session, which testcontainers-go never establishes, and the build
+// fails with "failed to resolve source metadata (...): no active sessions".
+// The classic builder honors the platform parameter without a session.
 func dockerfileBuild(root, dockerfilePath string, buildArgs map[string]*string) testcontainers.FromDockerfile {
 	arch := TargetArch()
 	return testcontainers.FromDockerfile{
@@ -69,7 +74,6 @@ func dockerfileBuild(root, dockerfilePath string, buildArgs map[string]*string) 
 		PrintBuildLog: true,
 		BuildOptionsModifier: func(opts *client.ImageBuildOptions) {
 			opts.Platforms = []ocispec.Platform{{OS: "linux", Architecture: arch}}
-			opts.Version = build.BuilderBuildKit
 		},
 	}
 }
