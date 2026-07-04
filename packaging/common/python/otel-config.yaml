@@ -6,10 +6,10 @@
 # See: https://opentelemetry.io/docs/zero-code/python/
 
 # File-based configuration is experimental and may change.
-# Set OTEL_EXPERIMENTAL_CONFIG_FILE to this file path to enable.
+# Set OTEL_CONFIG_FILE to this file path to enable.
 
 # Example configuration:
-# file_format: "0.3"
+# file_format: "1.0"
 #
 # resource:
 #   attributes:

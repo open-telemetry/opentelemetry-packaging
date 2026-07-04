@@ -48,7 +48,7 @@ A configuration file template is available at `/etc/opentelemetry/python/otel-co
 To use it, set:
 
 ```bash
-export OTEL_EXPERIMENTAL_CONFIG_FILE=/etc/opentelemetry/python/otel-config.yaml
+export OTEL_CONFIG_FILE=/etc/opentelemetry/python/otel-config.yaml
 ```
 
 ## Safety guards
