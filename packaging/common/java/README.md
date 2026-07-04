@@ -30,7 +30,7 @@ A configuration file is available at `/etc/opentelemetry/java/otel-config.yaml`.
 To use it, set:
 
 ```bash
-export OTEL_EXPERIMENTAL_CONFIG_FILE=/etc/opentelemetry/java/otel-config.yaml
+export OTEL_CONFIG_FILE=/etc/opentelemetry/java/otel-config.yaml
 ```
 
 ## Supported libraries
