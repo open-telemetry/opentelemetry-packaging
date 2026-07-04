@@ -16,9 +16,9 @@ urllib3 <2.6.4
 # google-protobuf C extension) and are installed from source by the build's VCS
 # pass. The build installs git+ requirements with --no-deps, so the exporter's
 # own runtime dependency on `requests` is declared explicitly below.
-opentelemetry-exporter-otlp-pyproto-http @ git+https://github.com/ocelotl/opentelemetry-python.git@pyproto#subdirectory=exporter/opentelemetry-exporter-otlp-pyproto-http
-opentelemetry-exporter-otlp-pyproto-common @ git+https://github.com/ocelotl/opentelemetry-python.git@pyproto#subdirectory=exporter/opentelemetry-exporter-otlp-pyproto-common
-opentelemetry-pyproto @ git+https://github.com/ocelotl/opentelemetry-python.git@pyproto#subdirectory=opentelemetry-pyproto
+opentelemetry-exporter-otlp-pyproto-http @ git+https://github.com/ocelotl/opentelemetry-python.git@no-requests#subdirectory=exporter/opentelemetry-exporter-otlp-pyproto-http
+opentelemetry-exporter-otlp-pyproto-common @ git+https://github.com/ocelotl/opentelemetry-python.git@no-requests#subdirectory=exporter/opentelemetry-exporter-otlp-pyproto-common
+opentelemetry-pyproto @ git+https://github.com/ocelotl/opentelemetry-python.git@no-requests#subdirectory=opentelemetry-pyproto
 requests
 
 opentelemetry-propagator-aws-xray==1.0.2
