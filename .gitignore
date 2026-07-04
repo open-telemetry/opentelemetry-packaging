@@ -8,3 +8,7 @@
 # .NET
 bin/
 obj/
+
+# Agentic configs
+.agents
+.claude
