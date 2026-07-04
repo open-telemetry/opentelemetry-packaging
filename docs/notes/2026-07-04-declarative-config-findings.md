@@ -13,9 +13,7 @@ The injector injects `OTEL_CONFIG_FILE` (from `default_env.conf`) into every pro
 | Java | Yes | Agent ≥ 2.26.0 required; pin upgraded to 2.29.0 |
 | Node.js | Yes | Needs our new `register.js` wrapper; upstream register hook ignores `OTEL_CONFIG_FILE` |
 | Python | Yes | Needs the `file-configuration` extra and the standard proto-http exporter in the bundle |
-| .NET | No | 1.15.0 parses the file and builds the pipeline, but never subscribes any instrumentation — no telemetry is produced |
-
-Verified in Dash0: the 3 test requests per app appear as spans for `inject-java`, `inject-nodejs`, and `inject-python`; nothing arrives from .NET.
+| .NET | Yes | Needs 1.15.0, the extra `OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED=true` flag, and an explicit `instrumentation/development.dotnet` section — instrumentations default to **off** under file config, unlike env vars |
 
 ## Package changes required
 
@@ -23,7 +21,7 @@ The packages as previously pinned could not do declarative configuration at all.
 The following changes were made in this repository:
 
 - **Java**: agent pin bumped from 2.16.0 to 2.29.0 (declarative configuration shipped in 2.26.0).
-- **.NET**: auto-instrumentation pin bumped from 1.11.0 to 1.15.0 (`OTEL_CONFIG_FILE` and `file_format: "1.0"` support shipped in 1.15.0). Insufficient — see the .NET TODO below.
+- **.NET**: auto-instrumentation pin bumped from 1.11.0 to 1.15.0 (`OTEL_CONFIG_FILE` and `file_format: "1.0"` support shipped in 1.15.0). Two extra activation requirements apply — see the .NET result and TODO below.
 - **Node.js**: auto-instrumentations pin bumped from 0.59.0 to 0.78.0, and a new `register.js` wrapper is shipped at `/usr/lib/opentelemetry/nodejs/register.js`, which is now the `--require` target in the injector drop-in.
   The upstream register hook only implements environment-variable configuration and silently ignores `OTEL_CONFIG_FILE`; declarative configuration lives in the experimental `startNodeSDK()` entry point of `@opentelemetry/sdk-node`, which reads `OTEL_CONFIG_FILE` itself (via `@opentelemetry/configuration`).
   The wrapper routes: config file present → `startNodeSDK()` with the auto-instrumentations; otherwise → upstream register hook, unchanged.
@@ -111,8 +109,16 @@ Each app makes 3 auto-instrumented HTTPS GET requests and is launched with no OT
   The injected `register.js` wrapper boots `startNodeSDK()`; 3 spans confirmed as `inject-nodejs`.
 - **Python — works** (in a clean virtualenv; see the sitecustomize TODO).
   The agent logs `OTEL_CONFIG_FILE is set; ignoring configurator kwargs` and exports as `inject-python`; 3 spans confirmed.
-- **.NET — produces nothing.**
-  The 1.15.0 agent parses the file (the metric reader visibly runs at the file's 10-second interval, and with an invalid token the exporter gets a 401 from the Dash0 ingress, proving endpoint and headers come from the file), but no instrumentation is ever subscribed: the SDK logs `Instrument belongs to a Meter not subscribed by the provider` for every meter, no trace export is ever attempted, and Dash0's ingestion accounting shows 0 datapoints.
+- **.NET — works, but instrumentation must be enabled explicitly.**
+  Unlike the other three languages (and unlike .NET's own env-var mode, where all instrumentations are on by default), file-based configuration enables **no** instrumentations until they are listed; a config without that section produces zero telemetry while the exporters run normally (the SDK logs `Instrument belongs to a Meter not subscribed by the provider`, and tests showed 0 datapoints emitted).
+  With the section present, the 3 spans are emitted as `bridge-dotnet`:
+
+```yaml
+instrumentation/development:
+  dotnet:
+    traces:
+      httpclient: {}
+```
 
 ## TODOs
 
@@ -138,9 +144,11 @@ Declarative configuration works out of the box with agent ≥ 2.26.0, including 
 
 ### .NET (upstream: opentelemetry-dotnet-instrumentation)
 
-- File-based configuration in 1.15.0 configures exporters and readers but never subscribes the auto-instrumentation activity sources and meters, so zero telemetry is produced.
-  Track upstream until instrumentation subscription works under `OTEL_CONFIG_FILE`; until then, .NET hosts must stay on environment-variable configuration.
-- Consider not injecting `OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED=true` fleet-wide while this is the case: it silently turns .NET telemetry off wherever `OTEL_CONFIG_FILE` is also set.
+- Instrumentation enablement defaults are inverted between the two modes: env-var mode enables all instrumentations by default, file-based mode enables **none** until they are listed under `instrumentation/development.dotnet`.
+  A config file without that section yields a silently telemetry-free process (exporters run, nothing is produced) — no warning points at the missing section.
+  Worth raising upstream: either apply the same all-on default, or log a prominent warning when file-based configuration ends up with zero enabled instrumentations.
+- The `instrumentation/development.dotnet` section is .NET-specific and experimental (`/development` suffix); a shared multi-language config file needs the per-language subsections for each runtime that requires them (Java, Node.js, and Python subscribe their instrumentations without it).
+- File-based configuration additionally requires `OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED=true`; `OTEL_CONFIG_FILE` alone is silently ignored.
 
 ## References
 
