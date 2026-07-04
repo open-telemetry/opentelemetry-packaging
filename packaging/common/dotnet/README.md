@@ -35,7 +35,11 @@ A configuration file is available at `/etc/opentelemetry/dotnet/otel-config.yaml
 To use it, set:
 
 ```bash
-export OTEL_EXPERIMENTAL_CONFIG_FILE=/etc/opentelemetry/dotnet/otel-config.yaml
+export OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED=true
+```
+
+```bash
+export OTEL_CONFIG_FILE=/etc/opentelemetry/dotnet/otel-config.yaml
 ```
 
 ## Supported libraries

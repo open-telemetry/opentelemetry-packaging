@@ -6,10 +6,11 @@
 # See: https://opentelemetry.io/docs/zero-code/net/
 
 # File-based configuration is experimental and may change.
-# Set OTEL_EXPERIMENTAL_CONFIG_FILE to this file path to enable.
+# Set OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED=true and
+# OTEL_CONFIG_FILE to this file path to enable.
 
 # Example configuration:
-# file_format: "0.3"
+# file_format: "1.0"
 #
 # resource:
 #   attributes:
@@ -21,3 +22,12 @@
 #         exporter:
 #           otlp:
 #             endpoint: "http://localhost:4317"
+#
+# Unlike environment-variable configuration, file-based configuration enables
+# no instrumentations by default; list them explicitly:
+#
+# instrumentation/development:
+#   dotnet:
+#     traces:
+#       httpclient: {}
+#       aspnetcore: {}

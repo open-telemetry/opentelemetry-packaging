@@ -52,7 +52,10 @@ Set the logs exporter (otlp, console, none). Default: otlp
 .B OTEL_DOTNET_AUTO_INSTRUMENTATION_ENABLED
 Set to "false" to disable. Default: true
 .TP
-.B OTEL_EXPERIMENTAL_CONFIG_FILE
+.B OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED
+Set to "true" to enable declarative configuration. Default: false
+.TP
+.B OTEL_CONFIG_FILE
 Path to a declarative configuration file.
 .SH NOTES
 The .NET instrumentation includes shared managed assemblies stored once, with
