@@ -7,7 +7,7 @@ opentelemetry-nodejs \- OpenTelemetry Node.js Auto-Instrumentation
 The Node.js agent is loaded automatically by the OpenTelemetry Injector when a
 Node.js application starts. Manual usage:
 .PP
-.B node --require /usr/lib/opentelemetry/nodejs/node_modules/@opentelemetry/auto-instrumentations-node/build/src/register.js
+.B node --require /usr/lib/opentelemetry/nodejs/register.js
 .I app.js
 .SH DESCRIPTION
 The OpenTelemetry Node.js Auto-Instrumentation package automatically instruments
@@ -46,14 +46,14 @@ Set the logs exporter (otlp, console, none). Default: otlp
 .B OTEL_SDK_DISABLED
 Set to "true" to disable the SDK. Default: false
 .TP
-.B OTEL_EXPERIMENTAL_CONFIG_FILE
+.B OTEL_CONFIG_FILE
 Path to a declarative configuration file.
 .SH EXAMPLES
 Manually run a Node.js application with instrumentation:
 .PP
 .RS
 OTEL_SERVICE_NAME=myapp node \\
-  --require /usr/lib/opentelemetry/nodejs/node_modules/@opentelemetry/auto-instrumentations-node/build/src/register.js \\
+  --require /usr/lib/opentelemetry/nodejs/register.js \\
   app.js
 .RE
 .SH SEE ALSO

@@ -22,7 +22,7 @@ packaging/
     scripts/                 POSIX lifecycle scripts (postinstall, preuninstall)
     injector/                Config files, man page template, README, release.txt (version pin)
     java/                    "
-    nodejs/                  "
+    nodejs/                  " (plus register.js, the --require entry point with declarative-config support)
     dotnet/                  "
     python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py
   repo/                      APT and YUM repository generation scripts

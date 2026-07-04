@@ -181,6 +181,7 @@ func nodejsInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 	info.Overridables.Suggests = []string{"opentelemetry-injector1"}
 	info.Overridables.Contents = files.Contents{
 		tree(filepath.Join(staging, "nodejs"), nodejsInstallDir),
+		regularFile(filepath.Join(commonDir, "nodejs", "register.js"), nodejsInstallDir+"/register.js", 0o644),
 		configFile(filepath.Join(commonDir, "nodejs", "otel-config.yaml"), nodejsConfigDir+"/otel-config.yaml"),
 		regularFile(filepath.Join(commonDir, "nodejs", "injector.conf"), injectorConfigDir+"/conf.d/nodejs.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-nodejs.8.gz", 0o644),

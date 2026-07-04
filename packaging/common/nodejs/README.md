@@ -30,7 +30,7 @@ A configuration file is available at `/etc/opentelemetry/nodejs/otel-config.yaml
 To use it, set:
 
 ```bash
-export OTEL_EXPERIMENTAL_CONFIG_FILE=/etc/opentelemetry/nodejs/otel-config.yaml
+export OTEL_CONFIG_FILE=/etc/opentelemetry/nodejs/otel-config.yaml
 ```
 
 ## Supported libraries
@@ -50,7 +50,7 @@ If not using the injector, you can manually load the instrumentation:
 
 ```bash
 OTEL_SERVICE_NAME=myservice node \
-  --require /usr/lib/opentelemetry/nodejs/node_modules/@opentelemetry/auto-instrumentations-node/build/src/register.js \
+  --require /usr/lib/opentelemetry/nodejs/register.js \
   app.js
 ```
 
