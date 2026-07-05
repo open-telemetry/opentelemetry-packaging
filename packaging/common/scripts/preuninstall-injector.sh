@@ -10,6 +10,17 @@
 # sed, or other external commands) to avoid unnecessary package
 # dependencies on both DEB and RPM systems.
 
+# On upgrade, keep the preload entry: dpkg invokes prerm with "upgrade", rpm
+# invokes %preun with the count of remaining package instances ("1"). On RPM
+# the old version's %preun runs AFTER the new version's %post, so cleaning up
+# here would strip the entry the new version just configured. Only a real
+# removal (dpkg "remove", rpm "0") cleans up.
+case "${1:-}" in
+    upgrade|1)
+        exit 0
+        ;;
+esac
+
 PRELOAD_PATH="/etc/ld.so.preload"
 LIBOTELINJECT_PATH="/usr/lib/opentelemetry/injector/libotelinject.so"
 
