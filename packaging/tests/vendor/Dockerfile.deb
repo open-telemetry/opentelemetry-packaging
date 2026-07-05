@@ -1,0 +1,32 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Vendor-replacement integration-test image for the DEB packages. The image
+# stages both the upstream local repository and the vendor repository (which
+# serves the mock acme-java-autoinstrumentation package built by mkvendor)
+# and idles; the tests drive apt-get through Exec.
+#
+# The image is hermetic: the distro repositories are removed because the
+# packages under test declare no external dependencies, which keeps runtime
+# apt-get operations offline and flake-free.
+
+ARG BASE_IMAGE=debian:12
+
+FROM ${BASE_IMAGE}
+
+ARG ARCH=amd64
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN rm -f /etc/apt/sources.list /etc/apt/sources.list.d/*
+
+COPY build/local-repo/apt /local-repo
+COPY build/local-repo/apt-vendor /local-repo-vendor
+
+RUN echo 'deb [trusted=yes] file:///local-repo stable main' \
+      > /etc/apt/sources.list.d/opentelemetry-local.list \
+    && echo 'deb [trusted=yes] file:///local-repo-vendor stable main' \
+      > /etc/apt/sources.list.d/opentelemetry-vendor.list \
+    && apt-get update
+
+CMD ["sleep", "infinity"]

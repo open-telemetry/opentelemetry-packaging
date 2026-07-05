@@ -1,0 +1,35 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Lifecycle integration-test image for the DEB packages. Unlike the language
+# E2E images, this image installs nothing: the tests drive apt-get through
+# Exec and assert on the resulting system state, so the image only stages the
+# local repositories and idles.
+#
+# The image is hermetic: the distro repositories are removed because the
+# packages under test declare no external dependencies, which keeps runtime
+# apt-get operations offline and flake-free. Revisit if packages ever gain
+# real external dependencies.
+#
+# The next-version repository (a higher-versioned injector with a changed
+# default_env.conf, see the Makefile) is staged but not enabled; the upgrade
+# tests enable it at runtime.
+
+ARG BASE_IMAGE=debian:12
+
+FROM ${BASE_IMAGE}
+
+ARG ARCH=amd64
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN rm -f /etc/apt/sources.list /etc/apt/sources.list.d/*
+
+COPY build/local-repo/apt /local-repo
+COPY build/local-repo/apt-next /local-repo-next
+
+RUN echo 'deb [trusted=yes] file:///local-repo stable main' \
+      > /etc/apt/sources.list.d/opentelemetry-local.list \
+    && apt-get update
+
+CMD ["sleep", "infinity"]

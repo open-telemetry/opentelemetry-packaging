@@ -37,6 +37,22 @@ CONTAINER_ENGINE ?= $(shell command -v podman 2>/dev/null || command -v docker 2
 # Directory for local APT/YUM repos used in integration testing.
 LOCAL_REPO_DIR := $(CURDIR)/build/local-repo
 
+# Synthetic higher version for the upgrade lifecycle tests. Appending ".1"
+# sorts higher than VERSION under both dpkg and rpm version comparison, for
+# the dev placeholder and for real tag versions alike.
+NEXT_VERSION ?= $(VERSION).1
+
+# Export NEXT_VERSION so the lifecycle tests can assert the upgraded version.
+export NEXT_VERSION
+
+# Version of the mock acme-java-autoinstrumentation vendor package. It has its
+# own versioning scheme and is never compared against upstream versions.
+VENDOR_VERSION ?= 1.0.0
+
+# Marker line the next-version injector build ships in default_env.conf. The
+# lifecycle tests assert on it; keep in sync with packaging/tests/lifecycle.
+NEXT_CONFIG_MARKER := OTEL_TEST_NEXT_CONFIG_MARKER=1
+
 # Components that have packages.
 COMPONENTS := injector java nodejs dotnet python meta
 
@@ -114,6 +130,67 @@ local-rpm-repo: rpm-packages
 local-repos: local-apt-repo local-rpm-repo
 	@echo "All local repositories created in $(LOCAL_REPO_DIR)"
 
+# Stage a modified copy of packaging/ so the next-version injector ships a
+# changed default_env.conf. Both dpkg and rpm skip conffile-conflict handling
+# entirely when old and new pristine contents are identical, so the upgrade
+# lifecycle tests need the next build to actually change the config file.
+.PHONY: next-packaging-dir
+next-packaging-dir:
+	@rm -rf build/packaging-next
+	@cp -R packaging build/packaging-next
+	@printf '\n# Added by the next-version test build\n$(NEXT_CONFIG_MARKER)\n' \
+		>> build/packaging-next/common/injector/default_env.conf
+
+.PHONY: local-apt-repo-next
+local-apt-repo-next: next-packaging-dir
+	@echo "Creating next-version APT repository in $(LOCAL_REPO_DIR)/apt-next"
+	go run ./cmd/build-packages -version $(NEXT_VERSION) -arch $(ARCH) -format deb \
+		-component injector -packaging-dir build/packaging-next -output build/packages-next/deb
+	@mkdir -p $(LOCAL_REPO_DIR)/apt-next/pool
+	@cp build/packages-next/deb/*.deb $(LOCAL_REPO_DIR)/apt-next/pool/
+	@$(CONTAINER_ENGINE) run --rm --platform linux/$(ARCH) \
+		-v $(LOCAL_REPO_DIR)/apt-next:/repo \
+		-v $(CURDIR)/packaging/repo:/scripts:ro \
+		debian:12 /scripts/generate-apt-repo.sh /repo
+
+.PHONY: local-rpm-repo-next
+local-rpm-repo-next: next-packaging-dir
+	@echo "Creating next-version RPM repository in $(LOCAL_REPO_DIR)/rpm-next"
+	go run ./cmd/build-packages -version $(NEXT_VERSION) -arch $(ARCH) -format rpm \
+		-component injector -packaging-dir build/packaging-next -output build/packages-next/rpm
+	@mkdir -p $(LOCAL_REPO_DIR)/rpm-next/packages
+	@cp build/packages-next/rpm/*.rpm $(LOCAL_REPO_DIR)/rpm-next/packages/
+	@$(CONTAINER_ENGINE) run --rm --platform linux/$(ARCH) \
+		-v $(LOCAL_REPO_DIR)/rpm-next:/repo \
+		-v $(CURDIR)/packaging/repo:/scripts:ro \
+		fedora:41 /scripts/generate-rpm-repo.sh /repo
+
+.PHONY: local-apt-vendor-repo
+local-apt-vendor-repo:
+	@echo "Creating vendor APT repository in $(LOCAL_REPO_DIR)/apt-vendor"
+	@mkdir -p build/packages-vendor
+	go run ./packaging/tests/vendor/mkvendor -version $(VENDOR_VERSION) -arch $(ARCH) \
+		-format deb -output build/packages-vendor
+	@mkdir -p $(LOCAL_REPO_DIR)/apt-vendor/pool
+	@cp build/packages-vendor/*.deb $(LOCAL_REPO_DIR)/apt-vendor/pool/
+	@$(CONTAINER_ENGINE) run --rm --platform linux/$(ARCH) \
+		-v $(LOCAL_REPO_DIR)/apt-vendor:/repo \
+		-v $(CURDIR)/packaging/repo:/scripts:ro \
+		debian:12 /scripts/generate-apt-repo.sh /repo
+
+.PHONY: local-rpm-vendor-repo
+local-rpm-vendor-repo:
+	@echo "Creating vendor RPM repository in $(LOCAL_REPO_DIR)/rpm-vendor"
+	@mkdir -p build/packages-vendor
+	go run ./packaging/tests/vendor/mkvendor -version $(VENDOR_VERSION) -arch $(ARCH) \
+		-format rpm -output build/packages-vendor
+	@mkdir -p $(LOCAL_REPO_DIR)/rpm-vendor/packages
+	@cp build/packages-vendor/*.rpm $(LOCAL_REPO_DIR)/rpm-vendor/packages/
+	@$(CONTAINER_ENGINE) run --rm --platform linux/$(ARCH) \
+		-v $(LOCAL_REPO_DIR)/rpm-vendor:/repo \
+		-v $(CURDIR)/packaging/repo:/scripts:ro \
+		fedora:41 /scripts/generate-rpm-repo.sh /repo
+
 # ============================================================================
 # Integration Tests (testcontainers)
 # ============================================================================
@@ -127,7 +204,8 @@ integration-test-metadata: packages
 	go test -v -timeout 5m ./packaging/tests/metadata/
 
 .PHONY: integration-tests
-integration-tests: local-repos
+integration-tests: local-repos local-apt-repo-next local-rpm-repo-next \
+	local-apt-vendor-repo local-rpm-vendor-repo
 	go test -v -timeout 30m ./packaging/tests/...
 
 .PHONY: integration-test-deb-java
@@ -161,6 +239,22 @@ integration-test-rpm-dotnet: local-rpm-repo
 .PHONY: integration-test-rpm-python
 integration-test-rpm-python: local-rpm-repo
 	go test -v -timeout 30m -run 'TestPythonAutoInstrumentation/rpm' ./packaging/tests/python/
+
+.PHONY: integration-test-deb-lifecycle
+integration-test-deb-lifecycle: local-apt-repo local-apt-repo-next
+	go test -v -timeout 30m -run 'TestLifecycle/deb' ./packaging/tests/lifecycle/
+
+.PHONY: integration-test-rpm-lifecycle
+integration-test-rpm-lifecycle: local-rpm-repo local-rpm-repo-next
+	go test -v -timeout 30m -run 'TestLifecycle/rpm' ./packaging/tests/lifecycle/
+
+.PHONY: integration-test-deb-vendor
+integration-test-deb-vendor: local-apt-repo local-apt-vendor-repo
+	go test -v -timeout 30m -run 'TestVendorReplacement/deb' ./packaging/tests/vendor/
+
+.PHONY: integration-test-rpm-vendor
+integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
+	go test -v -timeout 30m -run 'TestVendorReplacement/rpm' ./packaging/tests/vendor/
 
 # ============================================================================
 # Lint

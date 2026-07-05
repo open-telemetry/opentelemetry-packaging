@@ -17,6 +17,8 @@ make rpm-package-<component>   # Build a single RPM
 make integration-test-metadata # Fast metadata tests (no containers)
 make integration-tests         # Full E2E tests (requires Podman/Docker)
 make integration-test-deb-java # Single E2E test
+make integration-test-deb-lifecycle # Package lifecycle tests (preload, config, install/remove)
+make integration-test-rpm-vendor    # Vendor replacement tests (mock acme package)
 
 make lint                      # shellcheck + go vet
 make clean                     # Remove build/
@@ -29,7 +31,9 @@ make clean                     # Remove build/
 - `packaging/common/` — Config files, POSIX lifecycle scripts, man page templates (referenced by builder)
 - `packaging/repo/` — APT/YUM repo generation scripts (run in containers)
 - `packaging/tests/metadata/` — Host-side tests using native Go parsers (no CLI tools)
-- `packaging/tests/{deb,rpm}/` — Testcontainers-based E2E tests
+- `packaging/tests/{java,nodejs,dotnet,python}/` — Testcontainers-based E2E telemetry tests
+- `packaging/tests/lifecycle/` — Package lifecycle tests (preload scripts, config handling, install/remove)
+- `packaging/tests/vendor/` — Vendor replacement tests; `mkvendor/` builds the mock acme package
 - `packaging/common/<component>/release.txt` — Renovate-managed upstream version pins (Python pins live in `packaging/common/python/requirements.txt`)
 
 ## Coding conventions

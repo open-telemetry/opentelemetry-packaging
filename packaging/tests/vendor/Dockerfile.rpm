@@ -1,0 +1,29 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Vendor-replacement integration-test image for the RPM packages. The image
+# stages both the upstream local repository and the vendor repository (which
+# serves the mock acme-java-autoinstrumentation package built by mkvendor)
+# and idles; the tests drive dnf through Exec.
+#
+# The image is hermetic: the distro repositories are removed because the
+# packages under test declare no external dependencies, which keeps runtime
+# dnf operations offline and flake-free.
+
+ARG BASE_IMAGE=fedora:41
+
+FROM ${BASE_IMAGE}
+
+ARG ARCH=amd64
+
+RUN rm -f /etc/yum.repos.d/*.repo
+
+COPY build/local-repo/rpm /local-repo
+COPY build/local-repo/rpm-vendor /local-repo-vendor
+
+RUN printf '[opentelemetry-local]\nname=OpenTelemetry Local\nbaseurl=file:///local-repo/packages\nenabled=1\ngpgcheck=0\n' \
+      > /etc/yum.repos.d/opentelemetry-local.repo \
+    && printf '[opentelemetry-vendor]\nname=OpenTelemetry Vendor\nbaseurl=file:///local-repo-vendor/packages\nenabled=1\ngpgcheck=0\n' \
+      > /etc/yum.repos.d/opentelemetry-vendor.repo
+
+CMD ["sleep", "infinity"]

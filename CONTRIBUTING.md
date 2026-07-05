@@ -29,7 +29,8 @@ packaging/
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
     {python,java,nodejs,dotnet}/    Matrix E2E tests (deb+rpm × base images) asserting via the otel-sink
-    deb/lifecycle/                  Package lifecycle (install/upgrade/remove) tests
+    lifecycle/                      Package lifecycle tests (preload scripts, config handling, install/remove scenarios)
+    vendor/                         Vendor replacement tests (plus mkvendor/, the mock acme package builder)
     shared/                         Shared test application sources
 testutil/                    Shared Go test helpers
   otelsink/                  In-process OTLP sink + typed assertion API for E2E tests
@@ -124,6 +125,23 @@ make integration-test-rpm-nodejs
 make integration-test-deb-python
 ```
 
+### Lifecycle and vendor tests (containers required)
+
+The lifecycle tests validate the injector's `/etc/ld.so.preload` scripts, config file handling across remove, purge, and upgrade, and install/remove dependency scenarios.
+The vendor tests validate the vendor replacement mechanism using a mock `acme-java-autoinstrumentation` package built by `packaging/tests/vendor/mkvendor`.
+
+```sh
+make integration-test-deb-lifecycle
+```
+
+```sh
+make integration-test-rpm-vendor
+```
+
+The upgrade scenarios install from a second local repository (`build/local-repo/{apt,rpm}-next`) serving an injector built at `NEXT_VERSION` (defaults to `VERSION.1`) with a modified `default_env.conf`.
+The vendor scenarios install from a third local repository (`build/local-repo/{apt,rpm}-vendor`) so the E2E suites never see two providers of the same virtual package.
+The Makefile stages all of these automatically as target prerequisites.
+
 The Python integration tests run on the architecture of the containers your
 engine starts. The package is architecture-specific, so build it for that
 architecture — for example, on an arm64 host:
@@ -165,3 +183,5 @@ To add a new language auto-instrumentation package:
 5. Register the component in the `AllComponents` slice.
 6. Add metadata tests in `packaging/tests/metadata/metadata_test.go`.
 7. Add a matrix integration test in `packaging/tests/<lang>/`: one `<lang>_test.go` with a `{deb, rpm} × base image` matrix, plus `Dockerfile.deb` and `Dockerfile.rpm` parameterized by `BASE_IMAGE`. Assert on the exported telemetry via `testutil/otelsink`.
+8. Add the language to the `languages` list in `packaging/tests/lifecycle/lifecycle_test.go`, so the install scenarios cover it.
+9. Add the language to the `lang` matrix in `.github/workflows/build.yml`.

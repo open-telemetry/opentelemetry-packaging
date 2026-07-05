@@ -20,6 +20,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
+	tcexec "github.com/testcontainers/testcontainers-go/exec"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
@@ -225,6 +226,43 @@ func StartContainer(
 	return container
 }
 
+// ImageOf returns the name of the image a container runs, e.g. to start
+// further containers from an image that StartContainer built.
+func ImageOf(t *testing.T, container testcontainers.Container) string {
+	t.Helper()
+	dc, ok := container.(*testcontainers.DockerContainer)
+	require.True(t, ok, "container is not a DockerContainer")
+	require.NotEmpty(t, dc.Image)
+	return dc.Image
+}
+
+// StartContainerFromImage starts a container from an existing local image with
+// its default command. Suites whose scenarios run many containers from the
+// same Dockerfile should build the image once via StartContainer and start
+// the remaining containers from its image: concurrent scenario subtests would
+// otherwise each trigger their own build of the same Dockerfile, multiplying
+// build work and image storage.
+func StartContainerFromImage(t *testing.T, ctx context.Context, image string) testcontainers.Container {
+	t.Helper()
+
+	req := testcontainers.ContainerRequest{
+		Image:         image,
+		ImagePlatform: imagePlatform(),
+		WaitingFor:    wait.ForLog("").WithStartupTimeout(2 * time.Minute),
+	}
+
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = container.Terminate(context.Background())
+	})
+
+	return container
+}
+
 // ContainerHTTPGet sends an HTTP GET request to the given port and path on
 // a running container. Returns the response status code.
 func ContainerHTTPGet(t *testing.T, ctx context.Context, container testcontainers.Container, port, path string) int {
@@ -292,6 +330,40 @@ func FileContainsInContainer(t *testing.T, ctx context.Context, container testco
 	data, err := io.ReadAll(reader)
 	require.NoError(t, err)
 	return strings.Contains(string(data), substr)
+}
+
+// FileContentInContainer returns the full contents of a file inside the
+// container, failing the test if the file cannot be read.
+func FileContentInContainer(t *testing.T, ctx context.Context, container testcontainers.Container, path string) string {
+	t.Helper()
+	reader, err := container.CopyFileFromContainer(ctx, path)
+	require.NoError(t, err, "failed to copy %s from container", path)
+	defer reader.Close()
+
+	data, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	return string(data)
+}
+
+// ExecInContainer runs the given command inside the container and returns its
+// exit code and combined stdout/stderr.
+func ExecInContainer(t *testing.T, ctx context.Context, container testcontainers.Container, cmd ...string) (int, string) {
+	t.Helper()
+	code, reader, err := container.Exec(ctx, cmd, tcexec.Multiplexed())
+	require.NoError(t, err)
+
+	data, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	return code, string(data)
+}
+
+// ExecSucceeds runs the given command inside the container, fails the test if
+// it exits non-zero, and returns its combined stdout/stderr.
+func ExecSucceeds(t *testing.T, ctx context.Context, container testcontainers.Container, cmd ...string) string {
+	t.Helper()
+	code, output := ExecInContainer(t, ctx, container, cmd...)
+	require.Equal(t, 0, code, "command %v failed.\n\nOutput:\n%s", cmd, output)
+	return output
 }
 
 // --------------------------------------------------------------------------

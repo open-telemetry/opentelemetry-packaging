@@ -1,0 +1,32 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Lifecycle integration-test image for the RPM packages. Unlike the language
+# E2E images, this image installs nothing: the tests drive dnf through Exec
+# and assert on the resulting system state, so the image only stages the
+# local repositories and idles.
+#
+# The image is hermetic: the distro repositories are removed because the
+# packages under test declare no external dependencies, which keeps runtime
+# dnf operations offline and flake-free. Revisit if packages ever gain real
+# external dependencies.
+#
+# The next-version repository (a higher-versioned injector with a changed
+# default_env.conf, see the Makefile) is staged but not enabled; the upgrade
+# tests enable it at runtime.
+
+ARG BASE_IMAGE=fedora:41
+
+FROM ${BASE_IMAGE}
+
+ARG ARCH=amd64
+
+RUN rm -f /etc/yum.repos.d/*.repo
+
+COPY build/local-repo/rpm /local-repo
+COPY build/local-repo/rpm-next /local-repo-next
+
+RUN printf '[opentelemetry-local]\nname=OpenTelemetry Local\nbaseurl=file:///local-repo/packages\nenabled=1\ngpgcheck=0\n' \
+      > /etc/yum.repos.d/opentelemetry-local.repo
+
+CMD ["sleep", "infinity"]

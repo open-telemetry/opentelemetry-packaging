@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented
 
 ## Context
 
@@ -67,6 +67,7 @@ Validate that the injector's lifecycle scripts correctly manage `/etc/ld.so.prel
 | Remove preserves other entries in `/etc/ld.so.preload` | Non-destructive |
 
 **Implementation:** Install/remove the injector package in a container and inspect `/etc/ld.so.preload` at each stage.
+Implemented in `packaging/tests/lifecycle/preload_test.go`.
 
 ### 4. Config file lifecycle
 
@@ -96,6 +97,9 @@ Validate that configuration files are handled correctly across package lifecycle
 | User modifies `default_env.conf`: package upgrade preserves the modification | Modified conffile on upgrade |
 
 **Implementation:** Install packages, modify config files, upgrade/remove, and assert on file state and application behavior.
+Implemented in `packaging/tests/lifecycle/config_test.go`.
+The RPM equivalents of 4a (unmodified configs removed, modified configs saved as `.rpmsave`) are covered there as well.
+The runtime rows of 4c (the injector applying `default_env.conf` values and `conf.d/` drop-ins) are behavioral coverage the E2E telemetry suites already provide.
 
 ### 5. Install scenarios (beyond metapackage)
 
@@ -110,7 +114,10 @@ Validate that individual packages and combinations install correctly via `apt`/`
 | `apt remove opentelemetry-java-autoinstrumentation` | Removing one language doesn't remove injector |
 | `apt remove opentelemetry-injector` | Removing injector doesn't force-remove language packages |
 
+Removing the injector does remove the `opentelemetry` metapackage, which hard-depends on it; the language packages stay installed.
+
 **Implementation:** Run `apt install`/`apt remove` sequences in containers and verify package state with `dpkg -l`.
+Implemented in `packaging/tests/lifecycle/install_test.go`, for Python as well.
 
 ### 6. Vendor replacement
 
@@ -134,12 +141,14 @@ Build an `acme-java-autoinstrumentation` package that:
 | Revert: `apt install opentelemetry-java-autoinstrumentation` after vendor | Vendor removed, upstream restored |
 | Upstream `conf.d/java.conf` is replaced by vendor's, not duplicated | File ownership transfer |
 | Metapackage remains installed throughout swap and revert | Dependency resolution |
+| `apt install opentelemetry` with both upstream and vendor repositories enabled | Two providers of the same virtual never coexist |
 
 **Implementation:** Build a mock vendor package as part of the test setup, then run install/swap/revert sequences in containers.
+Implemented in `packaging/tests/vendor/vendor_test.go`; the mock package is built by `packaging/tests/vendor/mkvendor`.
 
 ### 7. E2E telemetry (existing, expanded)
 
-Already implemented for Java, Node.js, and .NET across DEB and RPM.
+Already implemented for Java, Node.js, .NET, and Python across DEB and RPM.
 No changes needed.
 
 ## Test infrastructure
@@ -153,15 +162,15 @@ New test file: `packaging/tests/metadata/metadata_test.go`.
 
 These need a base container with the local repo configured.
 The test execs `apt`/`dnf` commands and inspects state.
-These tests share a common Dockerfile per format (DEB/RPM) that just sets up the repo — no application runtime needed.
+These tests share a common Dockerfile per format (DEB/RPM) that just sets up the repos — no application runtime needed.
+The images are hermetic (distro repositories removed), which the packages' absence of external dependencies allows; runtime installs never touch the network.
+Each scenario runs in a fresh container because every scenario mutates global system state; the image is built once per format and shared across the scenario containers.
 
 ### Vendor replacement tests
 
-These need a build step for the mock `acme-*` package, then use the same lifecycle container pattern.
+These need a build step for the mock `acme-*` package (`packaging/tests/vendor/mkvendor`), then use the same lifecycle container pattern.
 
 ## Makefile targets
-
-The following targets are implemented today:
 
 ```
 make integration-tests                    # all tests
@@ -174,17 +183,20 @@ make integration-test-rpm-java            # E2E telemetry
 make integration-test-rpm-nodejs          # E2E telemetry
 make integration-test-rpm-dotnet          # E2E telemetry
 make integration-test-rpm-python          # E2E telemetry
-```
-
-The lifecycle and vendor-replacement categories above are not yet implemented.
-They are planned as the following targets:
-
-```
 make integration-test-deb-lifecycle       # DEB install/remove/upgrade/config
 make integration-test-rpm-lifecycle       # RPM install/remove/upgrade/config
 make integration-test-deb-vendor          # DEB vendor replacement
 make integration-test-rpm-vendor          # RPM vendor replacement
 ```
+
+The lifecycle targets cover categories 3, 4, and 5 in `packaging/tests/lifecycle/`.
+The vendor targets cover category 6 in `packaging/tests/vendor/`.
+
+The upgrade scenarios install from a second local repository (`build/local-repo/{apt,rpm}-next`) that serves an injector built at `NEXT_VERSION` (defaults to `VERSION.1`) with a modified `default_env.conf`.
+The modification is required because dpkg and rpm skip conffile-conflict handling entirely when the pristine contents are identical between versions.
+
+The vendor scenarios install from a third local repository (`build/local-repo/{apt,rpm}-vendor`) that serves the mock `acme-java-autoinstrumentation` package built by `packaging/tests/vendor/mkvendor`.
+The vendor repository is kept separate so the E2E suites never see two providers of the same virtual package.
 
 ## Priority order
 
