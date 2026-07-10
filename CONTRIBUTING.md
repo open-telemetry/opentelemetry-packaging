@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **Go 1.22+** (package builds and tests are pure Go)
+- **Go 1.26+** (package builds and tests are pure Go)
 - **npm** (needed to fetch the Node.js auto-instrumentation agent from the npm registry)
 - **Python 3 with pip** (needed to fetch the Python auto-instrumentation packages; invoked as `python3 -m pip`)
 - **A container engine** (Podman or Docker — needed for local repository generation and integration tests)
