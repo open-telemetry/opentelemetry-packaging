@@ -4,7 +4,7 @@ Date: 2026-07-04.
 Environment: Debian 12 (arm64) Lima VM, packages from this repository installed, injector active system-wide via `/etc/ld.so.preload`.
 
 Goal: switch a whole host to [declarative configuration](https://opentelemetry.io/docs/languages/sdk-configuration/declarative-configuration/) using only the mechanisms our packages provide.
-The injector injects `OTEL_CONFIG_FILE` (from `default_env.conf`) into every process, the packaged agents pick it up, and completely unmodified applications export to Dash0 as configured by a single system-wide YAML file.
+The injector injects `OTEL_CONFIG_FILE` (from `default_env.conf`) into every process, the packaged agents pick it up, and completely unmodified applications export to an observability backend as configured by a single system-wide YAML file.
 
 ## TL;DR
 
