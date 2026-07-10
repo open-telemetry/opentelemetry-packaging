@@ -139,6 +139,10 @@ Declarative configuration works out of the box with agent ≥ 2.26.0, including 
   Until it does, declarative configuration forces `opentelemetry-exporter-otlp-proto-http` — and its protobuf dependency — back into our bundle, undercutting the pyproto swap for declarative-config users.
 - Our own `sitecustomize` dependency-conflict guard makes system-Python activation fragile: every dependency added to the bundle is a new potential conflict with distro packages.
   Concretely, adding pyyaml made the guard refuse activation on Debian 12 (`PyYAML: required ==6.0.3, found 6.0` from the distro's `python3-yaml`); clean virtualenvs are unaffected.
+- (2026-07-10) The file configurator substitutes environment variables on the raw file text before YAML parsing, **comments included**: a comment mentioning a dollar-brace variable reference raises `EnvSubstitutionError` and crashes the configurator.
+  Java and Node.js parse first and are unaffected; the shipped `otel-config.yaml` now avoids such references in comments.
+- (2026-07-10) The substitution also rejects a reference to an unset variable that has no default, where Java and Node.js substitute an empty string per the spec.
+  The shipped `otel-config.yaml` now carries an explicit empty default on every interpolation that can be unset.
 
 ### .NET (upstream: opentelemetry-dotnet-instrumentation)
 

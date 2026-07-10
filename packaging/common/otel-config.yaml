@@ -16,10 +16,17 @@
 # (The second line is only required by .NET and ignored by the others.)
 #
 # Once OTEL_CONFIG_FILE is in effect, the SDKs ignore all other OTEL_*
-# environment variables as direct configuration. The ${VAR} interpolations
-# below deliberately keep consuming the variables the injector injects, so
-# default_env.conf remains the single source of endpoint and credentials for
-# both environment-variable-configured and declaratively configured processes.
+# environment variables as direct configuration. The environment-variable
+# interpolations below deliberately keep consuming the variables the injector
+# injects, so default_env.conf remains the single source of endpoint and
+# credentials for both environment-variable-configured and declaratively
+# configured processes.
+#
+# Every interpolation carries a default: the Python SDK rejects a reference
+# to an unset variable that has none (Java and Node.js substitute an empty
+# string). For the same reason comments in this file must not contain
+# dollar-brace variable references: Python substitutes on the raw file text,
+# comments included.
 
 file_format: "1.0"
 
@@ -27,6 +34,10 @@ resource:
   attributes:
     - name: service.name
       value: ${OTEL_SERVICE_NAME:-unknown_service}
+  # attributes_list accepts the OTEL_RESOURCE_ATTRIBUTES wire format as-is,
+  # so resource attributes injected via default_env.conf keep applying under
+  # declarative configuration. Entries under attributes take precedence.
+  attributes_list: ${OTEL_RESOURCE_ATTRIBUTES:-}
 
 tracer_provider:
   processors:
@@ -38,7 +49,7 @@ tracer_provider:
             endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}/v1/traces
             # headers_list accepts the OTEL_EXPORTER_OTLP_HEADERS wire format
             # (comma-separated, percent-encoded) as-is.
-            headers_list: ${OTEL_EXPORTER_OTLP_HEADERS}
+            headers_list: ${OTEL_EXPORTER_OTLP_HEADERS:-}
 
 meter_provider:
   readers:
@@ -46,7 +57,7 @@ meter_provider:
         exporter:
           otlp_http:
             endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}/v1/metrics
-            headers_list: ${OTEL_EXPORTER_OTLP_HEADERS}
+            headers_list: ${OTEL_EXPORTER_OTLP_HEADERS:-}
 
 logger_provider:
   processors:
@@ -54,7 +65,7 @@ logger_provider:
         exporter:
           otlp_http:
             endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}/v1/logs
-            headers_list: ${OTEL_EXPORTER_OTLP_HEADERS}
+            headers_list: ${OTEL_EXPORTER_OTLP_HEADERS:-}
 
 # .NET enables no instrumentations under file-based configuration until they
 # are listed here — unlike Java, Node.js, and Python, which subscribe their
