@@ -278,6 +278,10 @@ func pythonInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 		regularFile(filepath.Join(commonDir, "python", "injector.conf"), injectorConfigDir+"/conf.d/python.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-python.8.gz", 0o644),
 		regularFile(filepath.Join(commonDir, "python", "README.md"), "/usr/share/doc/opentelemetry-python-autoinstrumentation/README.md", 0o644),
+		// The bundle redistributes files derived from the Dash0 operator; the
+		// NOTICE at the repository root carries the attribution required by
+		// Apache-2.0 and ships alongside the package documentation.
+		regularFile(filepath.Join(filepath.Dir(cfg.PackagingDir), "NOTICE"), "/usr/share/doc/opentelemetry-python-autoinstrumentation/NOTICE", 0o644),
 	}
 
 	return info, cleanup, nil

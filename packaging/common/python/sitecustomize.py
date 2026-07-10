@@ -1,3 +1,10 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Derived from sitecustomize.py in the Dash0 operator
+# (https://github.com/dash0hq/dash0-operator, images/instrumentation/python/),
+# Copyright 2026 Dash0 Inc., Apache-2.0. See the NOTICE file at the repository root.
+
 # Trigger the load of the OpenTelemetry distribution for Python. This is enabled by prepending a
 # directory with this script to the PYTHONPATH environment variable via the OpenTelemetry injector.
 

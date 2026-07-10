@@ -1,5 +1,6 @@
 # Modelled after
 # https://github.com/dash0hq/dash0-operator/blob/main/images/instrumentation/python/requirements.txt
+# (Copyright 2026 Dash0 Inc., Apache-2.0 — see the NOTICE file at the repository root)
 # with opentelemetry-exporter-otlp-proto-http replaced by opentelemetry-exporter-otlp-pyproto-http
 # (pure-Python protobuf, no google-protobuf C-extension dependency).
 

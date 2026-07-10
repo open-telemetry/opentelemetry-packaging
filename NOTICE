@@ -1,0 +1,13 @@
+OpenTelemetry Packaging
+Copyright The OpenTelemetry Authors
+
+This product includes software developed at Dash0 (https://www.dash0.com/).
+
+The following files are derived from the Dash0 operator
+(https://github.com/dash0hq/dash0-operator),
+Copyright 2026 Dash0 Inc., licensed under the Apache License, Version 2.0:
+
+- packaging/common/python/sitecustomize.py
+  (derived from images/instrumentation/python/sitecustomize.py)
+- packaging/common/python/requirements.txt
+  (modelled after images/instrumentation/python/requirements.txt)
