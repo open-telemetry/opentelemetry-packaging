@@ -45,7 +45,15 @@ debug_enabled = os.environ.get("OTEL_INJECTOR_LOG_LEVEL") == "debug"
 
 
 def _log(level, message):
-    print("[opentelemetry-python-autoinstrumentation] {}: {}".format(level, message), file=stderr)
+    # sys.stderr can be None (daemons, pythonw); print(file=None) would fall
+    # through to stdout and corrupt the application's output stream. Diagnostics
+    # must never do that, nor raise (e.g. on a closed fd 2).
+    if stderr is None:
+        return
+    try:
+        print("[opentelemetry-python-autoinstrumentation] {}: {}".format(level, message), file=stderr)
+    except Exception:
+        pass
 
 
 def _log_warn(message):
@@ -75,8 +83,14 @@ def _self_deactivate(current_site):
     # to load our packages in a potentially conflicting state.
 
     # Remove this site from PYTHONPATH so child processes do not load it.
+    # Compared normalized: the injected entry can differ textually from
+    # dirname(__file__) (e.g. a trailing slash).
+    normalized_site = os.path.normpath(current_site)
     current_pythonpath = os.environ.get("PYTHONPATH", "")
-    pythonpath_entries = [entry for entry in current_pythonpath.split(":") if entry != current_site]
+    pythonpath_entries = [
+        entry for entry in current_pythonpath.split(":")
+        if os.path.normpath(entry) != normalized_site
+    ]
     new_pythonpath = ":".join(pythonpath_entries)
     _log_debug('setting PYTHONPATH in _self_deactivate: "{}"'.format(new_pythonpath))
     os.environ["PYTHONPATH"] = new_pythonpath
@@ -85,8 +99,7 @@ def _self_deactivate(current_site):
     _log_debug("clearing PYTHON_AUTO_INSTRUMENTATION_AGENT_PATH_PREFIX in _self_deactivate")
     os.environ["PYTHON_AUTO_INSTRUMENTATION_AGENT_PATH_PREFIX"] = ""
 
-    if current_site in path:
-        path.remove(current_site)
+    path[:] = [entry for entry in path if os.path.normpath(entry) != normalized_site]
 
 
 def _check_for_double_instrumentation(current_site):
@@ -261,7 +274,13 @@ def import_distro():
     # Temporarily remove this site so the double-instrumentation check only sees the application's
     # own packages. After the check we re-append it, which also moves it to the end of sys.path so
     # the application's package versions win over ours in case of overlap.
-    path.remove(current_site)
+    # Compared normalized: the sys.path entry can differ textually from
+    # dirname(__file__) (e.g. a trailing slash in the injected PYTHONPATH
+    # value). Leaving the site on sys.path here would make the
+    # double-instrumentation check see the bundle's own packages and falsely
+    # self-deactivate; an unguarded exact remove() would raise instead.
+    normalized_site = os.path.normpath(current_site)
+    path[:] = [entry for entry in path if os.path.normpath(entry) != normalized_site]
 
     if _check_for_double_instrumentation(current_site):
         return

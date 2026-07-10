@@ -194,7 +194,14 @@ class ImportDistroTests(unittest.TestCase):
             f.write("exit {}\n".format(exit_code))
         os.chmod(path, 0o755)
 
-    def _exec_sitecustomize(self, extra_env=None, all_dependencies=None, installed_version="1.0.0"):
+    def _exec_sitecustomize(
+        self,
+        extra_env=None,
+        all_dependencies=None,
+        installed_version="1.0.0",
+        installed_distributions=None,
+        sys_path_entry=None,
+    ):
         """Execute sitecustomize.py end to end.
 
         The module's own directory is redirected to self.site_dir (a temp dir
@@ -227,9 +234,9 @@ class ImportDistroTests(unittest.TestCase):
 
         buf = StringIO()
         with patch.dict(os.environ, env, clear=True), \
-                patch.object(sys, "path", list(sys.path) + [self.site_dir]), \
+                patch.object(sys, "path", list(sys.path) + [sys_path_entry or self.site_dir]), \
                 patch("os.path.dirname", side_effect=fake_dirname), \
-                patch("importlib.metadata.distributions", return_value=[]), \
+                patch("importlib.metadata.distributions", return_value=installed_distributions or []), \
                 patch("importlib.metadata.distribution", return_value=distribution), \
                 patch.dict(sys.modules, {
                     "opentelemetry": MagicMock(),
@@ -339,6 +346,74 @@ class ImportDistroTests(unittest.TestCase):
             all_dependencies="foo==1.0.0\n",
         )
         self._assert_activated(auto_instrumentation, observed_env)
+
+    def test_config_file_validator_execution_failure_proceeds(self):
+        # A validator that exists but cannot be executed makes subprocess.run
+        # raise OSError; the guard must warn and proceed, not crash or
+        # deactivate.
+        validator = os.path.join(self.base_dir, "otel-config-check")
+        with open(validator, "w") as f:
+            f.write("not a program")
+        os.chmod(validator, 0o644)
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_CONFIG_FILE": os.path.join(self.base_dir, "otel-config.yaml")},
+            all_dependencies="foo==1.0.0\n",
+        )
+        self._assert_activated(auto_instrumentation, observed_env)
+        self.assertIn("cannot run otel-config-check", output)
+
+    def test_deactivates_on_double_instrumentation(self):
+        dist = MagicMock()
+        dist.metadata = {"Name": "opentelemetry-sdk"}
+        dist._path = "/app/site-packages/opentelemetry_sdk-1.20.0.dist-info"
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
+            all_dependencies="foo==1.0.0\n",
+            installed_distributions=[dist],
+        )
+        self._assert_deactivated(auto_instrumentation, observed_env)
+        self.assertIn("already instrumented", output)
+        self.assertIn("opentelemetry_sdk-1.20.0.dist-info", output)
+
+    def test_unrelated_installed_distribution_does_not_deactivate(self):
+        dist = MagicMock()
+        dist.metadata = {"Name": "flask"}
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
+            all_dependencies="foo==1.0.0\n",
+            installed_distributions=[dist],
+        )
+        self._assert_activated(auto_instrumentation, observed_env)
+
+    def test_trailing_slash_pythonpath_entry_does_not_crash(self):
+        # The sys.path entry can differ textually from dirname(__file__)
+        # (e.g. a trailing slash in the injected PYTHONPATH value); the module
+        # must not raise ValueError out of the unguarded removal.
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
+            all_dependencies="foo==1.0.0\n",
+            sys_path_entry=self.site_dir + "/",
+        )
+        self._assert_activated(auto_instrumentation, observed_env)
+
+
+class LoggingTests(unittest.TestCase):
+    """The diagnostics channel must never touch stdout or raise."""
+
+    def test_log_with_stderr_none_is_silent(self):
+        module, _ = _load_benign()
+        module.stderr = None
+        module._log_warn("must not raise nor reach stdout")
+
+    def test_log_with_broken_stderr_does_not_raise(self):
+        module, _ = _load_benign()
+
+        class Broken(object):
+            def write(self, *_args):
+                raise IOError("closed")
+
+        module.stderr = Broken()
+        module._log_warn("must not raise")
 
 
 if __name__ == "__main__":
