@@ -13,6 +13,7 @@ No Ruby, FPM, or special Docker images are required to build packages.
 
 ```
 cmd/build-packages/          CLI entry point for building .deb and .rpm packages
+cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
 packaging/
   builder/                   Go library that drives nfpm to create packages
     builder.go               Build orchestration, common metadata
@@ -103,11 +104,22 @@ Under the hood, `make packages` runs:
 go run ./cmd/build-packages -version <VERSION> -arch <ARCH> -format all -output build/packages
 ```
 
+The Python package ships the `otel-config-check` validator, which the make targets cross-compile beforehand (`make otel-config-check`, producing `build/bin/otel-config-check-<arch>`).
+When invoking `build-packages` directly for the Python component, build that binary first, or point `-config-check-binary` at one.
+
 ## Testing
+
+### Go command unit tests (fast, no containers)
+
+Unit tests for the Go commands, currently the `otel-config-check` declarative-configuration validator that ships inside the Python package.
+
+```sh
+make go-unit-tests
+```
 
 ### Python sitecustomize unit tests (fast, no containers)
 
-Unit tests for the guard logic in `packaging/common/python/sitecustomize.py` (version gate, protocol check, double-instrumentation detection, dependency-conflict checking).
+Unit tests for the guard logic in `packaging/common/python/sitecustomize.py` (version gate, protocol and configuration-file checks, double-instrumentation detection, dependency-conflict checking).
 They run in a throwaway virtualenv under `build/`, so the host Python is untouched.
 
 ```sh

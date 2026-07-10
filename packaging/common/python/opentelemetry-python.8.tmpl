@@ -20,7 +20,8 @@ to
 for every process. Python then automatically executes the
 .B sitecustomize.py
 module found there before the application starts. That module performs safety checks
-(Python version, OTLP protocol, double-instrumentation, dependency conflicts) and, if
+(Python version, OTLP protocol or declarative configuration file validation,
+double-instrumentation, dependency conflicts) and, if
 all pass, calls
 .B opentelemetry.instrumentation.auto_instrumentation.initialize()
 to activate all discovered instrumentation plug-ins.
@@ -57,7 +58,11 @@ Must be set to
 .B http/protobuf
 or
 .B http/json
-(grpc is not supported by this package).
+(grpc is not supported by this package). Ignored when
+.B OTEL_CONFIG_FILE
+is set; the configuration file is then validated by the bundled
+.B otel-config-check
+utility instead.
 .TP
 .B OTEL_TRACES_EXPORTER
 Set the traces exporter (default: otlp_pyproto_http).

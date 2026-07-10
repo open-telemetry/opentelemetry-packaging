@@ -29,6 +29,11 @@ type Config struct {
 	Arch         string // Target architecture: amd64 or arm64
 	PackagingDir string // Absolute path to the packaging/ directory
 	OutputDir    string // Absolute path to the output directory
+	// ConfigCheckBinary is the path to a prebuilt otel-config-check binary
+	// for the target architecture, shipped inside the Python package. The
+	// builder only assembles packages; the binary is cross-compiled upfront
+	// (see the otel-config-check Makefile target).
+	ConfigCheckBinary string
 }
 
 // Component describes a single package to build.

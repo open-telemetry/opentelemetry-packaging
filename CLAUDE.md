@@ -14,6 +14,7 @@ make rpm-packages              # Build RPM packages only
 make deb-package-<component>   # Build a single DEB (injector, java, nodejs, dotnet, meta)
 make rpm-package-<component>   # Build a single RPM
 
+make go-unit-tests             # Go command unit tests (otel-config-check)
 make python-unit-tests         # sitecustomize.py unit tests (throwaway venv, no containers)
 make integration-test-metadata # Fast metadata tests (no containers)
 make integration-tests         # Full E2E tests (requires Podman/Docker)
@@ -29,6 +30,7 @@ make clean                     # Remove build/
 ## Architecture at a glance
 
 - `cmd/build-packages/` — CLI entry point; calls `packaging/builder/`
+- `cmd/otel-config-check/` — declarative-config validator, cross-compiled into the Python package and invoked by sitecustomize.py
 - `packaging/builder/` — Go package that constructs nfpm.Info per component and writes .deb/.rpm
 - `packaging/common/` — Config files, POSIX lifecycle scripts, man page templates (referenced by builder)
 - `packaging/repo/` — APT/YUM repo generation scripts (run in containers)

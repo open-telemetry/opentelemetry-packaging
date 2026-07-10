@@ -37,6 +37,9 @@ func main() {
 	outputDir := flag.String("output", "build/packages", "Output directory for built packages")
 	component := flag.String("component", "all", "Component to build: injector, java, nodejs, dotnet, meta, or all")
 	packagingDir := flag.String("packaging-dir", "", "Path to packaging/ directory (auto-detected if empty)")
+	configCheckBinary := flag.String("config-check-binary", "",
+		"Path to a prebuilt otel-config-check binary for the target architecture "+
+			"(defaults to build/bin/otel-config-check-<arch>; build it with `make otel-config-check`)")
 
 	flag.Parse()
 
@@ -75,11 +78,21 @@ func main() {
 		log.Fatalf("error: %v", err)
 	}
 
+	checkBinary := *configCheckBinary
+	if checkBinary == "" {
+		checkBinary = filepath.Join("build", "bin", "otel-config-check-"+*arch)
+	}
+	absCheckBinary, err := filepath.Abs(checkBinary)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+
 	cfg := builder.Config{
-		Version:      strings.TrimPrefix(*version, "v"),
-		Arch:         *arch,
-		PackagingDir: pkgDir,
-		OutputDir:    absOutput,
+		Version:           strings.TrimPrefix(*version, "v"),
+		Arch:              *arch,
+		PackagingDir:      pkgDir,
+		OutputDir:         absOutput,
+		ConfigCheckBinary: absCheckBinary,
 	}
 
 	var formats []string

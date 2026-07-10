@@ -56,11 +56,18 @@ export OTEL_CONFIG_FILE=/etc/opentelemetry/python/otel-config.yaml
 `sitecustomize.py` performs the following checks at startup before activating instrumentation:
 
 1. **Python version**: Requires Python ≥ 3.10. Older versions are skipped gracefully.
-2. **OTLP protocol**: Requires `OTEL_EXPORTER_OTLP_PROTOCOL` to be set and not `grpc`.
+2. **OTLP protocol / configuration file**: Without `OTEL_CONFIG_FILE`, requires
+   `OTEL_EXPORTER_OTLP_PROTOCOL` to be set and not `grpc`. With `OTEL_CONFIG_FILE` set,
+   the SDK ignores the `OTEL_*` exporter variables, so instead the bundled
+   `otel-config-check` utility validates the configuration file (readable, valid YAML,
+   `file_format: "1.0"`, no `otlp_grpc` exporter). Self-deactivates with the
+   validation error if the file is not usable.
 3. **Double instrumentation**: Detects if the application already carries OTel SDK
    dependencies and self-deactivates to avoid conflicts.
 4. **Dependency conflicts**: Compares the bundled package versions against those installed
-   in the application. Self-deactivates if conflicts are detected.
+   in the application. Self-deactivates if conflicts are detected, except for
+   general-purpose libraries (PyYAML, jsonschema) where the application's version is
+   expected to keep working: those log a warning instead.
 
 ## Supported libraries
 

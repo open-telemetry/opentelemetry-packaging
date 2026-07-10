@@ -31,6 +31,16 @@ double_instrumentation_check_packages = [
     "opentelemetry-proto",
 ]
 
+# Packages exempt from deactivation on version conflicts: general-purpose
+# libraries with stable APIs where the application's version (which wins on
+# sys.path) is expected to keep working with the bundled SDK. A mismatch logs
+# a warning instead of deactivating; e.g. Debian's python3-yaml 6.0 versus the
+# bundled PyYAML pin.
+version_conflict_exempt_packages = [
+    "pyyaml",
+    "jsonschema",
+]
+
 debug_enabled = os.environ.get("OTEL_INJECTOR_LOG_LEVEL") == "debug"
 
 
@@ -159,11 +169,41 @@ def _check_dependency_version_conflict(req_string, version_conflicts):
 
     _log_debug("installed_version: {}".format(installed_version))
     if req.specifier and installed_version not in req.specifier:
+        if req.name.lower() in version_conflict_exempt_packages:
+            _log_warn(
+                'the installed version {} of package "{}" differs from the bundled requirement {}; '
+                "continuing anyway (the installed version takes precedence)".format(
+                    installed_version, req.name, req.specifier))
+            return
         _log_debug("adding version conflict for {}".format(req.name))
         version_conflicts[req.name] = {
             "version_required": str(req.specifier),
             "version_found": str(installed_version),
         }
+
+
+def _validate_config_file(current_site, config_file):
+    """Validate the declarative configuration file with the bundled otel-config-check.
+
+    Returns None when the file is usable (or when validation is impossible, in
+    which case a debug/warning line explains why), and a human-readable error
+    message when the file would break the SDK's file configurator.
+    """
+    import subprocess
+
+    validator = os.path.join(dirname(current_site), "otel-config-check")
+    if not os.path.isfile(validator):
+        _log_debug("otel-config-check not found at {}; skipping configuration file validation".format(validator))
+        return None
+    try:
+        result = subprocess.run([validator, config_file], capture_output=True, text=True, timeout=10)
+    except Exception as e:
+        _log_warn("cannot run otel-config-check ({}: {}); skipping configuration file validation".format(
+            type(e).__name__, e))
+        return None
+    if result.returncode != 0:
+        return (result.stdout + result.stderr).strip()
+    return None
 
 
 def import_distro():
@@ -177,28 +217,45 @@ def import_distro():
         _print_cannot_auto_instrument_message("unsupported Python version: {}".format(version))
         return
     _log_debug("found eligible Python version: {}".format(version_info))
-    _log_debug("checking OTEL_EXPORTER_OTLP_PROTOCOL")
 
-    otlp_protocol = os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL")
-    if otlp_protocol is None:
-        # Without an explicit protocol, opentelemetry-distro defaults to grpc, which is not
-        # included in this package. Self-deactivate to avoid a RuntimeError at startup.
-        _self_deactivate(current_site)
-        _print_cannot_auto_instrument_message(
-            "OTEL_EXPORTER_OTLP_PROTOCOL is not set. "
-            "(If OTEL_EXPORTER_OTLP_ENDPOINT is set on the container, the injector cannot set its own "
-            "OTEL_EXPORTER_OTLP_PROTOCOL. Remove OTEL_EXPORTER_OTLP_ENDPOINT from the container if "
-            "you want Python auto-instrumentation.)"
-        )
-        return
-    if otlp_protocol == "grpc":
-        _self_deactivate(current_site)
-        _print_cannot_auto_instrument_message(
-            "OTEL_EXPORTER_OTLP_PROTOCOL=grpc is not supported. "
-            "This package only includes the HTTP exporter. Use http/protobuf or http/json."
-        )
-        return
-    _log_debug("found eligible OTEL_EXPORTER_OTLP_PROTOCOL value: {}".format(otlp_protocol))
+    config_file = os.environ.get("OTEL_CONFIG_FILE")
+    if config_file:
+        # With OTEL_CONFIG_FILE in effect the SDK ignores the OTEL_* exporter
+        # environment variables, so the protocol guard below would check
+        # values that are never used. Validate the configuration file instead
+        # (readable, valid YAML, file_format "1.0", no otlp_grpc exporter).
+        _log_debug("validating OTEL_CONFIG_FILE: {}".format(config_file))
+        validation_error = _validate_config_file(current_site, config_file)
+        if validation_error is not None:
+            _self_deactivate(current_site)
+            _print_cannot_auto_instrument_message(
+                "the configuration file set via OTEL_CONFIG_FILE ({}) is not usable: {}".format(
+                    config_file, validation_error))
+            return
+    else:
+        _log_debug("checking OTEL_EXPORTER_OTLP_PROTOCOL")
+
+        otlp_protocol = os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL")
+        if otlp_protocol is None:
+            # Without an explicit protocol, opentelemetry-distro defaults to grpc, which is not
+            # included in this package. Self-deactivate to avoid a RuntimeError at startup.
+            _self_deactivate(current_site)
+            _print_cannot_auto_instrument_message(
+                "OTEL_EXPORTER_OTLP_PROTOCOL is not set. "
+                "(If OTEL_EXPORTER_OTLP_ENDPOINT is set on the container, the injector cannot set its own "
+                "OTEL_EXPORTER_OTLP_PROTOCOL. Remove OTEL_EXPORTER_OTLP_ENDPOINT from the container if "
+                "you want Python auto-instrumentation.)"
+            )
+            return
+        if otlp_protocol == "grpc":
+            _self_deactivate(current_site)
+            _print_cannot_auto_instrument_message(
+                "OTEL_EXPORTER_OTLP_PROTOCOL=grpc is not supported. "
+                "This package only includes the HTTP exporter. Use http/protobuf or http/json."
+            )
+            return
+        _log_debug("found eligible OTEL_EXPORTER_OTLP_PROTOCOL value: {}".format(otlp_protocol))
+
     _log_debug("checking for double instrumentation")
 
     # Temporarily remove this site so the double-instrumentation check only sees the application's

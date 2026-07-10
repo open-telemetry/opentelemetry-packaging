@@ -228,6 +228,17 @@ func dotnetInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 }
 
 func pythonInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
+	// sitecustomize.py invokes this validator when OTEL_CONFIG_FILE is set, so
+	// that a broken declarative configuration self-deactivates instrumentation
+	// instead of crashing the SDK's file configurator. It is cross-compiled
+	// before the package build (Makefile target otel-config-check); fail fast
+	// before the pip download when it is missing.
+	if _, err := os.Stat(cfg.ConfigCheckBinary); err != nil {
+		return nil, func() {}, fmt.Errorf(
+			"otel-config-check binary not found at %q: build it with `make otel-config-check` or pass -config-check-binary: %w",
+			cfg.ConfigCheckBinary, err)
+	}
+
 	staging, err := os.MkdirTemp("", "otel-python-*")
 	if err != nil {
 		return nil, nil, err
@@ -274,6 +285,7 @@ func pythonInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 		// conf.d prefix stays pythonInstallDir. The bundled wheels are glibc
 		// manylinux; a musl/ variant would sit alongside for musl-based distros.
 		tree(pythonDir, pythonInstallDir+"/glibc"),
+		regularFile(cfg.ConfigCheckBinary, pythonInstallDir+"/otel-config-check", 0o755),
 		configFile(filepath.Join(commonDir, "python", "otel-config.yaml"), pythonConfigDir+"/otel-config.yaml"),
 		regularFile(filepath.Join(commonDir, "python", "injector.conf"), injectorConfigDir+"/conf.d/python.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-python.8.gz", 0o644),

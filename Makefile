@@ -63,24 +63,32 @@ TEST_LANGUAGES := java nodejs dotnet python
 # Package Build Targets (nfpm, pure Go)
 # ============================================================================
 
+# Cross-compiles the otel-config-check validator that ships inside the Python
+# package. Pure Go with CGO disabled, so any build host produces the
+# linux/$(ARCH) binary; go build is incremental, so running this before every
+# package build is cheap.
+.PHONY: otel-config-check
+otel-config-check:
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -trimpath -o build/bin/otel-config-check-$(ARCH) ./cmd/otel-config-check
+
 .PHONY: deb-package-%
-deb-package-%:
+deb-package-%: otel-config-check
 	go run ./cmd/build-packages -version $(VERSION) -arch $(ARCH) -format deb -component $* -output $(OUTPUT_DIR)
 
 .PHONY: deb-packages
-deb-packages:
+deb-packages: otel-config-check
 	go run ./cmd/build-packages -version $(VERSION) -arch $(ARCH) -format deb -output $(OUTPUT_DIR)
 
 .PHONY: rpm-package-%
-rpm-package-%:
+rpm-package-%: otel-config-check
 	go run ./cmd/build-packages -version $(VERSION) -arch $(ARCH) -format rpm -component $* -output $(OUTPUT_DIR)
 
 .PHONY: rpm-packages
-rpm-packages:
+rpm-packages: otel-config-check
 	go run ./cmd/build-packages -version $(VERSION) -arch $(ARCH) -format rpm -output $(OUTPUT_DIR)
 
 .PHONY: packages
-packages:
+packages: otel-config-check
 	go run ./cmd/build-packages -version $(VERSION) -arch $(ARCH) -format all -output $(OUTPUT_DIR)
 
 # ============================================================================
@@ -265,6 +273,12 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 # ============================================================================
 # Unit Tests
 # ============================================================================
+
+# Unit tests for the Go commands (e.g. the otel-config-check validator shipped
+# in the Python package).
+.PHONY: go-unit-tests
+go-unit-tests:
+	go test -v ./cmd/...
 
 # Unit tests for sitecustomize.py. They need the `packaging` module (a runtime
 # dependency of sitecustomize.py itself); a throwaway virtualenv keeps the
