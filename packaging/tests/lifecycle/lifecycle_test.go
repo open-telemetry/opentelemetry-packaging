@@ -26,6 +26,7 @@ import (
 const (
 	preloadPath      = "/etc/ld.so.preload"
 	injectorLib      = "/usr/lib/opentelemetry/injector/libotelinject.so"
+	javaAgentJar     = "/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar"
 	injectorConfDir  = "/etc/opentelemetry/injector"
 	injectorConfPath = injectorConfDir + "/injector.conf"
 	envConfPath      = injectorConfDir + "/default_env.conf"

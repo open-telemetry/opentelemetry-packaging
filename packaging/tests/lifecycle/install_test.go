@@ -69,6 +69,21 @@ var installScenarios = []scenario{
 		},
 	},
 	{
+		name: "remove-deletes-payload-files",
+		run: func(t *testing.T, ctx context.Context, h *harness) {
+			h.install(t, ctx, "opentelemetry-injector", "opentelemetry-java-autoinstrumentation")
+			require.True(t, h.fileExists(t, ctx, injectorLib))
+			require.True(t, h.fileExists(t, ctx, javaAgentJar))
+
+			h.remove(t, ctx, "opentelemetry-injector", "opentelemetry-java-autoinstrumentation")
+
+			require.False(t, h.fileExists(t, ctx, injectorLib),
+				"the injector library should be gone after remove")
+			require.False(t, h.fileExists(t, ctx, javaAgentJar),
+				"the Java agent JAR should be gone after remove")
+		},
+	},
+	{
 		name: "remove-language-keeps-injector",
 		run: func(t *testing.T, ctx context.Context, h *harness) {
 			h.install(t, ctx, "opentelemetry")

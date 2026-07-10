@@ -46,6 +46,36 @@ var preloadScenarios = []scenario{
 		},
 	},
 	{
+		name: "preload-remove-tolerates-missing-file",
+		run: func(t *testing.T, ctx context.Context, h *harness) {
+			h.install(t, ctx, "opentelemetry-injector")
+			// A local administrator may have cleaned up ld.so.preload by hand;
+			// the preuninstall script must not fail the removal over it (a
+			// failing preuninstall blocks the package removal altogether).
+			h.exec(t, ctx, "rm", "-f", preloadPath)
+
+			h.remove(t, ctx, "opentelemetry-injector")
+
+			require.False(t, h.installed(t, ctx, "opentelemetry-injector"),
+				"removal must succeed when %s is already gone", preloadPath)
+		},
+	},
+	{
+		name: "preload-whitespace-only-file-deleted-on-remove",
+		run: func(t *testing.T, ctx context.Context, h *harness) {
+			h.install(t, ctx, "opentelemetry-injector")
+			// Leave whitespace lines around the injector entry; once the entry
+			// is removed, a file holding only whitespace must be deleted, not
+			// left behind.
+			h.exec(t, ctx, "sh", "-c", "printf '\\n \\n' >> "+preloadPath)
+
+			h.remove(t, ctx, "opentelemetry-injector")
+
+			require.False(t, h.fileExists(t, ctx, preloadPath),
+				"%s holding only whitespace lines should be deleted on remove", preloadPath)
+		},
+	},
+	{
 		name: "preload-preserves-foreign-entries",
 		run: func(t *testing.T, ctx context.Context, h *harness) {
 			// Pre-seed a foreign preload entry, as another product might have.
