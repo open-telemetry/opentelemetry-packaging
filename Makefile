@@ -218,35 +218,35 @@ integration-tests: local-repos local-apt-repo-next local-rpm-repo-next \
 
 .PHONY: integration-test-deb-java
 integration-test-deb-java: local-apt-repo
-	go test -v -timeout 30m -run 'TestJavaAutoInstrumentation/deb' ./packaging/tests/java/
+	go test -v -timeout 30m -run '/deb' ./packaging/tests/java/
 
 .PHONY: integration-test-deb-nodejs
 integration-test-deb-nodejs: local-apt-repo
-	go test -v -timeout 30m -run 'TestNodejsAutoInstrumentation/deb' ./packaging/tests/nodejs/
+	go test -v -timeout 30m -run '/deb' ./packaging/tests/nodejs/
 
 .PHONY: integration-test-deb-dotnet
 integration-test-deb-dotnet: local-apt-repo
-	go test -v -timeout 30m -run 'TestDotnetAutoInstrumentation/deb' ./packaging/tests/dotnet/
+	go test -v -timeout 30m -run '/deb' ./packaging/tests/dotnet/
 
 .PHONY: integration-test-deb-python
 integration-test-deb-python: local-apt-repo
-	go test -v -timeout 30m -run 'TestPythonAutoInstrumentation/deb' ./packaging/tests/python/
+	go test -v -timeout 30m -run '/deb' ./packaging/tests/python/
 
 .PHONY: integration-test-rpm-java
 integration-test-rpm-java: local-rpm-repo
-	go test -v -timeout 30m -run 'TestJavaAutoInstrumentation/rpm' ./packaging/tests/java/
+	go test -v -timeout 30m -run '/rpm' ./packaging/tests/java/
 
 .PHONY: integration-test-rpm-nodejs
 integration-test-rpm-nodejs: local-rpm-repo
-	go test -v -timeout 30m -run 'TestNodejsAutoInstrumentation/rpm' ./packaging/tests/nodejs/
+	go test -v -timeout 30m -run '/rpm' ./packaging/tests/nodejs/
 
 .PHONY: integration-test-rpm-dotnet
 integration-test-rpm-dotnet: local-rpm-repo
-	go test -v -timeout 30m -run 'TestDotnetAutoInstrumentation/rpm' ./packaging/tests/dotnet/
+	go test -v -timeout 30m -run '/rpm' ./packaging/tests/dotnet/
 
 .PHONY: integration-test-rpm-python
 integration-test-rpm-python: local-rpm-repo
-	go test -v -timeout 30m -run 'TestPythonAutoInstrumentation/rpm' ./packaging/tests/python/
+	go test -v -timeout 30m -run '/rpm' ./packaging/tests/python/
 
 # Runs sitecustomize.py under every Python interpreter generation the injector
 # may hit. Needs a container engine but no built packages or local repos.

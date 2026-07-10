@@ -55,11 +55,27 @@ func TestJavaAutoInstrumentation(t *testing.T) {
 			for _, tg := range targets {
 				t.Run(imageSlug(tg.baseImage), func(t *testing.T) {
 					t.Parallel()
-					runJavaCase(t, ctx, tg)
+					runJavaCase(t, ctx, tg, false)
 				})
 			}
 		})
 	}
+}
+
+// TestJavaDeclarativeConfiguration exercises OTEL_CONFIG_FILE end to end: the shipped
+// /etc/opentelemetry/java/otel-config.yaml (installed by the package, shared
+// across all language packages) drives the agent instead of the OTEL_* env
+// vars. One format and base image suffices: the configuration-file mechanism
+// does not vary with the packaging format.
+func TestJavaDeclarativeConfiguration(t *testing.T) {
+	ctx := context.Background()
+	tg := target{format: "deb", baseImage: "debian:12"}
+	t.Run(tg.format, func(t *testing.T) {
+		t.Run(imageSlug(tg.baseImage), func(t *testing.T) {
+			t.Parallel()
+			runJavaCase(t, ctx, tg, true)
+		})
+	})
 }
 
 func imageSlug(image string) string {
@@ -73,7 +89,7 @@ func rpmArch() string {
 	return "x86_64"
 }
 
-func runJavaCase(t *testing.T, ctx context.Context, tg target) {
+func runJavaCase(t *testing.T, ctx context.Context, tg target, declarative bool) {
 	arch := testutil.TargetArch()
 	buildArgs := map[string]*string{
 		"BASE_IMAGE": &tg.baseImage,
@@ -85,13 +101,21 @@ func runJavaCase(t *testing.T, ctx context.Context, tg target) {
 	}
 
 	sink := otelsink.Start(t)
+	env := sink.Env()
+	if declarative {
+		// With OTEL_CONFIG_FILE in effect the SDK ignores the other OTEL_*
+		// variables as direct configuration; the shipped configuration file
+		// interpolates the endpoint, service name, and resource attributes
+		// (including the sink's test.id) from them instead.
+		env["OTEL_CONFIG_FILE"] = "/etc/opentelemetry/java/otel-config.yaml"
+	}
 	container := testutil.StartServiceContainerOpts(t, ctx, testutil.ServiceContainerOptions{
 		DockerfilePath:  fmt.Sprintf("packaging/tests/java/Dockerfile.%s", tg.format),
 		BuildArgs:       buildArgs,
 		ExposedPorts:    []string{"8080/tcp"},
 		WaitPort:        "8080/tcp",
 		WaitPath:        "/",
-		Env:             sink.Env(),
+		Env:             env,
 		HostAccessPorts: sink.HostAccessPorts(),
 	})
 
@@ -110,7 +134,19 @@ func runJavaCase(t *testing.T, ctx context.Context, tg target) {
 	assert.NotEmpty(t, traces.WithResourceAttribute("service.name", "java-testapp").Spans(),
 		"spans should carry the configured service.name resource")
 
+	// Declarative runs assert traces only: under OTEL_CONFIG_FILE the SDK
+	// ignores the env-var schedule tuning the image sets, so metrics follow
+	// the default 60s cadence and logs the default batch schedule.
+	if declarative {
+		return
+	}
+
 	// Metrics: the Java agent exports JVM runtime metrics periodically.
 	metrics := sink.WaitForMetrics(t, exportTimeout, otelsink.NonEmpty)
 	assert.NotEmpty(t, metrics.Names(), "expected at least one exported metric")
+
+	// Logs: Tomcat logs through JUL, and the agent's appender instrumentation
+	// bridges those records to OTLP logs.
+	logs := sink.WaitForLogs(t, exportTimeout, otelsink.NonEmpty)
+	assert.Greater(t, logs.Len(), 0, "expected Tomcat JUL records bridged to OTLP logs")
 }

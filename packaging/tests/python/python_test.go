@@ -61,7 +61,7 @@ func TestPythonAutoInstrumentation(t *testing.T) {
 			for _, tg := range targets {
 				t.Run(imageSlug(tg.baseImage), func(t *testing.T) {
 					t.Parallel()
-					runPythonCase(t, ctx, tg)
+					runPythonCase(t, ctx, tg, false)
 				})
 			}
 		})
@@ -81,9 +81,26 @@ func rpmArch() string {
 	return "x86_64"
 }
 
+// TestPythonDeclarativeConfiguration exercises OTEL_CONFIG_FILE end to end:
+// sitecustomize.py validates the shipped /etc/opentelemetry/python/otel-config.yaml
+// with the packaged otel-config-check binary and the SDK's file configurator
+// drives the agent instead of the OTEL_* env vars. One format and base image
+// suffices: the configuration-file mechanism does not vary with the packaging
+// format.
+func TestPythonDeclarativeConfiguration(t *testing.T) {
+	ctx := context.Background()
+	tg := target{format: "deb", baseImage: "debian:12", pythonBin: "python3"}
+	t.Run(tg.format, func(t *testing.T) {
+		t.Run(imageSlug(tg.baseImage), func(t *testing.T) {
+			t.Parallel()
+			runPythonCase(t, ctx, tg, true)
+		})
+	})
+}
+
 // runPythonCase builds the workload image for one matrix target, drives traffic,
 // and asserts on the traces, logs, and metrics it exports to the sink.
-func runPythonCase(t *testing.T, ctx context.Context, tg target) {
+func runPythonCase(t *testing.T, ctx context.Context, tg target, declarative bool) {
 	arch := testutil.TargetArch()
 	buildArgs := map[string]*string{
 		"BASE_IMAGE": &tg.baseImage,
@@ -96,13 +113,22 @@ func runPythonCase(t *testing.T, ctx context.Context, tg target) {
 	}
 
 	sink := otelsink.Start(t)
+	env := sink.Env()
+	if declarative {
+		// With OTEL_CONFIG_FILE in effect the SDK ignores the other OTEL_*
+		// variables as direct configuration; the shipped configuration file
+		// interpolates the endpoint, service name, and resource attributes
+		// (including the sink's test.id) from them instead. sitecustomize.py
+		// validates the file with the packaged otel-config-check first.
+		env["OTEL_CONFIG_FILE"] = "/etc/opentelemetry/python/otel-config.yaml"
+	}
 	container := testutil.StartServiceContainerOpts(t, ctx, testutil.ServiceContainerOptions{
 		DockerfilePath:  fmt.Sprintf("packaging/tests/python/Dockerfile.%s", tg.format),
 		BuildArgs:       buildArgs,
 		ExposedPorts:    []string{"8080/tcp"},
 		WaitPort:        "8080/tcp",
 		WaitPath:        "/",
-		Env:             sink.Env(),
+		Env:             env,
 		HostAccessPorts: sink.HostAccessPorts(),
 	})
 
@@ -120,6 +146,14 @@ func runPythonCase(t *testing.T, ctx context.Context, tg target) {
 		"expected a sqlite db.system client span")
 	assert.NotEmpty(t, traces.WithResourceAttribute("service.name", "python-testapp").Spans(),
 		"spans should carry the configured service.name resource")
+
+	// Declarative runs assert traces only: under OTEL_CONFIG_FILE the SDK
+	// ignores the env-var tuning the image sets (schedule delays, the logging
+	// bridge toggle), so logs are not bridged and metrics follow the default
+	// 60s cadence.
+	if declarative {
+		return
+	}
 
 	// Logs: the stdlib logging record is exported via the agent's log handler.
 	logs := sink.WaitForLogs(t, exportTimeout, func(l *otelsink.Logs) bool {

@@ -30,7 +30,7 @@ Validate that built packages declare the correct metadata fields without startin
 | Injector suggests `opentelemetry-injector1` on Java/Node.js/.NET packages (DEB) | Soft dependency |
 | No `sed` or `grep` dependencies on injector | Scripts use only POSIX builtins |
 
-**Implementation:** Run `dpkg-deb --info` / `rpm -qp --provides --requires --suggests` on the built package files.
+**Implementation:** Parse the built package files natively in Go with `pault.ag/go/debian` and `cavaliergopher/rpm` (no `dpkg-deb` or `rpm` CLI tools).
 No containers needed — these are host-side assertions on the `.deb`/`.rpm` artifacts.
 
 ### 2. Package contents validation
@@ -51,7 +51,7 @@ Validate that packages contain the expected files at the expected paths with cor
 | .NET contains `conf.d/dotnet.conf` with correct path prefix | Drop-in references correct prefix |
 | Man pages are present and gzipped | Documentation |
 
-**Implementation:** Run `dpkg-deb --contents` / `rpm -qpl` on the built package files.
+**Implementation:** List package contents natively in Go with `pault.ag/go/debian` and `cavaliergopher/rpm` (no `dpkg-deb` or `rpm` CLI tools).
 No containers needed.
 
 ### 3. Post-install / pre-uninstall scripts
@@ -151,6 +151,14 @@ Implemented in `packaging/tests/vendor/vendor_test.go`; the mock package is buil
 Already implemented for Java, Node.js, .NET, and Python across DEB and RPM.
 No changes needed.
 
+### 8. Declarative configuration E2E
+
+One scenario per language (`Test<Lang>DeclarativeConfiguration`, DEB and one base image only — the configuration-file mechanism does not vary with the packaging format):
+the workload container sets `OTEL_CONFIG_FILE` to the shipped `/etc/opentelemetry/<language>/otel-config.yaml` (plus `OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED=true` for .NET), and the test asserts traces arrive at the sink.
+This proves the whole declarative chain: the shipped file is valid, the `${VAR}` interpolations pick up the endpoint, service name, and resource attributes the injector injects (the sink's per-test `test.id` arrives via `attributes_list`), and each agent's file configurator activates — including sitecustomize.py's `otel-config-check` validation for Python and the `startNodeSDK` routing in the Node.js `register.js` wrapper.
+Declarative runs assert traces only: under `OTEL_CONFIG_FILE` the SDKs ignore the env-var schedule tuning the images set, so metrics follow the default 60-second cadence.
+The scenarios run inside the `integration-test-deb-<language>` targets.
+
 ## Test infrastructure
 
 ### Package metadata and contents tests
@@ -191,6 +199,7 @@ make integration-test-rpm-vendor          # RPM vendor replacement
 
 The lifecycle targets cover categories 3, 4, and 5 in `packaging/tests/lifecycle/`.
 The vendor targets cover category 6 in `packaging/tests/vendor/`.
+The per-language E2E targets cover categories 7 and 8 in `packaging/tests/<language>/` (the declarative-configuration scenarios run in the DEB targets).
 
 The upgrade scenarios install from a second local repository (`build/local-repo/{apt,rpm}-next`) that serves an injector built at `NEXT_VERSION` (defaults to `VERSION.1`) with a modified `default_env.conf`.
 The modification is required because dpkg and rpm skip conffile-conflict handling entirely when the pristine contents are identical between versions.

@@ -55,11 +55,27 @@ func TestDotnetAutoInstrumentation(t *testing.T) {
 			for _, tg := range targets {
 				t.Run(tg.name, func(t *testing.T) {
 					t.Parallel()
-					runDotnetCase(t, ctx, tg)
+					runDotnetCase(t, ctx, tg, false)
 				})
 			}
 		})
 	}
+}
+
+// TestDotnetDeclarativeConfiguration exercises OTEL_CONFIG_FILE end to end: the shipped
+// /etc/opentelemetry/dotnet/otel-config.yaml (installed by the package, shared
+// across all language packages) drives the agent instead of the OTEL_* env
+// vars. One format and base image suffices: the configuration-file mechanism
+// does not vary with the packaging format.
+func TestDotnetDeclarativeConfiguration(t *testing.T) {
+	ctx := context.Background()
+	tg := target{format: "deb", name: "debian-12", baseImage: "mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim"}
+	t.Run(tg.format, func(t *testing.T) {
+		t.Run(tg.name, func(t *testing.T) {
+			t.Parallel()
+			runDotnetCase(t, ctx, tg, true)
+		})
+	})
 }
 
 func rpmArch() string {
@@ -69,7 +85,7 @@ func rpmArch() string {
 	return "x86_64"
 }
 
-func runDotnetCase(t *testing.T, ctx context.Context, tg target) {
+func runDotnetCase(t *testing.T, ctx context.Context, tg target, declarative bool) {
 	arch := testutil.TargetArch()
 	buildArgs := map[string]*string{
 		"BASE_IMAGE": &tg.baseImage,
@@ -81,13 +97,22 @@ func runDotnetCase(t *testing.T, ctx context.Context, tg target) {
 	}
 
 	sink := otelsink.Start(t)
+	env := sink.Env()
+	if declarative {
+		// With OTEL_CONFIG_FILE in effect the SDK ignores the other OTEL_*
+		// variables as direct configuration; the shipped configuration file
+		// interpolates the endpoint, service name, and resource attributes
+		// (including the sink's test.id) from them instead.
+		env["OTEL_CONFIG_FILE"] = "/etc/opentelemetry/dotnet/otel-config.yaml"
+		env["OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED"] = "true"
+	}
 	container := testutil.StartServiceContainerOpts(t, ctx, testutil.ServiceContainerOptions{
 		DockerfilePath:  fmt.Sprintf("packaging/tests/dotnet/Dockerfile.%s", tg.format),
 		BuildArgs:       buildArgs,
 		ExposedPorts:    []string{"5000/tcp"},
 		WaitPort:        "5000/tcp",
 		WaitPath:        "/",
-		Env:             sink.Env(),
+		Env:             env,
 		HostAccessPorts: sink.HostAccessPorts(),
 	})
 
@@ -106,7 +131,18 @@ func runDotnetCase(t *testing.T, ctx context.Context, tg target) {
 	assert.NotEmpty(t, traces.WithResourceAttribute("service.name", "dotnet-testapp").Spans(),
 		"spans should carry the configured service.name resource")
 
+	// Declarative runs assert traces only: under OTEL_CONFIG_FILE the SDK
+	// ignores the env-var schedule tuning the image sets, so metrics follow
+	// the default 60s cadence.
+	if declarative {
+		return
+	}
+
 	// Metrics: the .NET agent exports runtime and HTTP metrics periodically.
 	metrics := sink.WaitForMetrics(t, exportTimeout, otelsink.NonEmpty)
 	assert.NotEmpty(t, metrics.Names(), "expected at least one exported metric")
+
+	// No log assertions: the minimal workload writes no ILogger records, so
+	// the .NET logs bridge has nothing to export. The sink's log helpers are
+	// covered by the Python end-to-end test and the otelsink unit tests.
 }
