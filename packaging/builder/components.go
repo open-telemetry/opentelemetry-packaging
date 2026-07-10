@@ -146,7 +146,7 @@ func javaInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 	info.Overridables.Suggests = []string{"opentelemetry-injector1"}
 	info.Overridables.Contents = files.Contents{
 		regularFile(jarPath, javaInstallDir+"/opentelemetry-javaagent.jar", 0o644),
-		configFile(filepath.Join(commonDir, "java", "otel-config.yaml"), javaConfigDir+"/otel-config.yaml"),
+		configFile(filepath.Join(commonDir, "otel-config.yaml"), javaConfigDir+"/otel-config.yaml"),
 		regularFile(filepath.Join(commonDir, "java", "injector.conf"), injectorConfigDir+"/conf.d/java.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-java.8.gz", 0o644),
 		regularFile(filepath.Join(commonDir, "java", "README.md"), "/usr/share/doc/opentelemetry-java-autoinstrumentation/README.md", 0o644),
@@ -182,7 +182,7 @@ func nodejsInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 	info.Overridables.Contents = files.Contents{
 		tree(filepath.Join(staging, "nodejs"), nodejsInstallDir),
 		regularFile(filepath.Join(commonDir, "nodejs", "register.js"), nodejsInstallDir+"/register.js", 0o644),
-		configFile(filepath.Join(commonDir, "nodejs", "otel-config.yaml"), nodejsConfigDir+"/otel-config.yaml"),
+		configFile(filepath.Join(commonDir, "otel-config.yaml"), nodejsConfigDir+"/otel-config.yaml"),
 		regularFile(filepath.Join(commonDir, "nodejs", "injector.conf"), injectorConfigDir+"/conf.d/nodejs.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-nodejs.8.gz", 0o644),
 		regularFile(filepath.Join(commonDir, "nodejs", "README.md"), "/usr/share/doc/opentelemetry-nodejs-autoinstrumentation/README.md", 0o644),
@@ -218,7 +218,7 @@ func dotnetInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 	info.Overridables.Suggests = []string{"opentelemetry-injector1"}
 	info.Overridables.Contents = files.Contents{
 		tree(dotnetDir, dotnetInstallDir),
-		configFile(filepath.Join(commonDir, "dotnet", "otel-config.yaml"), dotnetConfigDir+"/otel-config.yaml"),
+		configFile(filepath.Join(commonDir, "otel-config.yaml"), dotnetConfigDir+"/otel-config.yaml"),
 		regularFile(filepath.Join(commonDir, "dotnet", "injector.conf"), injectorConfigDir+"/conf.d/dotnet.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-dotnet.8.gz", 0o644),
 		regularFile(filepath.Join(commonDir, "dotnet", "README.md"), "/usr/share/doc/opentelemetry-dotnet-autoinstrumentation/README.md", 0o644),
@@ -286,7 +286,7 @@ func pythonInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 		// manylinux; a musl/ variant would sit alongside for musl-based distros.
 		tree(pythonDir, pythonInstallDir+"/glibc"),
 		regularFile(cfg.ConfigCheckBinary, pythonInstallDir+"/otel-config-check", 0o755),
-		configFile(filepath.Join(commonDir, "python", "otel-config.yaml"), pythonConfigDir+"/otel-config.yaml"),
+		configFile(filepath.Join(commonDir, "otel-config.yaml"), pythonConfigDir+"/otel-config.yaml"),
 		regularFile(filepath.Join(commonDir, "python", "injector.conf"), injectorConfigDir+"/conf.d/python.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-python.8.gz", 0o644),
 		regularFile(filepath.Join(commonDir, "python", "README.md"), "/usr/share/doc/opentelemetry-python-autoinstrumentation/README.md", 0o644),

@@ -31,7 +31,9 @@ The injector selects the correct native profiler variant based on the system's C
 
 ### Declarative configuration
 
-A configuration file is available at `/etc/opentelemetry/dotnet/otel-config.yaml`.
+A working declarative configuration file is installed at `/etc/opentelemetry/dotnet/otel-config.yaml`.
+It is valid as shipped, exports via OTLP/HTTP using the endpoint and headers the injector injects, and is the same configuration every packaged language agent ships.
+Its `instrumentation/development.dotnet` section lists the instrumentations to enable: unlike environment-variable configuration, file-based configuration enables none until listed.
 To use it, set:
 
 ```bash

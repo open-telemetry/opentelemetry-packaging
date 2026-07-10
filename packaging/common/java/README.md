@@ -26,7 +26,8 @@ The agent path is registered via a drop-in configuration file at `/etc/opentelem
 
 ### Declarative configuration
 
-A configuration file is available at `/etc/opentelemetry/java/otel-config.yaml`.
+A working declarative configuration file is installed at `/etc/opentelemetry/java/otel-config.yaml`.
+It is valid as shipped, exports via OTLP/HTTP using the endpoint and headers the injector injects, and is the same configuration every packaged language agent ships.
 To use it, set:
 
 ```bash

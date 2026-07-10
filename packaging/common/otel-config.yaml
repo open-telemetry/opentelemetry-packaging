@@ -1,0 +1,68 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# OpenTelemetry declarative configuration for the auto-instrumentation system
+# packages. One and the same file is shipped for every packaged language
+# agent (Java, Node.js, .NET, and Python); the schema is portable across
+# languages, and language-specific sections are ignored by the other SDKs.
+# See: https://opentelemetry.io/docs/languages/sdk-configuration/declarative-configuration/
+#
+# This file is inert until activated. To activate it for every injected
+# process, append to /etc/opentelemetry/injector/default_env.conf:
+#
+#   OTEL_CONFIG_FILE=/etc/opentelemetry/<language>/otel-config.yaml
+#   OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED=true
+#
+# (The second line is only required by .NET and ignored by the others.)
+#
+# Once OTEL_CONFIG_FILE is in effect, the SDKs ignore all other OTEL_*
+# environment variables as direct configuration. The ${VAR} interpolations
+# below deliberately keep consuming the variables the injector injects, so
+# default_env.conf remains the single source of endpoint and credentials for
+# both environment-variable-configured and declaratively configured processes.
+
+file_format: "1.0"
+
+resource:
+  attributes:
+    - name: service.name
+      value: ${OTEL_SERVICE_NAME:-unknown_service}
+
+tracer_provider:
+  processors:
+    - batch:
+        exporter:
+          otlp_http:
+            # Unlike OTEL_EXPORTER_OTLP_ENDPOINT, declarative endpoints are
+            # full per-signal URLs.
+            endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}/v1/traces
+            # headers_list accepts the OTEL_EXPORTER_OTLP_HEADERS wire format
+            # (comma-separated, percent-encoded) as-is.
+            headers_list: ${OTEL_EXPORTER_OTLP_HEADERS}
+
+meter_provider:
+  readers:
+    - periodic:
+        exporter:
+          otlp_http:
+            endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}/v1/metrics
+            headers_list: ${OTEL_EXPORTER_OTLP_HEADERS}
+
+logger_provider:
+  processors:
+    - batch:
+        exporter:
+          otlp_http:
+            endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}/v1/logs
+            headers_list: ${OTEL_EXPORTER_OTLP_HEADERS}
+
+# .NET enables no instrumentations under file-based configuration until they
+# are listed here — unlike Java, Node.js, and Python, which subscribe their
+# instrumentations automatically, and unlike .NET's own environment-variable
+# mode. The other SDKs ignore this section. List every .NET instrumentation
+# the applications on this host need:
+instrumentation/development:
+  dotnet:
+    traces:
+      aspnetcore: {}
+      httpclient: {}

@@ -44,7 +44,8 @@ Only HTTP export (`http/protobuf` or `http/json`) is supported. gRPC is not incl
 
 ### Declarative configuration
 
-A configuration file template is available at `/etc/opentelemetry/python/otel-config.yaml`.
+A working declarative configuration file is installed at `/etc/opentelemetry/python/otel-config.yaml`.
+It is valid as shipped, exports via OTLP/HTTP using the endpoint and headers the injector injects, and is the same configuration every packaged language agent ships.
 To use it, set:
 
 ```bash

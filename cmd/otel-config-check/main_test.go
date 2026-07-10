@@ -132,6 +132,14 @@ meter_provider:
 	}
 }
 
+// TestShippedConfigIsValid pins the property that the sample configuration
+// installed at /etc/opentelemetry/<language>/otel-config.yaml is valid as
+// shipped: pointing OTEL_CONFIG_FILE at it must never deactivate
+// instrumentation.
+func TestShippedConfigIsValid(t *testing.T) {
+	assert.NoError(t, checkFile(filepath.Join("..", "..", "packaging", "common", "otel-config.yaml")))
+}
+
 func TestCheckFileUnreadable(t *testing.T) {
 	err := checkFile(filepath.Join(t.TempDir(), "does-not-exist.yaml"))
 	require.Error(t, err)

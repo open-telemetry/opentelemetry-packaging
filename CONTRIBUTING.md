@@ -20,6 +20,7 @@ packaging/
     components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
     download.go              Upstream artifact download helpers
   common/                    Shared assets referenced by the builder
+    otel-config.yaml         Declarative configuration file, shipped by every language package (valid as shipped)
     scripts/                 POSIX lifecycle scripts (postinstall, preuninstall)
     injector/                Config files, man page template, README, release.txt (version pin)
     java/                    "
@@ -209,7 +210,8 @@ See [docs/design/packages-meta-architecture.md](docs/design/packages-meta-archit
 
 To add a new language auto-instrumentation package:
 
-1. Create config files in `packaging/common/<lang>/` (injector.conf, otel-config.yaml, man page template, and README).
+1. Create config files in `packaging/common/<lang>/` (injector.conf, man page template, and README).
+   The declarative configuration file is shared: every language package ships `packaging/common/otel-config.yaml` at `/etc/opentelemetry/<lang>/otel-config.yaml`.
 2. Add a version pin file `packaging/common/<lang>/release.txt`.
 3. Add a download function in `packaging/builder/download.go`.
 4. Add a component definition in `packaging/builder/components.go` (follow the pattern of `javaInfo`).
