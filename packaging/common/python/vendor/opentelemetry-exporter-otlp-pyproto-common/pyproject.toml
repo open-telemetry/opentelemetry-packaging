@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "opentelemetry-exporter-otlp-pyproto-common"
+dynamic = ["version"]
+description = "OpenTelemetry OTLP encoding using pure-Python protobuf (no google.protobuf)"
+readme = "README.rst"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = [
+  "opentelemetry-api ~= 1.12",
+  "opentelemetry-sdk ~= 1.12",
+  "opentelemetry-pyproto == 1.43.0.dev",
+]
+
+[dependency-groups]
+dev = [
+    "opentelemetry-proto == 1.43.0.dev",
+    "opentelemetry-exporter-otlp-proto-common == 1.43.0.dev",
+    "opentelemetry-test-utils == 1.43.0.dev",
+    "protobuf>=5.0",
+    "pytest>=7.0",
+]
+
+[tool.uv.sources]
+opentelemetry-proto = { workspace = true }
+opentelemetry-exporter-otlp-proto-common = { workspace = true }
+opentelemetry-test-utils = { workspace = true }
+
+[tool.hatch.version]
+path = "src/opentelemetry/exporter/otlp/pyproto/common/version/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["/src"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/opentelemetry"]

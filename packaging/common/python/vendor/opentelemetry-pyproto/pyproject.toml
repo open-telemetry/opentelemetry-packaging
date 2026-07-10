@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "opentelemetry-pyproto"
+dynamic = ["version"]
+description = "OpenTelemetry Python Proto — pure-Python protobuf message classes (no google.protobuf)"
+readme = "README.rst"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.hatch.version]
+path = "src/opentelemetry/pyproto/version/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["/src"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/opentelemetry"]
+
+[dependency-groups]
+dev = [
+    "opentelemetry-proto == 1.43.0.dev",
+    "protobuf>=5.0",
+    "pytest>=7.0",
+    "pytest-benchmark>=4",
+]
+
+[tool.uv.sources]
+opentelemetry-proto = { workspace = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

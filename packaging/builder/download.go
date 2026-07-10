@@ -303,11 +303,14 @@ func manylinuxPlatforms(arch string) ([]string, error) {
 }
 
 // splitRequirements reads a pip requirements file and partitions its entries
-// into PyPI requirements and VCS (git+) requirements. Comments and blank lines
-// are skipped. VCS requirements (e.g. unpublished packages installed from a git
-// branch) must be built from source and therefore cannot be fetched with pip's
-// cross-platform binary-only download; they are installed in a separate pass.
-func splitRequirements(requirementsFile string) (pypi, vcs []string, err error) {
+// into PyPI requirements and source requirements. Comments and blank lines are
+// skipped. Source requirements — VCS (git+) entries and local paths (./…,
+// e.g. the packages vendored under vendor/) — must be built from source and
+// therefore cannot be fetched with pip's cross-platform binary-only download;
+// they are installed in a separate pass. Local paths are returned as absolute
+// paths (pip would otherwise resolve them against the process working
+// directory, not the requirements file).
+func splitRequirements(requirementsFile string) (pypi, source []string, err error) {
 	data, err := os.ReadFile(requirementsFile)
 	if err != nil {
 		return nil, nil, err
@@ -317,13 +320,16 @@ func splitRequirements(requirementsFile string) (pypi, vcs []string, err error) 
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		if strings.Contains(trimmed, "git+") {
-			vcs = append(vcs, trimmed)
-		} else {
+		switch {
+		case strings.Contains(trimmed, "git+"):
+			source = append(source, trimmed)
+		case strings.HasPrefix(trimmed, "./") || strings.HasPrefix(trimmed, "../"):
+			source = append(source, filepath.Join(filepath.Dir(requirementsFile), trimmed))
+		default:
 			pypi = append(pypi, trimmed)
 		}
 	}
-	return pypi, vcs, nil
+	return pypi, source, nil
 }
 
 // downloadPythonAgent installs Python auto-instrumentation packages into destDir.
@@ -336,16 +342,17 @@ func splitRequirements(requirementsFile string) (pypi, vcs []string, err error) 
 //     the target arch and to the target Python version/ABI. This prevents the
 //     build host's OS (e.g. macOS) and Python version from leaking compiled
 //     extensions into the package.
-//  2. VCS requirements (unpublished pure-Python packages on a git branch) are
-//     built from source with --no-deps into a separate directory, then merged in.
-//     Their dependencies must therefore be present among the PyPI requirements.
+//  2. Source requirements (unpublished pure-Python packages, vendored under
+//     vendor/ or on a git branch) are built from source with --no-deps into a
+//     separate directory, then merged in. Their dependencies must therefore be
+//     present among the PyPI requirements.
 //
-// When all requirements are published to PyPI (no git+ entries), pass 2 is a
-// no-op and pass 1 installs everything.
+// When all requirements are published to PyPI (no git+ or local-path entries),
+// pass 2 is a no-op and pass 1 installs everything.
 func downloadPythonAgent(cfg Config, destDir string) error {
 	requirementsFile := filepath.Join(cfg.PackagingDir, "common", "python", "requirements.txt")
 
-	pypiReqs, vcsReqs, err := splitRequirements(requirementsFile)
+	pypiReqs, sourceReqs, err := splitRequirements(requirementsFile)
 	if err != nil {
 		return fmt.Errorf("reading requirements: %w", err)
 	}
@@ -386,34 +393,34 @@ func downloadPythonAgent(cfg Config, destDir string) error {
 		return err
 	}
 
-	// Pass 2: VCS requirements built from source (pure-Python, host-agnostic).
-	if len(vcsReqs) > 0 {
-		fmt.Printf("  Installing %d Python OTel package(s) from VCS sources\n", len(vcsReqs))
+	// Pass 2: source requirements built from source (pure-Python, host-agnostic).
+	if len(sourceReqs) > 0 {
+		fmt.Printf("  Installing %d Python OTel package(s) from source\n", len(sourceReqs))
 
-		vcsDir, err := os.MkdirTemp("", "otel-python-vcs-*")
+		sourceDir, err := os.MkdirTemp("", "otel-python-source-*")
 		if err != nil {
 			return err
 		}
-		defer os.RemoveAll(vcsDir)
+		defer os.RemoveAll(sourceDir)
 
 		pass2Args := []string{
 			"-m", "pip", "install",
-			"--target", vcsDir,
+			"--target", sourceDir,
 			"--no-compile",
 			"--quiet",
 			"--no-deps",
 		}
-		pass2Args = append(pass2Args, vcsReqs...)
+		pass2Args = append(pass2Args, sourceReqs...)
 
 		if err := runPip(python, pass2Args); err != nil {
 			return err
 		}
 
-		// Merge the VCS packages into the main bundle. The pyproto packages add
-		// new paths under the opentelemetry/ namespace and new dist-info dirs,
-		// so this is a pure overlay with no file collisions.
-		if err := mergeTree(vcsDir, destDir); err != nil {
-			return fmt.Errorf("merging VCS packages: %w", err)
+		// Merge the source-built packages into the main bundle. The pyproto
+		// packages add new paths under the opentelemetry/ namespace and new
+		// dist-info dirs, so this is a pure overlay with no file collisions.
+		if err := mergeTree(sourceDir, destDir); err != nil {
+			return fmt.Errorf("merging source-built packages: %w", err)
 		}
 	}
 

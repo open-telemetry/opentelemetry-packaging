@@ -25,6 +25,7 @@ packaging/
     nodejs/                  " (plus register.js, the --require entry point with declarative-config support)
     dotnet/                  "
     python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py (plus its unit tests)
+      vendor/                Vendored pyproto exporter chain (unpublished pure-Python packages; see its README)
   repo/                      APT and YUM repository generation scripts
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
@@ -53,10 +54,11 @@ The `cmd/build-packages` program:
    The Python package bundles compiled C extensions, so its wheels are fetched
    for a fixed target architecture and Python version (`targetPythonVersion` in
    `download.go`) rather than for the build host. PyPI requirements are installed
-   binary-only (manylinux wheels for the target arch); any unpublished pure-Python
-   requirements pinned to a git branch are built from source in a second pass and
-   merged in. This keeps the produced package correct regardless of the build
-   host's OS, architecture, or Python version.
+   binary-only (manylinux wheels for the target arch); unpublished pure-Python
+   requirements — the pyproto exporter chain vendored under
+   `packaging/common/python/vendor/` (see its README for provenance) — are built
+   from source in a second pass and merged in. This keeps the produced package
+   correct regardless of the build host's OS, architecture, or Python version.
 
 2. **Constructs an `nfpm.Info`** for each component with the correct metadata:
    - `Provides` virtual package names (e.g., `opentelemetry-injector1`)

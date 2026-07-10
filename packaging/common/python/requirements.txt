@@ -20,18 +20,19 @@ opentelemetry-exporter-otlp-proto-http==1.43.0
 urllib3 <2.6.4
 
 # TODO: publish the pure-Python pyproto exporter chain to PyPI and replace the
-# three git+ requirements below with a single pinned release, e.g.:
+# three vendored requirements below with a single pinned release, e.g.:
 #   opentelemetry-exporter-otlp-pyproto-http==<version>
 #
-# Until published, the exporter and its two pyproto-only dependencies live in a
-# fork branch and pin each other at 1.43.0.dev. They are pure-Python (no
-# google-protobuf C extension) and are installed from source by the build's VCS
-# pass. The build installs git+ requirements with --no-deps, so the exporter's
-# own runtime dependency on `requests` is declared explicitly below.
-opentelemetry-exporter-otlp-pyproto-http @ git+https://github.com/ocelotl/opentelemetry-python.git@no-requests#subdirectory=exporter/opentelemetry-exporter-otlp-pyproto-http
-opentelemetry-exporter-otlp-pyproto-common @ git+https://github.com/ocelotl/opentelemetry-python.git@no-requests#subdirectory=exporter/opentelemetry-exporter-otlp-pyproto-common
-opentelemetry-pyproto @ git+https://github.com/ocelotl/opentelemetry-python.git@no-requests#subdirectory=opentelemetry-pyproto
-requests
+# Until published, the exporter and its two pyproto-only dependencies are
+# vendored under vendor/ — see vendor/README.md for provenance and the sync
+# procedure. They are pure-Python (no google-protobuf C extension) and are
+# installed from source by the build's source pass with --no-deps; their only
+# dependencies beyond each other (opentelemetry-api, opentelemetry-sdk) are
+# covered by the pins above. The exporter transports via urllib and needs no
+# HTTP client dependency.
+./vendor/opentelemetry-exporter-otlp-pyproto-http
+./vendor/opentelemetry-exporter-otlp-pyproto-common
+./vendor/opentelemetry-pyproto
 
 opentelemetry-propagator-aws-xray==1.0.2
 
