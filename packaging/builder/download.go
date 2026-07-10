@@ -224,7 +224,7 @@ func extractZip(zipPath, destDir string) error {
 	return nil
 }
 
-func extractZipFile(f *zip.File, destDir string) error {
+func extractZipFile(f *zip.File, destDir string) (retErr error) {
 	target := filepath.Join(destDir, f.Name)
 
 	// Prevent zip slip.
@@ -250,10 +250,20 @@ func extractZipFile(f *zip.File, destDir string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	// Mirror downloadFile: never leave a partially-written file behind on a
+	// failed copy or close (disk full, I/O error).
+	defer func() {
+		closeErr := out.Close()
+		if retErr == nil {
+			retErr = closeErr
+		}
+		if retErr != nil {
+			os.Remove(target)
+		}
+	}()
 
-	_, err = io.Copy(out, rc)
-	return err
+	_, retErr = io.Copy(out, rc)
+	return retErr
 }
 
 // pipTimeout is the maximum duration for a pip subprocess.
