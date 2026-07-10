@@ -26,21 +26,27 @@ jobs:
 
       - name: Determine release tag
         id: release
+        # Event-controlled values go through env, not inline interpolation:
+        # this job holds contents/pages/id-token write permissions.
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           if [ "${{ github.event_name }}" = "release" ]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+            echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "tag=${INPUT_TAG}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Download DEB packages from release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
           mkdir -p repo/debian/pool
 
           # Download all .deb files
-          gh release download "${{ steps.release.outputs.tag }}" \
+          gh release download "$TAG" \
             --pattern "*.deb" \
             --dir repo/debian/pool || echo "No .deb files found"
 
@@ -58,11 +64,12 @@ jobs:
       - name: Download RPM packages from release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
           mkdir -p repo/rpm/packages
 
           # Download all .rpm files
-          gh release download "${{ steps.release.outputs.tag }}" \
+          gh release download "$TAG" \
             --pattern "*.rpm" \
             --dir repo/rpm/packages || echo "No .rpm files found"
 
@@ -88,15 +95,14 @@ jobs:
           EOF
 
       - name: Generate landing page
+        env:
+          VERSION: ${{ steps.release.outputs.tag }}
         run: |
-          VERSION="${{ steps.release.outputs.tag }}"
           REPO_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
-          GITHUB_REPO="https://github.com/${{ github.repository }}"
 
           # Copy template and substitute placeholders
-          sed -e "s|@@VERSION@@|${VERSION}|g" \
-              -e "s|@@REPO_URL@@|${REPO_URL}|g" \
-              -e "s|@@GITHUB_REPO@@|${GITHUB_REPO}|g" \
+          sed -e "s|@VERSION@|${VERSION}|g" \
+              -e "s|@REPO_URL@|${REPO_URL}|g" \
               packaging/repo/index.html > repo/index.html
 
       - name: Deploy to GitHub Pages

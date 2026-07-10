@@ -73,7 +73,7 @@ sudo apt install opentelemetry</code></pre>
 cat &lt;&lt;EOF | sudo tee /etc/yum.repos.d/opentelemetry.repo
 [opentelemetry]
 name=OpenTelemetry Auto-Instrumentation System Packages
-baseurl=@REPO_URL@/rpm
+baseurl=@REPO_URL@/rpm/packages
 enabled=1
 gpgcheck=0
 EOF
@@ -115,7 +115,7 @@ sudo apt install opentelemetry-injector opentelemetry-python-autoinstrumentation
   <h2>Repository URLs</h2>
   <ul>
     <li>APT: <code>@REPO_URL@/debian</code></li>
-    <li>YUM/DNF: <code>@REPO_URL@/rpm</code></li>
+    <li>YUM/DNF: <code>@REPO_URL@/rpm/packages</code></li>
   </ul>
 </body>
 </html>
