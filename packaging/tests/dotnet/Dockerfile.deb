@@ -16,7 +16,10 @@ ARG BASE_IMAGE=mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim
 
 FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS build
 COPY packaging/tests/shared/dotnet/ /src/
-RUN dotnet publish /src/testapp.csproj -c Release -o /app/published --self-contained false
+# Single-threaded build without the shared Roslyn compiler server: the
+# parallel path crashes with SIGILL under .NET 9 in arm64 VMs on Apple M4
+# hosts (SME state corruption); harmless elsewhere, the project is tiny.
+RUN dotnet publish /src/testapp.csproj -c Release -o /app/published --self-contained false -m:1 /p:UseSharedCompilation=false
 
 FROM ${BASE_IMAGE}
 
