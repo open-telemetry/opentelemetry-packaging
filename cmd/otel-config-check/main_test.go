@@ -121,7 +121,7 @@ meter_provider:
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := checkConfig([]byte(tc.config))
+			_, err := checkConfig([]byte(tc.config))
 			if tc.wantErr == "" {
 				assert.NoError(t, err)
 			} else {
@@ -132,16 +132,27 @@ meter_provider:
 	}
 }
 
+// TestDuplicateKeysAcceptedWithWarning pins the dialect-divergence behavior:
+// PyYAML (the SDK's parser) accepts duplicate mapping keys, so the validator
+// must not deactivate instrumentation over them — it accepts with a warning.
+func TestDuplicateKeysAcceptedWithWarning(t *testing.T) {
+	warning, err := checkConfig([]byte("file_format: \"1.0\"\nfile_format: \"1.0\"\n"))
+	assert.NoError(t, err)
+	assert.Contains(t, warning, "duplicate mapping keys")
+}
+
 // TestShippedConfigIsValid pins the property that the sample configuration
 // installed at /etc/opentelemetry/<language>/otel-config.yaml is valid as
 // shipped: pointing OTEL_CONFIG_FILE at it must never deactivate
 // instrumentation.
 func TestShippedConfigIsValid(t *testing.T) {
-	assert.NoError(t, checkFile(filepath.Join("..", "..", "packaging", "common", "otel-config.yaml")))
+	warning, err := checkFile(filepath.Join("..", "..", "packaging", "common", "otel-config.yaml"))
+	assert.NoError(t, err)
+	assert.Empty(t, warning, "the shipped configuration must validate fully, not via the duplicate-key bypass")
 }
 
 func TestCheckFileUnreadable(t *testing.T) {
-	err := checkFile(filepath.Join(t.TempDir(), "does-not-exist.yaml"))
+	_, err := checkFile(filepath.Join(t.TempDir(), "does-not-exist.yaml"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot read")
 }
@@ -149,5 +160,6 @@ func TestCheckFileUnreadable(t *testing.T) {
 func TestCheckFileValid(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "otel-config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("file_format: \"1.0\"\n"), 0o644))
-	assert.NoError(t, checkFile(path))
+	_, err := checkFile(path)
+	assert.NoError(t, err)
 }
