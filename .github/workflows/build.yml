@@ -24,6 +24,24 @@ jobs:
       - name: Lint shell scripts
         run: make lint
 
+  python-unit-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the codebase.
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run the sitecustomize.py unit tests
+        run: make python-unit-tests
+
+  sitecustomize-compatibility-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the codebase.
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run sitecustomize.py under every supported Python interpreter generation
+        run: make integration-test-sitecustomize
+
   build-packages:
     runs-on: ${{ matrix.ARCH == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     strategy:

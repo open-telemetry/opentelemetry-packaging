@@ -24,11 +24,12 @@ packaging/
     java/                    "
     nodejs/                  " (plus register.js, the --require entry point with declarative-config support)
     dotnet/                  "
-    python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py
+    python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py (plus its unit tests)
   repo/                      APT and YUM repository generation scripts
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
     {python,java,nodejs,dotnet}/    Matrix E2E tests (deb+rpm × base images) asserting via the otel-sink
+                                    (python/ also hosts the sitecustomize.py interpreter compatibility tests)
     lifecycle/                      Package lifecycle tests (preload scripts, config handling, install/remove scenarios)
     vendor/                         Vendor replacement tests (plus mkvendor/, the mock acme package builder)
     shared/                         Shared test application sources
@@ -101,6 +102,24 @@ go run ./cmd/build-packages -version <VERSION> -arch <ARCH> -format all -output 
 ```
 
 ## Testing
+
+### Python sitecustomize unit tests (fast, no containers)
+
+Unit tests for the guard logic in `packaging/common/python/sitecustomize.py` (version gate, protocol check, double-instrumentation detection, dependency-conflict checking).
+They run in a throwaway virtualenv under `build/`, so the host Python is untouched.
+
+```sh
+make python-unit-tests
+```
+
+### Python sitecustomize interpreter compatibility tests (containers required)
+
+The injector cannot know which Python version a process runs, so `sitecustomize.py` must parse and self-deactivate gracefully on unsupported interpreters (down to Python 2.7) and pass its version gate on supported ones.
+These tests execute an unmodified application under real interpreters (`python:2.7` through `python:3.13` images) with `sitecustomize.py` on `PYTHONPATH` and assert the application always runs to completion.
+
+```sh
+make integration-test-sitecustomize
+```
 
 ### Metadata tests (fast, no containers)
 

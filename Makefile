@@ -240,6 +240,12 @@ integration-test-rpm-dotnet: local-rpm-repo
 integration-test-rpm-python: local-rpm-repo
 	go test -v -timeout 30m -run 'TestPythonAutoInstrumentation/rpm' ./packaging/tests/python/
 
+# Runs sitecustomize.py under every Python interpreter generation the injector
+# may hit. Needs a container engine but no built packages or local repos.
+.PHONY: integration-test-sitecustomize
+integration-test-sitecustomize:
+	go test -v -timeout 30m -run 'TestSitecustomizePythonVersionCompatibility' ./packaging/tests/python/
+
 .PHONY: integration-test-deb-lifecycle
 integration-test-deb-lifecycle: local-apt-repo local-apt-repo-next
 	go test -v -timeout 30m -run 'TestLifecycle/deb' ./packaging/tests/lifecycle/
@@ -255,6 +261,20 @@ integration-test-deb-vendor: local-apt-repo local-apt-vendor-repo
 .PHONY: integration-test-rpm-vendor
 integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 	go test -v -timeout 30m -run 'TestVendorReplacement/rpm' ./packaging/tests/vendor/
+
+# ============================================================================
+# Unit Tests
+# ============================================================================
+
+# Unit tests for sitecustomize.py. They need the `packaging` module (a runtime
+# dependency of sitecustomize.py itself); a throwaway virtualenv keeps the
+# host Python untouched.
+.PHONY: python-unit-tests
+python-unit-tests:
+	python3 -m venv build/python-unit-tests-venv
+	build/python-unit-tests-venv/bin/pip install --quiet packaging
+	build/python-unit-tests-venv/bin/python -m unittest discover \
+		--start-directory packaging/common/python --pattern 'test_*.py' --verbose
 
 # ============================================================================
 # Lint

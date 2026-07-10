@@ -1,0 +1,14 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Runs an unmodified Python one-liner with the packaged sitecustomize.py on
+# PYTHONPATH, the way the injector activates it. The test asserts that the
+# process always runs to completion, whatever the interpreter version.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+COPY packaging/common/python/sitecustomize.py /otel-site/sitecustomize.py
+
+ENV PYTHONPATH=/otel-site
+
+CMD ["python", "-c", "print('APP RAN TO COMPLETION')"]

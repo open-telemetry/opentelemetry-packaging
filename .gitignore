@@ -5,6 +5,9 @@
 # Go
 *.exe
 
+# Python
+__pycache__/
+
 # .NET
 bin/
 obj/

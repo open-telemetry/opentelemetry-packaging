@@ -121,7 +121,17 @@ def _check_dependency_version_conflict(req_string, version_conflicts):
     from packaging.version import Version
 
     _log_debug("_check_dependency_version_conflict({})".format(req_string))
-    req = Requirement(req_string)
+    # An exception escaping this module aborts no application, but it prints a
+    # traceback on every process start; parse failures must never propagate.
+    # Unparsable input makes the requirement unverifiable, not conflicting:
+    # warn and skip it.
+    try:
+        req = Requirement(req_string)
+    except Exception as e:
+        _log_warn(
+            'cannot parse requirement "{}" from all-dependencies.txt; '
+            "skipping its dependency-conflict check: {}: {}".format(req_string, type(e).__name__, e))
+        return
 
     if req.marker and not req.marker.evaluate():
         return
@@ -131,17 +141,29 @@ def _check_dependency_version_conflict(req_string, version_conflicts):
 
     try:
         installed_distribution = importlib.metadata.distribution(req.name)
-        installed_version = Version(installed_distribution.version)
-        _log_debug("installed_version: {}".format(installed_version))
-        if req.specifier and installed_version not in req.specifier:
-            _log_debug("adding version conflict for {}".format(req.name))
-            version_conflicts[req.name] = {
-                "version_required": str(req.specifier),
-                "version_found": str(installed_version),
-            }
     except importlib.metadata.PackageNotFoundError:
         _log_debug("adding version error for {}".format(req.name))
         version_conflicts[req.name] = {"error": "required package not found"}
+        return
+
+    # Distributions patched by Linux distros can carry versions that do not
+    # parse as PEP 440 (and metadata may lack a version entirely).
+    try:
+        installed_version = Version(installed_distribution.version)
+    except Exception as e:
+        _log_warn(
+            'cannot parse the installed version "{}" of package "{}"; '
+            "skipping its dependency-conflict check: {}: {}".format(
+                installed_distribution.version, req.name, type(e).__name__, e))
+        return
+
+    _log_debug("installed_version: {}".format(installed_version))
+    if req.specifier and installed_version not in req.specifier:
+        _log_debug("adding version conflict for {}".format(req.name))
+        version_conflicts[req.name] = {
+            "version_required": str(req.specifier),
+            "version_found": str(installed_version),
+        }
 
 
 def import_distro():
