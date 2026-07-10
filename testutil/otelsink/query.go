@@ -270,9 +270,10 @@ func (m *Metrics) Names() []string {
 	return out
 }
 
-// NumberDataPointAttributes returns whether any Sum/Gauge datapoint on the
-// metric carries the given attribute key. It is a convenience for asserting on
-// datapoint-level attributes without unpacking the metric union by hand.
+// NumberDataPointAttributes returns whether any Sum/Gauge/Histogram datapoint
+// on the metric carries the given attribute key. It is a convenience for
+// asserting on datapoint-level attributes without unpacking the metric union
+// by hand.
 func (mv MetricView) NumberDataPointAttributes(key string) bool {
 	var dps []*metricspb.NumberDataPoint
 	switch {
@@ -280,6 +281,13 @@ func (mv MetricView) NumberDataPointAttributes(key string) bool {
 		dps = mv.Metric.GetSum().GetDataPoints()
 	case mv.Metric.GetGauge() != nil:
 		dps = mv.Metric.GetGauge().GetDataPoints()
+	case mv.Metric.GetHistogram() != nil:
+		for _, dp := range mv.Metric.GetHistogram().GetDataPoints() {
+			if hasAttr(dp.GetAttributes(), key) {
+				return true
+			}
+		}
+		return false
 	}
 	for _, dp := range dps {
 		if hasAttr(dp.GetAttributes(), key) {

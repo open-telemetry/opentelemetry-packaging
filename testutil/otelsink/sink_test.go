@@ -126,7 +126,10 @@ func TestMetrics(t *testing.T) {
 	}}}
 	histSum := 12.0
 	histogram := &metricspb.Metric{Name: "http.server.request.duration", Data: &metricspb.Metric_Histogram{Histogram: &metricspb.Histogram{
-		DataPoints: []*metricspb.HistogramDataPoint{{Count: 2, Sum: &histSum}},
+		DataPoints: []*metricspb.HistogramDataPoint{{
+			Attributes: []*commonpb.KeyValue{strAttr("http.request.method", "GET")},
+			Count:      2, Sum: &histSum,
+		}},
 	}}}
 
 	postProto(t, sink.HTTPEndpoint()+"/v1/metrics", &colmetricspb.ExportMetricsServiceRequest{
@@ -150,6 +153,11 @@ func TestMetrics(t *testing.T) {
 	require.Len(t, counter, 1)
 	assert.True(t, counter[0].NumberDataPointAttributes("http.response.status_code"))
 	assert.False(t, counter[0].NumberDataPointAttributes("nonexistent"))
+
+	hist := metrics.WithName("http.server.request.duration").Metrics()
+	require.Len(t, hist, 1)
+	assert.True(t, hist[0].NumberDataPointAttributes("http.request.method"))
+	assert.False(t, hist[0].NumberDataPointAttributes("nonexistent"))
 }
 
 // TestLogs exercises the log path over gRPC and the log query helpers.

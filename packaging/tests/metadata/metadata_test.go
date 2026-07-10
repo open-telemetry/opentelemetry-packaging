@@ -291,6 +291,34 @@ func TestDebDotnetContents(t *testing.T) {
 		"should contain .NET conf.d drop-in")
 }
 
+func TestDebPythonMetadata(t *testing.T) {
+	skipIfNoDebPackages(t)
+
+	pkg := findPackage(t, "opentelemetry-python-autoinstrumentation_", ".deb")
+	d := openDeb(t, pkg)
+
+	assert.Contains(t, debProvides(t, d), "opentelemetry-python-autoinstrumentation1",
+		"Python package should Provide opentelemetry-python-autoinstrumentation1")
+	assert.NotContains(t, d.Control.Depends.String(), "opentelemetry-injector",
+		"Python package should not hard-depend on injector")
+}
+
+func TestDebPythonContents(t *testing.T) {
+	skipIfNoDebPackages(t)
+
+	pkg := findPackage(t, "opentelemetry-python-autoinstrumentation_", ".deb")
+	paths := debDataFiles(t, pkg)
+
+	assert.True(t, pathsContain(paths, "/usr/lib/opentelemetry/python/glibc/sitecustomize.py"),
+		"should contain sitecustomize.py under the glibc/ prefix")
+	assert.True(t, pathsContain(paths, "/usr/lib/opentelemetry/python/glibc/all-dependencies.txt"),
+		"should contain the all-dependencies.txt conflict manifest")
+	assert.True(t, pathsContain(paths, "/usr/lib/opentelemetry/python/otel-config-check"),
+		"should contain the otel-config-check validator")
+	assert.True(t, pathsContain(paths, "/etc/opentelemetry/injector/conf.d/python.conf"),
+		"should contain Python conf.d drop-in")
+}
+
 func TestDebMetapackageMetadata(t *testing.T) {
 	skipIfNoDebPackages(t)
 
@@ -308,6 +336,8 @@ func TestDebMetapackageMetadata(t *testing.T) {
 		"metapackage should not hard-depend on Node.js — should be in Recommends")
 	assert.NotContains(t, depends, "opentelemetry-dotnet-autoinstrumentation1",
 		"metapackage should not hard-depend on .NET — should be in Recommends")
+	assert.NotContains(t, depends, "opentelemetry-python-autoinstrumentation1",
+		"metapackage should not hard-depend on Python — should be in Recommends")
 
 	// Should NOT depend on concrete package names.
 	assert.NotContains(t, depends, "opentelemetry-injector ",
@@ -363,6 +393,16 @@ func TestDebDotnetConfDContent(t *testing.T) {
 		"dotnet.conf should reference the correct path prefix")
 }
 
+func TestDebPythonConfDContent(t *testing.T) {
+	skipIfNoDebPackages(t)
+
+	pkg := findPackage(t, "opentelemetry-python-autoinstrumentation_", ".deb")
+	content := debExtractFile(t, pkg, "/etc/opentelemetry/injector/conf.d/python.conf")
+
+	assert.Contains(t, content, "python_auto_instrumentation_agent_path_prefix=/usr/lib/opentelemetry/python",
+		"python.conf should register the agent path prefix")
+}
+
 // --------------------------------------------------------------------------
 // DEB Suggests validation
 // --------------------------------------------------------------------------
@@ -397,6 +437,16 @@ func TestDebDotnetSuggestsInjector(t *testing.T) {
 		".NET package should Suggest opentelemetry-injector1")
 }
 
+func TestDebPythonSuggestsInjector(t *testing.T) {
+	skipIfNoDebPackages(t)
+
+	pkg := findPackage(t, "opentelemetry-python-autoinstrumentation_", ".deb")
+	d := openDeb(t, pkg)
+
+	assert.Contains(t, d.Control.Suggests.String(), "opentelemetry-injector1",
+		"Python package should Suggest opentelemetry-injector1")
+}
+
 // --------------------------------------------------------------------------
 // DEB Recommends validation
 // --------------------------------------------------------------------------
@@ -414,6 +464,8 @@ func TestDebMetapackageRecommendsLanguagePackages(t *testing.T) {
 		"metapackage should Recommend opentelemetry-nodejs-autoinstrumentation1")
 	assert.Contains(t, recommends, "opentelemetry-dotnet-autoinstrumentation1",
 		"metapackage should Recommend opentelemetry-dotnet-autoinstrumentation1")
+	assert.Contains(t, recommends, "opentelemetry-python-autoinstrumentation1",
+		"metapackage should Recommend opentelemetry-python-autoinstrumentation1")
 }
 
 // --------------------------------------------------------------------------
@@ -518,6 +570,32 @@ func TestRpmDotnetContents(t *testing.T) {
 	assert.True(t, pathsContain(names, "/etc/opentelemetry/injector/conf.d/dotnet.conf"))
 }
 
+func TestRpmPythonMetadata(t *testing.T) {
+	skipIfNoRpmPackages(t)
+
+	pkg := findPackage(t, "opentelemetry-python-autoinstrumentation-", ".rpm")
+	p := openRpm(t, pkg)
+
+	assert.True(t, rpmDepsContain(p.Provides(), "opentelemetry-python-autoinstrumentation1"),
+		"Python RPM should Provide opentelemetry-python-autoinstrumentation1")
+
+	assert.False(t, rpmDepsContain(p.Requires(), "opentelemetry-injector"),
+		"Python RPM should not hard-require injector")
+}
+
+func TestRpmPythonContents(t *testing.T) {
+	skipIfNoRpmPackages(t)
+
+	pkg := findPackage(t, "opentelemetry-python-autoinstrumentation-", ".rpm")
+	p := openRpm(t, pkg)
+	names := rpmFileNames(p)
+
+	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/python/glibc/sitecustomize.py"))
+	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/python/glibc/all-dependencies.txt"))
+	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/python/otel-config-check"))
+	assert.True(t, pathsContain(names, "/etc/opentelemetry/injector/conf.d/python.conf"))
+}
+
 func TestRpmMetapackageMetadata(t *testing.T) {
 	skipIfNoRpmPackages(t)
 
@@ -570,6 +648,16 @@ func TestRpmDotnetSuggestsInjector(t *testing.T) {
 		".NET RPM should Suggest opentelemetry-injector1")
 }
 
+func TestRpmPythonSuggestsInjector(t *testing.T) {
+	skipIfNoRpmPackages(t)
+
+	pkg := findPackage(t, "opentelemetry-python-autoinstrumentation-", ".rpm")
+	p := openRpm(t, pkg)
+
+	assert.True(t, rpmDepsContain(p.Suggests(), "opentelemetry-injector1"),
+		"Python RPM should Suggest opentelemetry-injector1")
+}
+
 // --------------------------------------------------------------------------
 // RPM Recommends validation
 // --------------------------------------------------------------------------
@@ -583,6 +671,7 @@ func TestRpmMetapackageRecommendsLanguagePackages(t *testing.T) {
 	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-java-autoinstrumentation1"))
 	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-nodejs-autoinstrumentation1"))
 	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-dotnet-autoinstrumentation1"))
+	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-python-autoinstrumentation1"))
 }
 
 // --------------------------------------------------------------------------

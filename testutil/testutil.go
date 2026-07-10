@@ -6,13 +6,11 @@ package testutil
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -125,28 +123,6 @@ func RunPackageTest(
 	require.Equal(t, 0, state.ExitCode, "container exited with non-zero status.\n\nOutput:\n%s", output)
 
 	return output
-}
-
-// StartServiceContainer builds a Docker image from the given Dockerfile, starts
-// the container with the specified exposed ports, and waits for an HTTP endpoint
-// to become ready. Returns the running container.
-func StartServiceContainer(
-	t *testing.T,
-	ctx context.Context,
-	dockerfilePath string,
-	buildArgs map[string]*string,
-	exposedPorts []string,
-	waitPort string,
-	waitPath string,
-) testcontainers.Container {
-	t.Helper()
-	return StartServiceContainerOpts(t, ctx, ServiceContainerOptions{
-		DockerfilePath: dockerfilePath,
-		BuildArgs:      buildArgs,
-		ExposedPorts:   exposedPorts,
-		WaitPort:       waitPort,
-		WaitPath:       waitPath,
-	})
 }
 
 // ServiceContainerOptions configures a long-running service container.
@@ -273,7 +249,10 @@ func ContainerHTTPGet(t *testing.T, ctx context.Context, container testcontainer
 	require.NoError(t, err)
 
 	url := fmt.Sprintf("http://%s:%s%s", host, mappedPort.Port(), path)
-	resp, err := http.Get(url)
+	// A dedicated client with a timeout: an unresponsive container should
+	// fail this call fast, not wedge the test until its -timeout expires.
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	return resp.StatusCode
@@ -291,45 +270,12 @@ func ContainerLogs(t *testing.T, ctx context.Context, container testcontainers.C
 	return string(data)
 }
 
-// WaitForFileContaining polls a container until the given file contains the
-// specified substring, or the timeout is reached. Returns the file contents.
-func WaitForFileContaining(t *testing.T, ctx context.Context, container testcontainers.Container, path, substr string, timeout time.Duration) string {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		reader, err := container.CopyFileFromContainer(ctx, path)
-		if err == nil {
-			data, readErr := io.ReadAll(reader)
-			reader.Close()
-			if readErr == nil && strings.Contains(string(data), substr) {
-				return string(data)
-			}
-		}
-		time.Sleep(2 * time.Second)
-	}
-	t.Fatalf("timed out waiting for %s to contain %q", path, substr)
-	return ""
-}
-
 // FileExistsInContainer returns true if the given path exists inside the container.
 func FileExistsInContainer(t *testing.T, ctx context.Context, container testcontainers.Container, path string) bool {
 	t.Helper()
 	code, _, err := container.Exec(ctx, []string{"test", "-f", path})
 	require.NoError(t, err)
 	return code == 0
-}
-
-// FileContainsInContainer returns true if the file at the given path inside the
-// container contains the specified substring.
-func FileContainsInContainer(t *testing.T, ctx context.Context, container testcontainers.Container, path, substr string) bool {
-	t.Helper()
-	reader, err := container.CopyFileFromContainer(ctx, path)
-	require.NoError(t, err, "failed to copy %s from container", path)
-	defer reader.Close()
-
-	data, err := io.ReadAll(reader)
-	require.NoError(t, err)
-	return strings.Contains(string(data), substr)
 }
 
 // FileContentInContainer returns the full contents of a file inside the
@@ -364,114 +310,4 @@ func ExecSucceeds(t *testing.T, ctx context.Context, container testcontainers.Co
 	code, output := ExecInContainer(t, ctx, container, cmd...)
 	require.Equal(t, 0, code, "command %v failed.\n\nOutput:\n%s", cmd, output)
 	return output
-}
-
-// --------------------------------------------------------------------------
-// OTLP JSON helpers for trace assertions
-// --------------------------------------------------------------------------
-
-// TraceExport represents the top-level structure of an OTLP JSON export.
-type TraceExport struct {
-	ResourceSpans []ResourceSpan `json:"resourceSpans"`
-}
-
-// ResourceSpan is a collection of spans from a resource.
-type ResourceSpan struct {
-	Resource   Resource    `json:"resource"`
-	ScopeSpans []ScopeSpan `json:"scopeSpans"`
-}
-
-// Resource describes the entity producing telemetry.
-type Resource struct {
-	Attributes []Attribute `json:"attributes"`
-}
-
-// ScopeSpan groups spans by instrumentation scope.
-type ScopeSpan struct {
-	Scope InstrumentationScope `json:"scope"`
-	Spans []Span               `json:"spans"`
-}
-
-// InstrumentationScope identifies the instrumentation library.
-type InstrumentationScope struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-}
-
-// Span represents a single trace span.
-type Span struct {
-	Name       string      `json:"name"`
-	Kind       int         `json:"kind"`
-	Attributes []Attribute `json:"attributes"`
-}
-
-// Attribute is a key-value pair.
-type Attribute struct {
-	Key   string         `json:"key"`
-	Value AttributeValue `json:"value"`
-}
-
-// AttributeValue holds a typed attribute value.
-type AttributeValue struct {
-	StringValue string `json:"stringValue,omitempty"`
-	IntValue    string `json:"intValue,omitempty"`
-}
-
-// SpanKindServer is the OTLP numeric value for SPAN_KIND_SERVER.
-const SpanKindServer = 2
-
-// ParseTraceExportsFromLogs extracts OTLP JSON trace exports from container
-// logs. The console exporter writes one JSON object per line; non-JSON lines
-// (e.g., Tomcat output) are silently skipped.
-func ParseTraceExportsFromLogs(t *testing.T, logs string) []TraceExport {
-	t.Helper()
-	var exports []TraceExport
-	for _, line := range strings.Split(logs, "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "{") {
-			continue
-		}
-		var export TraceExport
-		if err := json.Unmarshal([]byte(line), &export); err != nil {
-			continue // not an OTLP JSON line
-		}
-		if len(export.ResourceSpans) > 0 {
-			exports = append(exports, export)
-		}
-	}
-	return exports
-}
-
-// AllSpans extracts all spans from a slice of trace exports.
-func AllSpans(exports []TraceExport) []Span {
-	var spans []Span
-	for _, export := range exports {
-		for _, rs := range export.ResourceSpans {
-			for _, ss := range rs.ScopeSpans {
-				spans = append(spans, ss.Spans...)
-			}
-		}
-	}
-	return spans
-}
-
-// AllResources extracts all resources from a slice of trace exports.
-func AllResources(exports []TraceExport) []Resource {
-	var resources []Resource
-	for _, export := range exports {
-		for _, rs := range export.ResourceSpans {
-			resources = append(resources, rs.Resource)
-		}
-	}
-	return resources
-}
-
-// HasAttribute checks if a slice of attributes contains a given key.
-func HasAttribute(attrs []Attribute, key string) bool {
-	for _, a := range attrs {
-		if a.Key == key {
-			return true
-		}
-	}
-	return false
 }
