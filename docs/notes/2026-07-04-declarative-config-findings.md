@@ -43,12 +43,10 @@ tracer_provider:
     - batch:
         exporter:
           otlp_http:
-            endpoint: https://ingress.eu-west-1.aws.dash0-dev.com/v1/traces
+            endpoint: https://otlp.example.com/v1/traces
             headers:
               - name: Authorization
                 value: Bearer <token>
-              - name: Dash0-Dataset
-                value: system-packages
 meter_provider:
   readers:
     - periodic:
@@ -56,14 +54,14 @@ meter_provider:
         timeout: 5000
         exporter:
           otlp_http:
-            endpoint: https://ingress.eu-west-1.aws.dash0-dev.com/v1/metrics
+            endpoint: https://otlp.example.com/v1/metrics
             headers: # same as above
 logger_provider:
   processors:
     - batch:
         exporter:
           otlp_http:
-            endpoint: https://ingress.eu-west-1.aws.dash0-dev.com/v1/logs
+            endpoint: https://otlp.example.com/v1/logs
             headers: # same as above
 ```
 
@@ -84,7 +82,7 @@ Schema details that differ from environment-variable configuration:
 
 Once `OTEL_CONFIG_FILE` is in effect, the spec requires SDKs to **ignore all other `OTEL_*` environment variables** as direct configuration — but they remain available to `${VAR}` substitution inside the file.
 The injected variables from `default_env.conf` therefore lose their direct meaning, yet the config file can deliberately consume them, and the schema is designed for exactly this bridge: `headers_list` accepts the `OTEL_EXPORTER_OTLP_HEADERS` wire format (comma-separated, percent-encoded) as-is.
-Verified end to end (spans arrived in Dash0 as `bridge-java`):
+Verified end to end (spans arrived at the observability backend as `bridge-java`):
 
 ```yaml
 tracer_provider:
@@ -101,10 +99,10 @@ What should be avoided is *duplicating* values (endpoint in the file *and* in th
 
 ## Results
 
-Each app makes 3 auto-instrumented HTTPS GET requests and is launched with no OTel-related setup whatsoever; the injector does everything.
+Each app makes 3 auto-instrumented HTTP GET requests and is launched with no OTel-related setup whatsoever; the injector does everything.
 
 - **Java — works.**
-  The injected 2.29.0 agent logs `Autoconfiguring from configuration file: …` and exports as `inject-java`; 3 spans confirmed in Dash0.
+  The injected 2.29.0 agent logs `Autoconfiguring from configuration file: …` and exports as `inject-java`; 3 spans confirmed.
 - **Node.js — works.**
   The injected `register.js` wrapper boots `startNodeSDK()`; 3 spans confirmed as `inject-nodejs`.
 - **Python — works** (in a clean virtualenv; see the sitecustomize TODO).
