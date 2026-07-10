@@ -11,7 +11,7 @@ and requires no manual invocation.
 .B opentelemetry-injector
 is an LD_PRELOAD-based mechanism that automatically injects OpenTelemetry
 auto-instrumentation agents into processes at startup. It supports Java,
-Node.js, and .NET runtimes.
+Node.js, .NET, and Python runtimes.
 .PP
 When a process starts, the injector library detects the runtime environment
 and loads the appropriate OpenTelemetry agent to enable automatic telemetry
@@ -49,8 +49,12 @@ Path to the Java agent JAR file.
 Path to the Node.js agent entry point.
 .TP
 .B dotnet_auto_instrumentation_agent_path_prefix
-Path prefix for .NET agent binaries (contains linux-x64/ and linux-musl-x64/
-subdirectories for native profiler libraries).
+Path prefix for the .NET agent (the injector resolves the glibc/
+subdirectory beneath it).
+.TP
+.B python_auto_instrumentation_agent_path_prefix
+Path prefix for the Python agent (the injector resolves the glibc/
+subdirectory beneath it and prepends it to PYTHONPATH).
 .SH ENVIRONMENT
 The following environment variables can be used to control instrumentation:
 .TP
@@ -72,7 +76,8 @@ Set the logs exporter (e.g., otlp, console, none).
 .BR ld.so (8),
 .BR opentelemetry-java (8),
 .BR opentelemetry-nodejs (8),
-.BR opentelemetry-dotnet (8)
+.BR opentelemetry-dotnet (8),
+.BR opentelemetry-python (8)
 .SH AUTHORS
 The OpenTelemetry Authors
 .SH BUGS

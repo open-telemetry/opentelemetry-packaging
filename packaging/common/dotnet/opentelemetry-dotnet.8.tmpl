@@ -12,19 +12,15 @@ The OpenTelemetry .NET Auto-Instrumentation automatically instruments
 requiring code changes.
 .PP
 When used with the OpenTelemetry Injector package, the agent is automatically
-attached to all .NET processes. The injector automatically selects the
-appropriate native profiler variant (glibc or musl) based on the system's
-C library.
+attached to all .NET processes. The injector resolves the agent path as
+<prefix>/<libc>; this package bundles the glibc variant only, since musl-based
+distributions (Alpine Linux) use apk packages, which this project does not
+build.
 .SH FILES
 .TP
-.B /usr/lib/opentelemetry/dotnet/
-Directory containing shared managed assemblies for .NET instrumentation.
-.TP
-.B /usr/lib/opentelemetry/dotnet/linux-x64/OpenTelemetry.AutoInstrumentation.Native.so
-Native profiler library for glibc-based systems.
-.TP
-.B /usr/lib/opentelemetry/dotnet/linux-musl-x64/OpenTelemetry.AutoInstrumentation.Native.so
-Native profiler library for musl-based systems (e.g., Alpine Linux).
+.B /usr/lib/opentelemetry/dotnet/glibc/
+Directory containing the managed assemblies and the native profiler library
+(glibc variant) for .NET instrumentation.
 .TP
 .B /etc/opentelemetry/dotnet/otel-config.yaml
 Optional declarative configuration file.
@@ -58,18 +54,10 @@ Set to "true" to enable declarative configuration. Default: false
 .B OTEL_CONFIG_FILE
 Path to a declarative configuration file.
 .SH NOTES
-The .NET instrumentation includes shared managed assemblies stored once, with
-separate native profiler libraries for different C library implementations:
-.IP \(bu 2
-.B linux-x64/
-\- Native profiler for glibc (Debian, Ubuntu, Fedora, RHEL, and most
-standard distributions).
-.IP \(bu 2
-.B linux-musl-x64/
-\- Native profiler for musl (Alpine Linux and other musl-based distributions).
-.PP
-The injector automatically selects the correct native profiler based on the
-system's C library.
+The bundle installs under a glibc/ subdirectory, matching the injector's
+<prefix>/<libc> resolution scheme. Only the glibc variant is bundled: musl-based
+distributions (Alpine Linux) use apk packages, which this project does not
+build.
 .SH SEE ALSO
 .BR opentelemetry-injector (8),
 .BR dotnet (1)

@@ -10,10 +10,11 @@ collect distributed traces, metrics, and logs without requiring code changes.
 
 ## Installation
 
-The instrumentation bundle is installed at `/usr/lib/opentelemetry/python/`.
+The instrumentation bundle is installed at `/usr/lib/opentelemetry/python/glibc/`
+(the injector resolves the agent path as `<prefix>/<libc>`, the same scheme as .NET).
 
 When combined with the `opentelemetry-injector` package, Python applications are
-automatically instrumented. The injector prepends `/usr/lib/opentelemetry/python`
+automatically instrumented. The injector prepends `/usr/lib/opentelemetry/python/glibc`
 to `PYTHONPATH`, causing Python to execute `sitecustomize.py` at interpreter
 startup before the application runs.
 
@@ -85,7 +86,7 @@ Instrumentation plug-ins are included for:
 If not using the injector, you can manually activate instrumentation:
 
 ```bash
-PYTHONPATH=/usr/lib/opentelemetry/python:$PYTHONPATH \
+PYTHONPATH=/usr/lib/opentelemetry/python/glibc:$PYTHONPATH \
   OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \
   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
   python myapp.py

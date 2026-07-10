@@ -50,7 +50,7 @@ The `cmd/build-packages` program:
    - `libotelinject.so` from [opentelemetry-injector](https://github.com/open-telemetry/opentelemetry-injector) GitHub Releases
    - Java agent JAR from [opentelemetry-java-instrumentation](https://github.com/open-telemetry/opentelemetry-java-instrumentation) GitHub Releases
    - Node.js agent from npm (`@opentelemetry/auto-instrumentations-node`)
-   - .NET agent from [opentelemetry-dotnet-instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation) GitHub Releases (glibc + musl)
+   - .NET agent from [opentelemetry-dotnet-instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation) GitHub Releases (glibc only; musl-based distributions use apk, which this project does not build)
    - Python packages via `pip`, as defined by `packaging/common/python/requirements.txt`
 
    The Python package bundles compiled C extensions, so its wheels are fetched
@@ -83,19 +83,35 @@ v2.16.0
 
 ## Building packages
 
+Build all packages (DEB + RPM) for amd64:
+
 ```sh
-# Build all packages (DEB + RPM) for amd64
 make packages
+```
 
-# Build a specific format
+Build a single format:
+
+```sh
 make deb-packages
+```
+
+```sh
 make rpm-packages
+```
 
-# Build a single component
+Build a single component, for example the injector DEB or the Java RPM:
+
+```sh
 make deb-package-injector
-make rpm-package-java
+```
 
-# Specify version and architecture
+```sh
+make rpm-package-java
+```
+
+Specify version and architecture:
+
+```sh
 make packages VERSION=1.0.0 ARCH=arm64
 ```
 
@@ -149,15 +165,27 @@ make integration-test-metadata
 
 End-to-end tests that install packages in Debian/Fedora containers from a local APT/YUM repository, start instrumented applications, and verify telemetry output.
 
-```sh
-# Run all integration tests (builds packages + local repos first)
-make integration-tests
+Run all integration tests (builds packages and local repositories first):
 
-# Run a specific test
+```sh
+make integration-tests
+```
+
+Run a specific format and language combination:
+
+```sh
 make integration-test-deb-java
+```
+
+```sh
 make integration-test-rpm-nodejs
+```
+
+```sh
 make integration-test-deb-python
 ```
+
+The DEB targets also run the per-language declarative-configuration scenarios (`Test<Lang>DeclarativeConfiguration`), which point `OTEL_CONFIG_FILE` at the shipped `otel-config.yaml` and assert telemetry end to end.
 
 ### Lifecycle and vendor tests (containers required)
 
@@ -176,17 +204,14 @@ The upgrade scenarios install from a second local repository (`build/local-repo/
 The vendor scenarios install from a third local repository (`build/local-repo/{apt,rpm}-vendor`) so the E2E suites never see two providers of the same virtual package.
 The Makefile stages all of these automatically as target prerequisites.
 
-The Python integration tests run on the architecture of the containers your
-engine starts. The package is architecture-specific, so build it for that
-architecture — for example, on an arm64 host:
+The Python integration tests run on the architecture of the containers your engine starts.
+The package is architecture-specific, so build it for that architecture — for example, on an arm64 host:
 
 ```sh
 make ARCH=arm64 integration-test-rpm-python
 ```
 
-The Python tests activate the agent by prepending its directory to `PYTHONPATH`
-(the documented manual-activation path), because the injector does not yet
-implement the Python `python_auto_instrumentation_agent_path_prefix` conf.d key.
+The Python tests activate the agent through the injector: the package's conf.d drop-in sets `python_auto_instrumentation_agent_path_prefix`, and the injector prepends the agent's `glibc/` directory to `PYTHONPATH` for Python processes.
 
 ### Linting
 

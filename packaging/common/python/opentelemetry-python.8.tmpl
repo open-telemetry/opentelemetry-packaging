@@ -14,7 +14,7 @@ applications to collect distributed traces, metrics, and logs without requiring
 code changes.
 .PP
 When used with the OpenTelemetry Injector package, the injector prepends
-.I /usr/lib/opentelemetry/python
+.I /usr/lib/opentelemetry/python/glibc
 to
 .B PYTHONPATH
 for every process. Python then automatically executes the
@@ -34,10 +34,10 @@ dependency on
 and therefore avoids version conflicts with application dependencies.
 .SH FILES
 .TP
-.B /usr/lib/opentelemetry/python/sitecustomize.py
+.B /usr/lib/opentelemetry/python/glibc/sitecustomize.py
 Auto-instrumentation entry point, executed by Python at startup.
 .TP
-.B /usr/lib/opentelemetry/python/all-dependencies.txt
+.B /usr/lib/opentelemetry/python/glibc/all-dependencies.txt
 Pinned dependency manifest used at runtime to detect version conflicts.
 .TP
 .B /etc/opentelemetry/python/otel-config.yaml
@@ -88,7 +88,7 @@ Run a Python application with the injector active:
 .PP
 .RS
 # (With opentelemetry-injector installed, this happens automatically)
-PYTHONPATH=/usr/lib/opentelemetry/python:$PYTHONPATH \\
+PYTHONPATH=/usr/lib/opentelemetry/python/glibc:$PYTHONPATH \\
   OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \\
   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \\
   python myapp.py

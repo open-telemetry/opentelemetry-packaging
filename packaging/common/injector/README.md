@@ -6,7 +6,7 @@ It enables zero-code instrumentation for applications running on Linux systems.
 ## How it works
 
 The injector library (`libotelinject.so`) is loaded via `/etc/ld.so.preload` into every process.
-It detects the runtime (Java, Node.js, .NET) and injects the appropriate OpenTelemetry auto-instrumentation agent.
+It detects the runtime (Java, Node.js, .NET, Python) and injects the appropriate OpenTelemetry auto-instrumentation agent.
 
 ## Configuration
 
@@ -20,6 +20,7 @@ Each language package installs a configuration file in `/etc/opentelemetry/injec
 - `java.conf`: Sets `jvm_auto_instrumentation_agent_path`
 - `nodejs.conf`: Sets `nodejs_auto_instrumentation_agent_path`
 - `dotnet.conf`: Sets `dotnet_auto_instrumentation_agent_path_prefix`
+- `python.conf`: Sets `python_auto_instrumentation_agent_path_prefix`
 
 To add a custom agent configuration, create a file in `conf.d/` (e.g., `99-custom.conf`).
 Files are read in alphabetical order.

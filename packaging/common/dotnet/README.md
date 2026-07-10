@@ -8,15 +8,11 @@ The .NET instrumentation automatically instruments .NET applications to collect 
 
 ## Installation
 
-The instrumentation is installed at `/usr/lib/opentelemetry/dotnet/` with the following layout:
-
-- Shared managed assemblies at the top level
-- `linux-x64/OpenTelemetry.AutoInstrumentation.Native.so` - Native profiler for glibc systems
-- `linux-musl-x64/OpenTelemetry.AutoInstrumentation.Native.so` - Native profiler for musl systems
+The instrumentation is installed at `/usr/lib/opentelemetry/dotnet/glibc/` (managed assemblies and the native profiler together).
+The injector resolves the agent path as `<prefix>/<libc>`; only the glibc variant is bundled, because musl-based distributions (Alpine) use apk packages, which this project does not build.
 
 When combined with the `opentelemetry-injector` package, .NET applications are automatically instrumented.
 The agent path prefix is registered via a drop-in configuration file at `/etc/opentelemetry/injector/conf.d/dotnet.conf`.
-The injector selects the correct native profiler variant based on the system's C library.
 
 ## Configuration
 
