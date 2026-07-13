@@ -8,6 +8,49 @@ Users can achieve observability through a single command:
 {apt|yum} install opentelemetry
 ```
 
+## Installing
+
+Each release publishes APT and YUM repositories on [GitHub Pages](https://open-telemetry.github.io/opentelemetry-packaging/), together with a landing page that carries the complete installation instructions, including selective per-language installs.
+
+> [!NOTE]
+> The GitHub Pages hosting is an interim solution, and the repository URLs below will change when the packages move to their permanent distribution infrastructure.
+
+On Debian and Ubuntu, add the APT repository:
+
+```sh
+echo "deb [trusted=yes] https://open-telemetry.github.io/opentelemetry-packaging/debian stable main" | sudo tee /etc/apt/sources.list.d/opentelemetry.list
+```
+
+Refresh the package index:
+
+```sh
+sudo apt update
+```
+
+Install the full auto-instrumentation suite:
+
+```sh
+sudo apt install opentelemetry
+```
+
+On Fedora, RHEL, and derivatives, add the YUM repository:
+
+```sh
+cat <<EOF | sudo tee /etc/yum.repos.d/opentelemetry.repo
+[opentelemetry]
+name=OpenTelemetry Auto-Instrumentation System Packages
+baseurl=https://open-telemetry.github.io/opentelemetry-packaging/rpm/packages
+enabled=1
+gpgcheck=0
+EOF
+```
+
+Install the full auto-instrumentation suite:
+
+```sh
+sudo dnf install opentelemetry
+```
+
 ## Current scope
 
 Scope as defined by the approved [System Packages](https://github.com/open-telemetry/community/blob/main/projects/packaging.md) project.
