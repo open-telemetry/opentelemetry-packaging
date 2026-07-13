@@ -12,14 +12,14 @@ requires-python = ">=3.10"
 dependencies = [
   "opentelemetry-api ~= 1.12",
   "opentelemetry-sdk ~= 1.12",
-  "opentelemetry-pyproto == 1.43.0.dev",
+  "opentelemetry-pyproto == 1.44.0.dev",
 ]
 
 [dependency-groups]
 dev = [
-    "opentelemetry-proto == 1.43.0.dev",
-    "opentelemetry-exporter-otlp-proto-common == 1.43.0.dev",
-    "opentelemetry-test-utils == 1.43.0.dev",
+    "opentelemetry-proto == 1.44.0.dev",
+    "opentelemetry-exporter-otlp-proto-common == 1.44.0.dev",
+    "opentelemetry-test-utils == 0.65b0.dev",
     "protobuf>=5.0",
     "pytest>=7.0",
 ]
@@ -30,7 +30,7 @@ opentelemetry-exporter-otlp-proto-common = { workspace = true }
 opentelemetry-test-utils = { workspace = true }
 
 [tool.hatch.version]
-path = "src/opentelemetry/exporter/otlp/pyproto/common/version/__init__.py"
+path = "src/opentelemetry/exporter/otlp/_proto/common/version/__init__.py"
 
 [tool.hatch.build.targets.sdist]
 include = ["/src"]

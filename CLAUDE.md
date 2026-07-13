@@ -16,6 +16,7 @@ make rpm-package-<component>   # Build a single RPM
 
 make go-unit-tests             # Go command unit tests (otel-config-check)
 make python-unit-tests         # sitecustomize.py unit tests (throwaway venv, no containers)
+make pyproto-unit-tests        # Vendored pyproto exporter test suites (throwaway venvs, no containers)
 make integration-test-metadata # Fast metadata tests (no containers)
 make integration-tests         # Full E2E tests (requires Podman/Docker)
 make integration-test-deb-java # Single E2E test

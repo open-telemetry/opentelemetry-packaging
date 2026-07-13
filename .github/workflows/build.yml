@@ -36,6 +36,9 @@ jobs:
       - name: Run the sitecustomize.py unit tests
         run: make python-unit-tests
 
+      - name: Run the vendored pyproto exporter test suites
+        run: make pyproto-unit-tests
+
   sitecustomize-compatibility-tests:
     runs-on: ubuntu-24.04
     steps:

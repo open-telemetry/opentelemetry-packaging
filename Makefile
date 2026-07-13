@@ -290,6 +290,66 @@ python-unit-tests:
 	build/python-unit-tests-venv/bin/python -m unittest discover \
 		--start-directory packaging/common/python --pattern 'test_*.py' --verbose
 
+# Upstream test suites of the vendored pyproto exporter chain
+# (packaging/common/python/vendor/), in two throwaway venvs. The vendored
+# packages install in editable mode in both, so their modules resolve into the
+# vendor source tree (the suites' conftest.py guards check for "pyproto" in
+# resolved file paths — which is also why the venv directory names must not
+# contain that substring).
+#
+# - The drop-in venv has no real protobuf-based packages: the pyproto shims own
+#   the public opentelemetry.exporter.otlp.proto.* module paths, exactly like
+#   in the shipped bundle, and the exporter test suites import through them.
+# - The equivalence venv adds the real opentelemetry-proto and proto exporters,
+#   which then own the shared public module paths; the equivalence suites
+#   compare the pure-Python encoding (private _proto paths) against the real
+#   google-protobuf one (public paths).
+#
+# Test suites are run per package: the tests/ directories share the module
+# name "tests" and would collide in a single pytest invocation.
+PYPROTO_VENDOR_DIR = packaging/common/python/vendor
+PYPROTO_DROPIN_VENV = build/python-vendor-dropin-venv
+PYPROTO_EQUIV_VENV = build/python-vendor-equivalence-venv
+.PHONY: pyproto-unit-tests
+pyproto-unit-tests:
+	python3 -m venv $(PYPROTO_DROPIN_VENV)
+	$(PYPROTO_DROPIN_VENV)/bin/pip install --quiet pytest \
+		opentelemetry-sdk==1.43.0 grpcio
+	$(PYPROTO_DROPIN_VENV)/bin/pip install --quiet --no-deps \
+		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-pyproto \
+		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-common \
+		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-http \
+		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-grpc
+	set -e; for suite in \
+		opentelemetry-exporter-otlp-pyproto-http/tests \
+		opentelemetry-exporter-otlp-pyproto-grpc/tests; do \
+		echo "=== $$suite (drop-in venv) ==="; \
+		$(abspath $(PYPROTO_DROPIN_VENV))/bin/python -m pytest -q \
+			--rootdir $(PYPROTO_VENDOR_DIR)/$${suite%%/*} \
+			$(PYPROTO_VENDOR_DIR)/$$suite; \
+	done
+	python3 -m venv $(PYPROTO_EQUIV_VENV)
+	$(PYPROTO_EQUIV_VENV)/bin/pip install --quiet pytest pytest-benchmark \
+		opentelemetry-sdk==1.43.0 \
+		opentelemetry-proto==1.43.0 \
+		opentelemetry-exporter-otlp-proto-http==1.43.0 \
+		opentelemetry-exporter-otlp-proto-grpc==1.43.0
+	$(PYPROTO_EQUIV_VENV)/bin/pip install --quiet --no-deps \
+		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-pyproto \
+		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-common \
+		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-http \
+		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-grpc
+	set -e; for suite in \
+		opentelemetry-pyproto/tests \
+		opentelemetry-exporter-otlp-pyproto-common/tests \
+		opentelemetry-exporter-otlp-pyproto-http/equivalence_tests \
+		opentelemetry-exporter-otlp-pyproto-grpc/equivalence_tests; do \
+		echo "=== $$suite (equivalence venv) ==="; \
+		$(abspath $(PYPROTO_EQUIV_VENV))/bin/python -m pytest --benchmark-disable -q \
+			--rootdir $(PYPROTO_VENDOR_DIR)/$${suite%%/*} \
+			$(PYPROTO_VENDOR_DIR)/$$suite; \
+	done
+
 # ============================================================================
 # Lint
 # ============================================================================

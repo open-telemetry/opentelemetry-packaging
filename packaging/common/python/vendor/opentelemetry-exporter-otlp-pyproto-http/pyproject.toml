@@ -12,36 +12,32 @@ requires-python = ">=3.10"
 dependencies = [
   "opentelemetry-api ~= 1.12",
   "opentelemetry-sdk ~= 1.12",
-  "opentelemetry-exporter-otlp-pyproto-common == 1.43.0.dev",
+  "opentelemetry-exporter-otlp-pyproto-common == 1.44.0.dev",
 ]
 
 [project.entry-points.opentelemetry_traces_exporter]
-otlp_pyproto_http = "opentelemetry.exporter.otlp.pyproto.http.trace_exporter:OTLPSpanExporter"
+otlp_proto_http = "opentelemetry.exporter.otlp.proto.http.trace_exporter:OTLPSpanExporter"
 
 [project.entry-points.opentelemetry_metrics_exporter]
-otlp_pyproto_http = "opentelemetry.exporter.otlp.pyproto.http.metric_exporter:OTLPMetricExporter"
+otlp_proto_http = "opentelemetry.exporter.otlp.proto.http.metric_exporter:OTLPMetricExporter"
 
 [project.entry-points.opentelemetry_logs_exporter]
-otlp_pyproto_http = "opentelemetry.exporter.otlp.pyproto.http._log_exporter:OTLPLogExporter"
+otlp_proto_http = "opentelemetry.exporter.otlp.proto.http._log_exporter:OTLPLogExporter"
 
 [dependency-groups]
 dev = [
-    "opentelemetry-proto == 1.43.0.dev",
-    "opentelemetry-exporter-otlp-proto-common == 1.43.0.dev",
-    "opentelemetry-exporter-otlp-proto-http == 1.43.0.dev",
-    "opentelemetry-test-utils == 1.43.0.dev",
+    "opentelemetry-proto == 1.44.0.dev",
+    "opentelemetry-test-utils == 0.65b0.dev",
     "protobuf>=5.0",
     "pytest>=7.0",
 ]
 
 [tool.uv.sources]
 opentelemetry-proto = { workspace = true }
-opentelemetry-exporter-otlp-proto-common = { workspace = true }
-opentelemetry-exporter-otlp-proto-http = { workspace = true }
 opentelemetry-test-utils = { workspace = true }
 
 [tool.hatch.version]
-path = "src/opentelemetry/exporter/otlp/pyproto/http/version/__init__.py"
+path = "src/opentelemetry/exporter/otlp/_proto/http/version/__init__.py"
 
 [tool.hatch.build.targets.sdist]
 include = ["/src"]

@@ -43,7 +43,7 @@ COPY packaging/tests/shared/python/app.py /app/app.py
 # The injector activates the agent (it prepends the agent's glibc directory to
 # PYTHONPATH for Python processes). The exporter is intentionally left unset:
 # sitecustomize.py defaults all signals to the bundled pure-Python exporter
-# (otlp_pyproto_http); OTEL_EXPORTER_OTLP_PROTOCOL is set to http/protobuf by the
+# (otlp_proto_http); OTEL_EXPORTER_OTLP_PROTOCOL is set to http/protobuf by the
 # sink's Env. Shortened schedule delays get telemetry to the sink within the test
 # window, and log auto-instrumentation exports stdlib logging records as OTLP logs.
 ENV OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true \

@@ -303,11 +303,13 @@ def import_distro():
             break
 
     if not version_conflicts:
-        # Default to the pure-Python OTLP HTTP exporter bundled in this package.
+        # Default to the OTLP HTTP exporter bundled in this package: the
+        # pure-Python pyproto exporter, registered as a drop-in replacement
+        # under the standard otlp_proto_http entry points.
         # These are no-ops if the user has already set the variables explicitly.
-        os.environ.setdefault("OTEL_TRACES_EXPORTER", "otlp_pyproto_http")
-        os.environ.setdefault("OTEL_METRICS_EXPORTER", "otlp_pyproto_http")
-        os.environ.setdefault("OTEL_LOGS_EXPORTER", "otlp_pyproto_http")
+        os.environ.setdefault("OTEL_TRACES_EXPORTER", "otlp_proto_http")
+        os.environ.setdefault("OTEL_METRICS_EXPORTER", "otlp_proto_http")
+        os.environ.setdefault("OTEL_LOGS_EXPORTER", "otlp_proto_http")
         try:
             _log_debug("importing and initializing the Python auto-instrumentation now")
             from opentelemetry.instrumentation import auto_instrumentation

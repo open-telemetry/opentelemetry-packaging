@@ -27,6 +27,10 @@ This package bundles `opentelemetry-exporter-otlp-pyproto-http`, a pure-Python
 protobuf implementation of the OTLP HTTP exporter. Unlike the standard
 `opentelemetry-exporter-otlp-proto-http`, it has no dependency on `google-protobuf`
 and avoids C-extension version conflicts with application dependencies.
+It is a drop-in replacement: it provides the standard
+`opentelemetry.exporter.otlp.proto.http` module path and registers the standard
+`otlp_proto_http` exporter entry points, so both environment-variable and
+declarative configuration select it exactly like the standard exporter.
 
 Only HTTP export (`http/protobuf` or `http/json`) is supported. gRPC is not included.
 
@@ -37,9 +41,9 @@ Only HTTP export (`http/protobuf` or `http/json`) is supported. gRPC is not incl
 - `OTEL_SERVICE_NAME`: Service name for telemetry (required)
 - `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP HTTP endpoint (default: http://localhost:4318)
 - `OTEL_EXPORTER_OTLP_PROTOCOL`: Must be `http/protobuf` or `http/json`
-- `OTEL_TRACES_EXPORTER`: Traces exporter (default: `otlp_pyproto_http`)
-- `OTEL_METRICS_EXPORTER`: Metrics exporter (default: `otlp_pyproto_http`)
-- `OTEL_LOGS_EXPORTER`: Logs exporter (default: `otlp_pyproto_http`)
+- `OTEL_TRACES_EXPORTER`: Traces exporter (default: `otlp_proto_http`)
+- `OTEL_METRICS_EXPORTER`: Metrics exporter (default: `otlp_proto_http`)
+- `OTEL_LOGS_EXPORTER`: Logs exporter (default: `otlp_proto_http`)
 - `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS`: Comma-separated list of instrumentations to disable
 - `OTEL_INJECTOR_LOG_LEVEL`: Set to `debug` for verbose sitecustomize.py logging
 

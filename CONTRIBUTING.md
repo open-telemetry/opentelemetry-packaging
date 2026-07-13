@@ -27,7 +27,7 @@ packaging/
     nodejs/                  " (plus register.js, the --require entry point with declarative-config support)
     dotnet/                  "
     python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py (plus its unit tests)
-      vendor/                Vendored pyproto exporter chain (unpublished pure-Python packages; see its README)
+      vendor/                Vendored pyproto exporter chain with its upstream test suites (unpublished pure-Python packages; see its README)
   repo/                      APT and YUM repository generation scripts
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
@@ -141,6 +141,16 @@ They run in a throwaway virtualenv under `build/`, so the host Python is untouch
 
 ```sh
 make python-unit-tests
+```
+
+### Vendored pyproto exporter tests (fast, no containers)
+
+The upstream test suites of the pyproto packages vendored under `packaging/common/python/vendor/`.
+They run in two throwaway virtualenvs under `build/`: a drop-in venv where the pyproto shims own the public `opentelemetry.exporter.otlp.proto.*` module paths (like in the shipped bundle), and an equivalence venv where the real protobuf-based packages own those paths and the suites compare the pure-Python encoding against the real `google-protobuf` one.
+See [the vendor README](packaging/common/python/vendor/README.md) for the details.
+
+```sh
+make pyproto-unit-tests
 ```
 
 ### Python sitecustomize interpreter compatibility tests (containers required)

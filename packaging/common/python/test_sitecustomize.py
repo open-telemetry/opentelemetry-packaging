@@ -250,9 +250,9 @@ class ImportDistroTests(unittest.TestCase):
     def _assert_activated(self, auto_instrumentation, observed_env):
         auto_instrumentation.initialize.assert_called_once_with()
         self.assertIn(self.site_dir, observed_env["PYTHONPATH"])
-        self.assertEqual("otlp_pyproto_http", observed_env["OTEL_TRACES_EXPORTER"])
-        self.assertEqual("otlp_pyproto_http", observed_env["OTEL_METRICS_EXPORTER"])
-        self.assertEqual("otlp_pyproto_http", observed_env["OTEL_LOGS_EXPORTER"])
+        self.assertEqual("otlp_proto_http", observed_env["OTEL_TRACES_EXPORTER"])
+        self.assertEqual("otlp_proto_http", observed_env["OTEL_METRICS_EXPORTER"])
+        self.assertEqual("otlp_proto_http", observed_env["OTEL_LOGS_EXPORTER"])
 
     def _assert_deactivated(self, auto_instrumentation, observed_env):
         auto_instrumentation.initialize.assert_not_called()

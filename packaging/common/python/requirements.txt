@@ -11,12 +11,6 @@ opentelemetry-distro==0.64b0
 # the configurator crash with ModuleNotFoundError.
 opentelemetry-sdk[file-configuration]==1.43.0
 
-# The SDK's file configurator hardcodes the standard proto exporters for the
-# otlp_http/otlp_grpc declarative exporter types; the pyproto exporter below
-# cannot be selected declaratively. This reintroduces the protobuf dependency
-# for declarative-config users only.
-opentelemetry-exporter-otlp-proto-http==1.43.0
-
 urllib3 <2.6.4
 
 # TODO: publish the pure-Python pyproto exporter chain to PyPI and replace the
@@ -30,6 +24,16 @@ urllib3 <2.6.4
 # dependencies beyond each other (opentelemetry-api, opentelemetry-sdk) are
 # covered by the pins above. The exporter transports via urllib and needs no
 # HTTP client dependency.
+#
+# The exporter is a drop-in replacement for opentelemetry-exporter-otlp-proto-http:
+# it owns the public opentelemetry.exporter.otlp.proto.http module path (a shim
+# over the private pure-Python implementation) and registers the otlp_proto_http
+# entry points. This also covers declarative configuration (the SDK's file
+# configurator resolves the otlp_http exporter type through exactly that module
+# path), so the real proto-http package and its google-protobuf C extension must
+# NOT be bundled — the two distributions ship conflicting files.
+# The vendored pyproto-grpc exporter is not shipped: it requires grpcio, a C
+# extension, which would break the pure-Python property of this bundle.
 ./vendor/opentelemetry-exporter-otlp-pyproto-http
 ./vendor/opentelemetry-exporter-otlp-pyproto-common
 ./vendor/opentelemetry-pyproto

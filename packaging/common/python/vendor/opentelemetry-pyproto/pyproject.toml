@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 dependencies = []
 
 [tool.hatch.version]
-path = "src/opentelemetry/pyproto/version/__init__.py"
+path = "src/opentelemetry/_proto/version/__init__.py"
 
 [tool.hatch.build.targets.sdist]
 include = ["/src"]
@@ -22,7 +22,7 @@ packages = ["src/opentelemetry"]
 
 [dependency-groups]
 dev = [
-    "opentelemetry-proto == 1.43.0.dev",
+    "opentelemetry-proto == 1.44.0.dev",
     "protobuf>=5.0",
     "pytest>=7.0",
     "pytest-benchmark>=4",
