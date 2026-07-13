@@ -1,4 +1,4 @@
-# Linux System Packages Meta Architecture
+# Linux system packages meta architecture
 
 ## Status
 
@@ -17,25 +17,26 @@ The SIG's [design principles](https://github.com/open-telemetry/community/blob/m
 
 > Enable vendor packages to provide alternatives to upstream offerings
 
-A vendor (e.g., a commercial observability provider or a Linux distribution) should be able to ship their own Java, Node.js, or .NET auto-instrumentation package that cleanly replaces the upstream equivalent.
+A vendor (e.g., a commercial observability provider or a Linux distribution) should be able to ship their own Java, Node.js, .NET, or Python auto-instrumentation package that cleanly replaces the upstream equivalent.
 Users who installed everything through the `opentelemetry` metapackage should be able to swap a single language package without breaking their system.
 
 This document describes all packages in the first version of the system packages, with the changes needed to support vendor overrides.
 
 > [!NOTE]
-> The current [POC](https://github.com/open-telemetry/opentelemetry-injector/pull/239) in the OpenTelemetry Injector repository does not yet support vendor overrides or interface versions. The [Current POC Gaps](#current-poc-gaps) section details the required changes.
+> The original [POC](https://github.com/open-telemetry/opentelemetry-injector/pull/239) in the OpenTelemetry Injector repository did not support vendor overrides or interface versions; the [Current POC gaps](#current-poc-gaps) section records those gaps.
+> The POC has since moved to [PR #18](https://github.com/open-telemetry/opentelemetry-packaging/pull/18) in this repository, which implements the architecture described in this document — including vendor overrides, interface versions, and a Python auto-instrumentation package — and closes all the gaps listed below.
 
-## Packages Overview
+## Packages overview
 
-The first version ships five packages.
-All are built with [FPM](https://fpm.readthedocs.io/) for both DEB and RPM.
+The first version ships six packages, each available as both DEB and RPM.
 
 | Package | Description | Architecture |
 |---------|-------------|-------------|
 | `opentelemetry-injector` | LD_PRELOAD-based shared library that activates language agents | Per-arch (`amd64`, `arm64`) |
 | `opentelemetry-java-autoinstrumentation` | OpenTelemetry Java agent JAR | `all` / `noarch` |
 | `opentelemetry-nodejs-autoinstrumentation` | OpenTelemetry Node.js auto-instrumentation | `all` / `noarch` |
-| `opentelemetry-dotnet-autoinstrumentation` | OpenTelemetry .NET Automatic Instrumentation (glibc + musl) | Per-arch (`amd64`, `arm64`) |
+| `opentelemetry-dotnet-autoinstrumentation` | OpenTelemetry .NET Automatic Instrumentation (glibc only) | Per-arch (`amd64`, `arm64`) |
+| `opentelemetry-python-autoinstrumentation` | OpenTelemetry Python auto-instrumentation | Per-arch (`amd64`, `arm64`) |
 | `opentelemetry` | Metapackage that pulls in the injector and all language packages | `all` / `noarch` |
 
 ### Dependency graph
@@ -45,7 +46,8 @@ opentelemetry  (metapackage)
 ├── Depends: opentelemetry-injector1                      (virtual)
 ├── Recommends: opentelemetry-java-autoinstrumentation1   (virtual)
 ├── Recommends: opentelemetry-nodejs-autoinstrumentation1 (virtual)
-└── Recommends: opentelemetry-dotnet-autoinstrumentation1 (virtual)
+├── Recommends: opentelemetry-dotnet-autoinstrumentation1 (virtual)
+└── Recommends: opentelemetry-python-autoinstrumentation1 (virtual)
 
 opentelemetry-injector
 └── Provides: opentelemetry-injector1
@@ -65,7 +67,7 @@ opentelemetry-dotnet-autoinstrumentation
 
 Every dependency in the graph uses a virtual package name rather than a concrete one.
 The trailing `1` is not a package release version — it is the **interface generation number**, following the shared-library SONAME convention (`libssl3`, `libgcc-s1`).
-Both patterns are well-established in DEB and RPM (see [Appendix: Prior Art in DEB and RPM](#appendix-prior-art-in-deb-and-rpm)).
+Both patterns are well-established in DEB and RPM (see [Appendix: Prior art in DEB and RPM](#appendix-prior-art-in-deb-and-rpm)).
 
 > [!NOTE]
 > All `Provides` declarations are currently unversioned (e.g., `Provides: opentelemetry-injector1` without `(= X.Y.Z)`).
@@ -84,9 +86,9 @@ Tracks generation 1 of the contract between the injector and each language's aut
 The metapackage depends on these virtual names.
 A vendor can ship a replacement package with a different name (e.g., `acme-java-autoinstrumentation`) that also provides the same virtual name — combined with `Conflicts`/`Replaces` on the concrete upstream name, the package manager handles the swap transparently.
 If the upstream changes what "being a Java auto-instrumentation provider" means, it bumps to `opentelemetry-java-autoinstrumentation2`; existing vendor packages that still provide `…1` cannot satisfy the new dependency.
-See [Vendor Override](#vendor-override) for the recipe and user experience.
+See [Vendor override](#vendor-override) for the recipe and user experience.
 
-## Filesystem Layout
+## Filesystem layout
 
 All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfoundation.org/FHS_3.0/fhs-3.0.html) (FHS).
 
@@ -98,24 +100,28 @@ All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfound
 │   └── opentelemetry-javaagent.jar
 ├── nodejs/
 │   └── node_modules/@opentelemetry/auto-instrumentations-node/…
-└── dotnet/
-    ├── (shared managed assemblies)
-    ├── linux-x64/OpenTelemetry.AutoInstrumentation.Native.so
-    └── linux-musl-x64/OpenTelemetry.AutoInstrumentation.Native.so
+├── dotnet/
+│   └── glibc/                (managed assemblies and native profiler; see .NET layout note)
+└── python/
+    ├── glibc/                (bundled wheels, sitecustomize.py, all-dependencies.txt)
+    └── otel-config-check     (declarative configuration validator)
 
 /etc/opentelemetry/
 ├── injector/
-│   ├── otelinject.conf
+│   ├── injector.conf
 │   ├── default_env.conf
 │   └── conf.d/
 │       ├── java.conf
 │       ├── nodejs.conf
-│       └── dotnet.conf
+│       ├── dotnet.conf
+│       └── python.conf
 ├── java/
 │   └── otel-config.yaml
 ├── nodejs/
 │   └── otel-config.yaml
-└── dotnet/
+├── dotnet/
+│   └── otel-config.yaml
+└── python/
     └── otel-config.yaml
 
 /usr/share/man/
@@ -123,30 +129,32 @@ All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfound
     ├── opentelemetry-injector.8.gz
     ├── opentelemetry-java.8.gz
     ├── opentelemetry-nodejs.8.gz
-    └── opentelemetry-dotnet.8.gz
+    ├── opentelemetry-dotnet.8.gz
+    └── opentelemetry-python.8.gz
 
 /usr/share/doc/
 ├── opentelemetry-injector/
 ├── opentelemetry-java-autoinstrumentation/
 ├── opentelemetry-nodejs-autoinstrumentation/
 ├── opentelemetry-dotnet-autoinstrumentation/
+├── opentelemetry-python-autoinstrumentation/
 └── opentelemetry/
 ```
 
-## Package Definitions
+## Package definitions
 
 ### `opentelemetry-injector`
 
 The core package.
 Installs `libotelinject.so`, a shared library loaded into every process via `/etc/ld.so.preload`.
-At runtime, the library inspects each process to determine if it is a Java, Node.js, or .NET application and, if so, activates the corresponding auto-instrumentation agent whose path is configured in the `conf.d/` drop-in files.
+At runtime, the library inspects each process to determine if it is a Java, Node.js, .NET, or Python application and, if so, activates the corresponding auto-instrumentation agent whose path is configured in the `conf.d/` drop-in files.
 
 #### Contents
 
 | Path | Description |
 |------|-------------|
 | `/usr/lib/opentelemetry/injector/libotelinject.so` | Injector shared library (per-arch) |
-| `/etc/opentelemetry/injector/otelinject.conf` | Main configuration file |
+| `/etc/opentelemetry/injector/injector.conf` | Main configuration file |
 | `/etc/opentelemetry/injector/default_env.conf` | Default `OTEL_*` environment variables for all agents |
 | `/etc/opentelemetry/injector/conf.d/` | Drop-in directory for language agent paths (empty until language packages are installed) |
 | `/usr/share/man/man8/opentelemetry-injector.8.gz` | Man page |
@@ -164,6 +172,9 @@ At runtime, the library inspects each process to determine if it is a Java, Node
 
 The post-install and pre-uninstall scripts must use only POSIX shell builtins (`read`, `case`, shell redirection) to avoid dependencies on `sed` or `grep`.
 
+The pre-uninstall script must not clean up on upgrade (dpkg passes `upgrade` as `$1`, rpm passes the remaining-instance count `1`).
+This matters on RPM in particular: the old version's `%preun` runs after the new version's `%post`, so an unguarded cleanup would strip the `/etc/ld.so.preload` entry the new version just configured.
+
 #### Injector interface versioning
 
 The injector declares `Provides: opentelemetry-injector1`.
@@ -177,9 +188,12 @@ This decouples the API contract from the package's release cadence:
 - **If a future injector release breaks the conf.d contract:** that release stops providing `opentelemetry-injector1` and starts providing `opentelemetry-injector2`. The metapackage still depends on `opentelemetry-injector1`, so the package manager blocks the injector upgrade until the metapackage is also updated.
 - **Updated metapackage and language packages** switch to `opentelemetry-injector2`, and the system can upgrade atomically.
 
-The same logic applies to language package interface generations. When the metapackage moves from `opentelemetry-java-autoinstrumentation1` to `opentelemetry-java-autoinstrumentation2`, the package manager upgrades the upstream language package in the same transaction.
+The same logic applies to language package interface generations.
+When the metapackage moves from `opentelemetry-java-autoinstrumentation1` to `opentelemetry-java-autoinstrumentation2`, the package manager upgrades the upstream language package in the same transaction.
 
-**Impact on vendor packages.** If a user has a vendor package that provides `opentelemetry-java-autoinstrumentation1` but the new metapackage requires `opentelemetry-java-autoinstrumentation2`, the package manager holds back the metapackage upgrade until the vendor ships an updated package providing `…2`. This is the intended safety behavior — it prevents a vendor package from being silently used with an incompatible interface — but it means the user cannot upgrade to the new metapackage until their vendor catches up.
+**Impact on vendor packages.**
+If a user has a vendor package that provides `opentelemetry-java-autoinstrumentation1` but the new metapackage requires `opentelemetry-java-autoinstrumentation2`, the package manager holds back the metapackage upgrade until the vendor ships an updated package providing `…2`.
+This is the intended safety behavior — it prevents a vendor package from being silently used with an incompatible interface — but it means the user cannot upgrade to the new metapackage until their vendor catches up.
 
 This mechanism is self-service for vendors: a vendor package provides a given interface generation and is automatically protected from incompatible upgrades without the upstream needing to know the vendor package exists.
 
@@ -194,7 +208,7 @@ The JAR file is part of the system package; no files are downloaded at package i
 |------|-------------|
 | `/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar` | Java agent JAR |
 | `/etc/opentelemetry/injector/conf.d/java.conf` | Drop-in: `jvm_auto_instrumentation_agent_path=/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar` |
-| `/etc/opentelemetry/java/otel-config.yaml` | Declarative configuration template |
+| `/etc/opentelemetry/java/otel-config.yaml` | Declarative configuration file (shared across all language packages) |
 | `/usr/share/man/man8/opentelemetry-java.8.gz` | Man page |
 | `/usr/share/doc/opentelemetry-java-autoinstrumentation/` | Documentation and copyright |
 
@@ -218,7 +232,7 @@ The modules are part of the system package; no files are downloaded at package i
 |------|-------------|
 | `/usr/lib/opentelemetry/nodejs/node_modules/…` | Node.js auto-instrumentation modules |
 | `/etc/opentelemetry/injector/conf.d/nodejs.conf` | Drop-in: `nodejs_auto_instrumentation_agent_path=…/register.js` |
-| `/etc/opentelemetry/nodejs/otel-config.yaml` | Declarative configuration template |
+| `/etc/opentelemetry/nodejs/otel-config.yaml` | Declarative configuration file (shared across all language packages) |
 | `/usr/share/man/man8/opentelemetry-nodejs.8.gz` | Man page |
 | `/usr/share/doc/opentelemetry-nodejs-autoinstrumentation/` | Documentation and copyright |
 
@@ -233,20 +247,17 @@ The modules are part of the system package; no files are downloaded at package i
 
 ### `opentelemetry-dotnet-autoinstrumentation`
 
-The package build fetches the pre-built [OpenTelemetry .NET Automatic Instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation) binaries for both glibc and musl libc flavors and packages them.
-Following the [approach used by the OpenTelemetry Operator](https://github.com/open-telemetry/opentelemetry-operator/blob/7531991fa87143ee584e5a993f63d581f5e0fe74/autoinstrumentation/dotnet/Dockerfile#L26-L29), the shared managed assemblies are stored once, and only the native profiler library (`OpenTelemetry.AutoInstrumentation.Native.so`) is duplicated for glibc (`linux-x64/`) and musl (`linux-musl-x64/`).
+The package build fetches the pre-built [OpenTelemetry .NET Automatic Instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation) glibc binaries and packages them under a `glibc/` subdirectory, matching the injector's `<prefix>/<libc>` path resolution.
+Only the glibc flavor is bundled: musl-based distributions (Alpine Linux) use apk packages, which this project does not build, so the injector never resolves a `musl/` path on any supported DEB or RPM target.
 The binaries are part of the system package; no files are downloaded at package installation time or afterwards.
-The injector detects the libc flavor at runtime and selects the appropriate native library path.
 
 #### Contents
 
 | Path | Description |
 |------|-------------|
-| `/usr/lib/opentelemetry/dotnet/…` | Shared managed assemblies (common to glibc and musl) |
-| `/usr/lib/opentelemetry/dotnet/linux-x64/OpenTelemetry.AutoInstrumentation.Native.so` | Native profiler library (glibc) |
-| `/usr/lib/opentelemetry/dotnet/linux-musl-x64/OpenTelemetry.AutoInstrumentation.Native.so` | Native profiler library (musl) |
+| `/usr/lib/opentelemetry/dotnet/glibc/…` | Managed assemblies and native profiler library (glibc) |
 | `/etc/opentelemetry/injector/conf.d/dotnet.conf` | Drop-in: `dotnet_auto_instrumentation_agent_path_prefix=/usr/lib/opentelemetry/dotnet` |
-| `/etc/opentelemetry/dotnet/otel-config.yaml` | Declarative configuration template |
+| `/etc/opentelemetry/dotnet/otel-config.yaml` | Declarative configuration file (shared across all language packages) |
 | `/usr/share/man/man8/opentelemetry-dotnet.8.gz` | Man page |
 | `/usr/share/doc/opentelemetry-dotnet-autoinstrumentation/` | Documentation and copyright |
 
@@ -258,6 +269,32 @@ The injector detects the libc flavor at runtime and selects the appropriate nati
 | Provides | `opentelemetry-dotnet-autoinstrumentation1` | `opentelemetry-dotnet-autoinstrumentation1` |
 | Suggests | `opentelemetry-injector1` | `opentelemetry-injector1` |
 | Config files | `/etc/opentelemetry/dotnet` | `/etc/opentelemetry/dotnet` |
+
+### `opentelemetry-python-autoinstrumentation`
+
+The package build installs the Python auto-instrumentation packages pinned in `packaging/common/python/requirements.txt` with `pip` (manylinux wheels for a fixed target architecture and Python version), plus the vendored pyproto exporter chain, and packages the resulting tree.
+The bundle installs under a `glibc/` subdirectory, following the same `<prefix>/<libc>` resolution scheme as .NET; the injector prepends the resolved directory to `PYTHONPATH`.
+The packages are part of the system package; no files are downloaded at package installation time or afterwards.
+
+#### Contents
+
+| Path | Description |
+|------|-------------|
+| `/usr/lib/opentelemetry/python/glibc/…` | Bundled wheels, `sitecustomize.py`, and `all-dependencies.txt` |
+| `/usr/lib/opentelemetry/python/otel-config-check` | Declarative configuration validator invoked by `sitecustomize.py` |
+| `/etc/opentelemetry/injector/conf.d/python.conf` | Drop-in: `python_auto_instrumentation_agent_path_prefix=/usr/lib/opentelemetry/python` |
+| `/etc/opentelemetry/python/otel-config.yaml` | Declarative configuration file (shared across all language packages) |
+| `/usr/share/man/man8/opentelemetry-python.8.gz` | Man page |
+| `/usr/share/doc/opentelemetry-python-autoinstrumentation/` | Documentation, copyright, and NOTICE |
+
+#### Package metadata
+
+| Field | DEB | RPM |
+|-------|-----|-----|
+| Architecture | `amd64` or `arm64` | `x86_64` or `aarch64` |
+| Provides | `opentelemetry-python-autoinstrumentation1` | `opentelemetry-python-autoinstrumentation1` |
+| Suggests | `opentelemetry-injector1` | `opentelemetry-injector1` |
+| Config files | `/etc/opentelemetry/python` | `/etc/opentelemetry/python` |
 
 ### `opentelemetry`
 
@@ -273,6 +310,7 @@ It exists so that `apt install opentelemetry` or `yum install opentelemetry` pul
 | Recommends | `opentelemetry-java-autoinstrumentation1` | `opentelemetry-java-autoinstrumentation1` |
 | Recommends | `opentelemetry-nodejs-autoinstrumentation1` | `opentelemetry-nodejs-autoinstrumentation1` |
 | Recommends | `opentelemetry-dotnet-autoinstrumentation1` | `opentelemetry-dotnet-autoinstrumentation1` |
+| Recommends | `opentelemetry-python-autoinstrumentation1` | `opentelemetry-python-autoinstrumentation1` |
 
 Every dependency uses a virtual name rather than a concrete package name.
 
@@ -286,17 +324,17 @@ If `Depends` were used instead, removing any single language package would force
 
 See [Injector interface versioning](#injector-interface-versioning) for the upgrade scenario.
 
-## Configuration System
+## Configuration system
 
 ### Hierarchy
 
-1. **`/etc/opentelemetry/injector/otelinject.conf`** — main injector configuration. Points to the default environment file and documents the `conf.d/` mechanism.
+1. **`/etc/opentelemetry/injector/injector.conf`** — main injector configuration. Points to the default environment file and documents the `conf.d/` mechanism.
 
 2. **`/etc/opentelemetry/injector/default_env.conf`** — default `OTEL_*` environment variables applied to all instrumented processes. Format: `KEY=VALUE`, one per line.
 
 3. **`/etc/opentelemetry/injector/conf.d/*.conf`** — drop-in files read in alphabetical order. Each language package installs one file that sets the agent path. Later files override earlier ones for the same key.
 
-4. **`/etc/opentelemetry/<language>/otel-config.yaml`** — per-language declarative configuration templates (used when `OTEL_EXPERIMENTAL_CONFIG_FILE` is set).
+4. **`/etc/opentelemetry/<language>/otel-config.yaml`** — declarative configuration files, used when `OTEL_CONFIG_FILE` is set. See [Declarative configuration](#declarative-configuration).
 
 ### Available conf.d settings
 
@@ -305,9 +343,29 @@ See [Injector interface versioning](#injector-interface-versioning) for the upgr
 | `jvm_auto_instrumentation_agent_path` | `conf.d/java.conf` | Absolute path to the Java agent JAR |
 | `nodejs_auto_instrumentation_agent_path` | `conf.d/nodejs.conf` | Absolute path to the Node.js agent entry point |
 | `dotnet_auto_instrumentation_agent_path_prefix` | `conf.d/dotnet.conf` | Directory prefix for the .NET agent (injector appends `glibc/` or `musl/`) |
-| `all_auto_instrumentation_agents_env_path` | `otelinject.conf` | Path to the default environment variables file |
+| `python_auto_instrumentation_agent_path_prefix` | `conf.d/python.conf` | Path prefix for the Python agent (the injector resolves the `glibc/` subdirectory and prepends it to `PYTHONPATH`) |
+| `all_auto_instrumentation_agents_env_path` | `injector.conf` | Path to the default environment variables file |
 
-## Component Versioning
+### Declarative configuration
+
+All language packages ship one and the same declarative configuration file: each package installs the shared source `packaging/common/otel-config.yaml` as `/etc/opentelemetry/<language>/otel-config.yaml`.
+The [declarative configuration](https://opentelemetry.io/docs/languages/sdk-configuration/declarative-configuration/) schema is portable across languages, and each SDK ignores the sections that pertain to the other languages.
+The per-language install paths exist to keep each copy owned by its package, preserving the [file ownership boundaries](#file-ownership-boundaries) that vendor overrides rely on.
+
+The file is valid as shipped, but inert until activated.
+To activate it for every injected process, append to `default_env.conf`:
+
+```sh
+OTEL_CONFIG_FILE=/etc/opentelemetry/<language>/otel-config.yaml
+OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED=true
+```
+
+The second variable is only required by .NET and ignored by the other SDKs.
+
+Once `OTEL_CONFIG_FILE` is in effect, the SDKs no longer consume other `OTEL_*` environment variables directly.
+The shipped file deliberately interpolates the variables the injector injects (e.g., `${OTEL_EXPORTER_OTLP_ENDPOINT}`, `${OTEL_RESOURCE_ATTRIBUTES}`), so `default_env.conf` remains the single source of endpoint and credentials for both environment-variable-configured and declaratively configured processes.
+
+## Component versioning
 
 Each language package bundles pre-built upstream artifacts (a JAR, a `node_modules` tree, .NET binaries).
 Users and security teams need to know which versions are inside a given package without extracting and inspecting the files.
@@ -331,23 +389,24 @@ This is machine-readable and queryable (`rpm -q --provides <package> | grep bund
 **DEB** — Debian has no equivalent of `bundled()` provides.
 Each language package ships an SBOM file under `/usr/share/doc/<package>/` in [SPDX](https://spdx.dev/) or [CycloneDX](https://cyclonedx.org/) format, listing all bundled components and their versions.
 
-## File Ownership Boundaries
+## File ownership boundaries
 
 Each package owns a disjoint set of paths.
 This is critical for `Conflicts`/`Replaces` to work correctly.
 
 | Package | Owns |
 |---------|------|
-| `opentelemetry-injector` | `/usr/lib/opentelemetry/injector/`, `/etc/opentelemetry/injector/otelinject.conf`, `/etc/opentelemetry/injector/default_env.conf`, `/etc/opentelemetry/injector/conf.d/` (directory only) |
+| `opentelemetry-injector` | `/usr/lib/opentelemetry/injector/`, `/etc/opentelemetry/injector/injector.conf`, `/etc/opentelemetry/injector/default_env.conf`, `/etc/opentelemetry/injector/conf.d/` (directory only) |
 | `opentelemetry-java-autoinstrumentation` | `/usr/lib/opentelemetry/java/`, `/etc/opentelemetry/injector/conf.d/java.conf`, `/etc/opentelemetry/java/` |
 | `opentelemetry-nodejs-autoinstrumentation` | `/usr/lib/opentelemetry/nodejs/`, `/etc/opentelemetry/injector/conf.d/nodejs.conf`, `/etc/opentelemetry/nodejs/` |
 | `opentelemetry-dotnet-autoinstrumentation` | `/usr/lib/opentelemetry/dotnet/`, `/etc/opentelemetry/injector/conf.d/dotnet.conf`, `/etc/opentelemetry/dotnet/` |
+| `opentelemetry-python-autoinstrumentation` | `/usr/lib/opentelemetry/python/`, `/etc/opentelemetry/injector/conf.d/python.conf`, `/etc/opentelemetry/python/` |
 | `opentelemetry` | `/usr/share/doc/opentelemetry/` |
 
 A vendor replacement package *must* own the same set of paths as the upstream package it replaces.
 This is what makes `--replaces` work: `dpkg` allows the new package to overwrite files owned by the replaced package.
 
-## Vendor Override
+## Vendor override
 
 ### Virtual package names
 
@@ -358,6 +417,7 @@ Each upstream language package declares a virtual package via `--provides` that 
 | `opentelemetry-java-autoinstrumentation` | `opentelemetry-java-autoinstrumentation1` |
 | `opentelemetry-nodejs-autoinstrumentation` | `opentelemetry-nodejs-autoinstrumentation1` |
 | `opentelemetry-dotnet-autoinstrumentation` | `opentelemetry-dotnet-autoinstrumentation1` |
+| `opentelemetry-python-autoinstrumentation` | `opentelemetry-python-autoinstrumentation1` |
 
 ### Vendor package naming
 
@@ -372,7 +432,8 @@ The vendor package then declares `Provides: opentelemetry-java-autoinstrumentati
 
 ### Vendor package recipe
 
-A vendor building a replacement for, say, the Java auto-instrumentation package would use:
+A vendor building a replacement for, say, the Java auto-instrumentation package needs the following metadata.
+The examples below use [FPM](https://fpm.readthedocs.io/) syntax, but any packaging tool (nfpm, rpmbuild, dpkg-buildpackage) works as long as it sets the same fields:
 
 ```bash
 # DEB
@@ -454,9 +515,13 @@ apt install opentelemetry-java-autoinstrumentation
 
 `dpkg` removes the vendor package (symmetric `Conflicts`/`Replaces` if the vendor chose to declare them, or the user runs `apt remove acme-java-autoinstrumentation` first) and installs upstream.
 
-## Current POC Gaps
+## Current POC gaps (historical)
 
-The [POC](https://github.com/open-telemetry/opentelemetry-injector/pull/239) in the OpenTelemetry Injector repository implements most of the architecture above but has the following gaps relative to the proposed design:
+> [!NOTE]
+> This section documents gaps in the original [POC](https://github.com/open-telemetry/opentelemetry-injector/pull/239) in the OpenTelemetry Injector repository.
+> All gaps listed below have been addressed in the current implementation in `opentelemetry-packaging` using nfpm (see `packaging/builder/`).
+
+The POC implements most of the architecture above but had the following gaps relative to the proposed design:
 
 ### 1. No interface version on the injector
 
@@ -498,7 +563,7 @@ Because the injector reads files in alphabetical order and the last value wins, 
 But the upstream file still sets the path on every read before the vendor file overrides it, creating a fragile ordering dependency.
 Worse, the upstream JAR is still on disk consuming space, and the upstream package is still installed, making `dpkg -l` / `rpm -qa` output misleading.
 
-## Required Changes to the POC
+## Required changes to the POC (historical)
 
 ### Injector build scripts
 
@@ -537,7 +602,7 @@ Worse, the upstream JAR is still on disk consuming space, and the upstream packa
 - **Runtime configuration system**: the `conf.d/` mechanism already supports the override model. No code changes needed in the injector binary.
 - **Installation scripts** (`postinstall-injector.sh`, `preuninstall-injector.sh`): unaffected.
 
-## Alternatives Considered
+## Alternatives considered
 
 ### Conf.d-only override (no package metadata changes)
 
@@ -559,7 +624,8 @@ Rejected because:
 
 ### SONAME versioning and multiarch paths for the injector
 
-Standard shared libraries use a SONAME symlink chain (`libfoo.so → libfoo.so.1 → libfoo.so.1.2.3`) so the dynamic linker can resolve the correct ABI version at load time. Architecture-dependent binaries are typically installed under [multiarch triplet paths](https://wiki.debian.org/Multiarch/HOWTO) (e.g., `/usr/lib/x86_64-linux-gnu/`) to allow co-installation of multiple architectures.
+Standard shared libraries use a SONAME symlink chain (`libfoo.so → libfoo.so.1 → libfoo.so.1.2.3`) so the dynamic linker can resolve the correct ABI version at load time.
+Architecture-dependent binaries are typically installed under [multiarch triplet paths](https://wiki.debian.org/Multiarch/HOWTO) (e.g., `/usr/lib/x86_64-linux-gnu/`) to allow co-installation of multiple architectures.
 
 Neither convention applies to `libotelinject.so`:
 
@@ -571,12 +637,13 @@ Neither convention applies to `libotelinject.so`:
 We do not plan to make different interface generations of the same language package co-installable (e.g., `opentelemetry-java-autoinstrumentation1` and `opentelemetry-java-autoinstrumentation2` installed side by side), following the shared-library co-installability pattern (`libssl1.1` and `libssl3`).
 
 The rationale is the following:
-- The injector hooks into `/etc/ld.so.preload` and only one version should be active system-wide.
-  Since the injector can only speak one interface generation at a time, there is no scenario where both gen 1 and gen 2 language packages would be active simultaneously.
+
+- The injector hooks into `/etc/ld.so.preload` and only one version should be active system-wide. Since the injector can only speak one interface generation at a time, there is no scenario where both gen 1 and gen 2 language packages would be active simultaneously.
 - Co-installability would require versioned filesystem paths, adding complexity for a scenario that the single-generation injector makes unnecessary.
 - Different generations of the same language package use `Conflicts`/`Replaces` instead, and the package manager handles the transition atomically.
 
-While in some corner-cases, the end user may wish for multiple interface generations of language packages to be installable in parallel (one to be used by the injector, the others manually), that would require embedding the interface version in the file paths (e.g., `/usr/lib/opentelemetry/java-1/...`) and that is guaranteed to confuse the end users, who would see the index suffix as related with the runtime version (e.g., Java v1) instead of the much more obscure package interface version, which is well hidden in package metadata and effectively only a concern of the package manager.
+While in some corner-cases, the end user may wish for multiple interface generations of language packages to be installable in parallel (one to be used by the injector, the others manually), that would require embedding the interface version in the file paths (e.g., `/usr/lib/opentelemetry/java-1/...`).
+That is guaranteed to confuse the end users, who would see the index suffix as related with the runtime version (e.g., Java v1) instead of the much more obscure package interface version, which is well hidden in package metadata and effectively only a concern of the package manager.
 
 (And, technically, if we want to take the decision back and make language packages across interface versions co-installable, v2+ can add a suffix in the path, and we keep it clean for v1.)
 
@@ -585,11 +652,12 @@ While in some corner-cases, the end user may wish for multiple interface generat
 Making the injector itself swappable by vendors, the same way language packages are (i.e., a vendor could ship an alternative injector that provides `opentelemetry-injector1`).
 
 Deferred because:
+
 - The injector is a single binary with a well-defined configuration interface.
 - There is no current demand for vendor-alternative injectors.
 - The `opentelemetry-injector1` virtual provides is already in place for interface versioning, so adding vendor swappability later only requires vendors to declare `Conflicts`/`Replaces` on the concrete name — no further changes to the upstream packages.
 
-## Appendix: Prior Art in DEB and RPM
+## Appendix: Prior art in DEB and RPM
 
 ### Swappable alternatives (vendor override)
 
@@ -689,13 +757,21 @@ This pattern has prior art in the Debian ecosystem:
 **[`snoopy`](https://packages.debian.org/sid/snoopy)** — a command-logging library loaded via `/etc/ld.so.preload`.
 Its [`postinst`](https://salsa.debian.org/pkg-security-team/snoopy/-/blob/debian/master/debian/snoopy.postinst.in) appends the library path and its [`prerm`](https://salsa.debian.org/pkg-security-team/snoopy/-/blob/debian/master/debian/snoopy.prerm) removes it.
 
-**[`ld.so.preload-manager`](https://launchpad.net/ubuntu/+source/ld.so.preload-manager)** — an Ubuntu package that provided a dedicated tool for managing `/etc/ld.so.preload` entries. No longer maintained.
+**[`ld.so.preload-manager`](https://launchpad.net/ubuntu/+source/ld.so.preload-manager)** — an Ubuntu package that provided a dedicated tool for managing `/etc/ld.so.preload` entries.
+No longer maintained.
 
-## Appendix: Implementation Notes
+## Appendix: Implementation notes
 
-### RPM `Suggests` via FPM
+### Packaging tool
 
-FPM does not have a native `--rpm-suggests` flag ([jordansissel/fpm#1457](https://github.com/jordansissel/fpm/issues/1457)).
+All packages are built with [nfpm](https://github.com/goreleaser/nfpm) as a Go library, for both DEB and RPM (see `packaging/builder/`).
+Package creation requires no FPM, Ruby, or Docker.
+
+### RPM weak dependencies
+
+The upstream packages use nfpm, which supports `Suggests` and `Recommends` as first-class fields for both DEB and RPM.
+
+Vendors using FPM should note that FPM does not have a native `--rpm-suggests` flag ([jordansissel/fpm#1457](https://github.com/jordansissel/fpm/issues/1457)).
 The `--rpm-tag` flag injects arbitrary directives into the RPM spec header, so `Suggests` is expressed as:
 
 ```bash
