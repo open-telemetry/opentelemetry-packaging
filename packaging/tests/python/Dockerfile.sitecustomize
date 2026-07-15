@@ -11,4 +11,10 @@ COPY packaging/common/python/sitecustomize.py /otel-site/sitecustomize.py
 
 ENV PYTHONPATH=/otel-site
 
+# An unsupported protocol makes the protocol guard deactivate deterministically
+# on supported interpreters (3.10+), proving the version gate let them through.
+# On older interpreters the version gate fires first, so this is irrelevant to
+# them. (An unset protocol now defaults to grpc and would proceed to activate.)
+ENV OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+
 CMD ["python", "-c", "print('APP RAN TO COMPLETION')"]

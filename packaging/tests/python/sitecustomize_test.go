@@ -42,16 +42,17 @@ func TestSitecustomizePythonVersionCompatibility(t *testing.T) {
 		},
 		{
 			// 3.10 is the minimum supported version: the version gate lets it
-			// through, and with no OTEL_EXPORTER_OTLP_PROTOCOL set the next
-			// guard fires — proof the gate passed.
+			// through, so the protocol guard fires next. The Dockerfile sets an
+			// unsupported protocol (http/json) to make that deactivation
+			// deterministic — proof the gate passed.
 			name:          "python3.10-passes-version-gate",
 			image:         "python:3.10-slim",
-			expectedGuard: "OTEL_EXPORTER_OTLP_PROTOCOL is not set",
+			expectedGuard: "OTEL_EXPORTER_OTLP_PROTOCOL=http/json is not supported",
 		},
 		{
 			name:          "python3.13-passes-version-gate",
 			image:         "python:3.13-slim",
-			expectedGuard: "OTEL_EXPORTER_OTLP_PROTOCOL is not set",
+			expectedGuard: "OTEL_EXPORTER_OTLP_PROTOCOL=http/json is not supported",
 		},
 	}
 
