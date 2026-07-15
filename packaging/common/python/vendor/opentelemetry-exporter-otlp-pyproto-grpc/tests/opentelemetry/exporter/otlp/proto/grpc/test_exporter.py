@@ -7,8 +7,8 @@ import unittest
 from collections.abc import Sequence
 from unittest.mock import Mock, patch, call
 
-import grpc
-from grpc import Compression, StatusCode
+from opentelemetry.exporter.otlp._proto.grpc._pygrpc import api as grpc
+from opentelemetry.exporter.otlp._proto.grpc._pygrpc.api import Compression, StatusCode
 
 from opentelemetry.exporter.otlp.proto.grpc.exporter import (
     InvalidCompressionValueException,

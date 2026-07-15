@@ -13,7 +13,7 @@ from time import time
 from typing import Generic, Literal, TypeVar
 from urllib.parse import urlparse
 
-from grpc import (
+from opentelemetry.exporter.otlp._proto.grpc._pygrpc.api import (
     ChannelCredentials,
     Compression,
     RpcError,

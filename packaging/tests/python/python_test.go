@@ -61,7 +61,7 @@ func TestPythonAutoInstrumentation(t *testing.T) {
 			for _, tg := range targets {
 				t.Run(imageSlug(tg.baseImage), func(t *testing.T) {
 					t.Parallel()
-					runPythonCase(t, ctx, tg, false)
+					runPythonCase(t, ctx, tg, false, false)
 				})
 			}
 		})
@@ -93,14 +93,31 @@ func TestPythonDeclarativeConfiguration(t *testing.T) {
 	t.Run(tg.format, func(t *testing.T) {
 		t.Run(imageSlug(tg.baseImage), func(t *testing.T) {
 			t.Parallel()
-			runPythonCase(t, ctx, tg, true)
+			runPythonCase(t, ctx, tg, true, false)
 		})
 	})
 }
 
+// TestPythonGRPC exercises OTLP over gRPC end to end: the injector sets
+// OTEL_EXPORTER_OTLP_PROTOCOL=grpc, sitecustomize.py selects the bundled
+// pure-Python otlp_proto_grpc exporter (no grpcio), and the workload exports to
+// the sink's grpc-go listener — the same server stack as the Collector's OTLP
+// receiver. Run across both package formats since the transport is what varies.
+func TestPythonGRPC(t *testing.T) {
+	ctx := context.Background()
+	for _, tg := range matrix {
+		t.Run(tg.format, func(t *testing.T) {
+			t.Run(imageSlug(tg.baseImage), func(t *testing.T) {
+				t.Parallel()
+				runPythonCase(t, ctx, tg, false, true)
+			})
+		})
+	}
+}
+
 // runPythonCase builds the workload image for one matrix target, drives traffic,
 // and asserts on the traces, logs, and metrics it exports to the sink.
-func runPythonCase(t *testing.T, ctx context.Context, tg target, declarative bool) {
+func runPythonCase(t *testing.T, ctx context.Context, tg target, declarative bool, grpc bool) {
 	arch := testutil.TargetArch()
 	buildArgs := map[string]*string{
 		"BASE_IMAGE": &tg.baseImage,
@@ -114,6 +131,9 @@ func runPythonCase(t *testing.T, ctx context.Context, tg target, declarative boo
 
 	sink := otelsink.Start(t)
 	env := sink.Env()
+	if grpc {
+		env = sink.GRPCEnv()
+	}
 	if declarative {
 		// With OTEL_CONFIG_FILE in effect the SDK ignores the other OTEL_*
 		// variables as direct configuration; the shipped configuration file

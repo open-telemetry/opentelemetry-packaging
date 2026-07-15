@@ -27,10 +27,11 @@ packaging/
     nodejs/                  " (plus register.js, the --require entry point with declarative-config support)
     dotnet/                  "
     python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py (plus its unit tests)
-      vendor/                Vendored pyproto exporter chain with its upstream test suites (unpublished pure-Python packages; see its README)
+      vendor/                The pyproto exporter chain, developed here with its test suites (unpublished pure-Python packages; see its README)
   repo/                      APT and YUM repository generation scripts
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
+    pyprotogrpc/                    Pure-Python gRPC transport tests against the otel-sink (host-side)
     {python,java,nodejs,dotnet}/    Matrix E2E tests (deb+rpm × base images) asserting via the otel-sink
                                     (python/ also hosts the sitecustomize.py interpreter compatibility tests)
     lifecycle/                      Package lifecycle tests (preload scripts, config handling, install/remove scenarios)
@@ -57,7 +58,7 @@ The `cmd/build-packages` program:
    for a fixed target architecture and Python version (`targetPythonVersion` in
    `download.go`) rather than for the build host. PyPI requirements are installed
    binary-only (manylinux wheels for the target arch); unpublished pure-Python
-   requirements — the pyproto exporter chain vendored under
+   requirements — the pyproto exporter chain developed under
    `packaging/common/python/vendor/` (see its README for provenance) — are built
    from source in a second pass and merged in. This keeps the produced package
    correct regardless of the build host's OS, architecture, or Python version.
@@ -143,14 +144,24 @@ They run in a throwaway virtualenv under `build/`, so the host Python is untouch
 make python-unit-tests
 ```
 
-### Vendored pyproto exporter tests (fast, no containers)
+### Pyproto exporter tests (fast, no containers)
 
-The upstream test suites of the pyproto packages vendored under `packaging/common/python/vendor/`.
+The test suites of the pyproto packages developed under `packaging/common/python/vendor/`.
 They run in two throwaway virtualenvs under `build/`: a drop-in venv where the pyproto shims own the public `opentelemetry.exporter.otlp.proto.*` module paths (like in the shipped bundle), and an equivalence venv where the real protobuf-based packages own those paths and the suites compare the pure-Python encoding against the real `google-protobuf` one.
 See [the vendor README](packaging/common/python/vendor/README.md) for the details.
 
 ```sh
 make pyproto-unit-tests
+```
+
+### Pure-Python gRPC transport tests (fast, no containers)
+
+Transport-level tests for the grpcio-free gRPC client (`_pygrpc`) of the pyproto OTLP/gRPC exporter, run against `testutil/otelsink` — which serves OTLP through grpc-go, the same server stack as the Collector's OTLP receiver.
+The suite runs against the vendored package by default; `PYGRPC_SRC_DIR` overrides the source tree (e.g. a fork checkout).
+See `docs/plans/2026-07-14-001-feat-pyproto-grpc-without-grpcio-plan.md` for the full plan.
+
+```sh
+make pyproto-grpc-integration-tests
 ```
 
 ### Python sitecustomize interpreter compatibility tests (containers required)

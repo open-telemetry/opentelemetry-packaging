@@ -15,3 +15,8 @@ obj/
 # Agentic configs
 .agents
 .claude
+# Working notes (scratch; not versioned)
+docs/notes/
+
+# Stray root build artifact from direct otel-config-check builds
+/otel-config-check

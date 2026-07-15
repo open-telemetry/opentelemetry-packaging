@@ -23,27 +23,31 @@ The agent path is registered via a drop-in configuration file at
 
 ## Exporter
 
-This package bundles `opentelemetry-exporter-otlp-pyproto-http`, a pure-Python
-protobuf implementation of the OTLP HTTP exporter. Unlike the standard
-`opentelemetry-exporter-otlp-proto-http`, it has no dependency on `google-protobuf`
-and avoids C-extension version conflicts with application dependencies.
-It is a drop-in replacement: it provides the standard
-`opentelemetry.exporter.otlp.proto.http` module path and registers the standard
-`otlp_proto_http` exporter entry points, so both environment-variable and
-declarative configuration select it exactly like the standard exporter.
+This package bundles the pure-Python OTLP exporters `opentelemetry-exporter-otlp-pyproto-http`
+and `opentelemetry-exporter-otlp-pyproto-grpc`. Unlike the standard exporters,
+they have no dependency on `google-protobuf`, and the gRPC exporter transports
+over a pure-Python HTTP/2 client instead of `grpcio` — so neither pulls in a
+C extension or risks version conflicts with application dependencies.
+They are drop-in replacements: they own the standard
+`opentelemetry.exporter.otlp.proto.{http,grpc}` module paths and register the
+standard `otlp_proto_http` / `otlp_proto_grpc` entry points, so both
+environment-variable and declarative configuration select them exactly like the
+standard exporters.
 
-Only HTTP export (`http/protobuf` or `http/json`) is supported. gRPC is not included.
+Both OTLP over gRPC (`grpc`) and OTLP over HTTP with protobuf encoding
+(`http/protobuf`) are supported. `http/json` is not yet supported by the bundled
+exporters (they emit protobuf only).
 
 ## Configuration
 
 ### Environment variables
 
 - `OTEL_SERVICE_NAME`: Service name for telemetry (required)
-- `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP HTTP endpoint (default: http://localhost:4318)
-- `OTEL_EXPORTER_OTLP_PROTOCOL`: Must be `http/protobuf` or `http/json`
-- `OTEL_TRACES_EXPORTER`: Traces exporter (default: `otlp_proto_http`)
-- `OTEL_METRICS_EXPORTER`: Metrics exporter (default: `otlp_proto_http`)
-- `OTEL_LOGS_EXPORTER`: Logs exporter (default: `otlp_proto_http`)
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint (default: http://localhost:4318 for http/protobuf, http://localhost:4317 for grpc)
+- `OTEL_EXPORTER_OTLP_PROTOCOL`: `grpc` or `http/protobuf` (unset defaults to `grpc`)
+- `OTEL_TRACES_EXPORTER`: Traces exporter (default follows the protocol: `otlp_proto_grpc` or `otlp_proto_http`)
+- `OTEL_METRICS_EXPORTER`: Metrics exporter (default follows the protocol)
+- `OTEL_LOGS_EXPORTER`: Logs exporter (default follows the protocol)
 - `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS`: Comma-separated list of instrumentations to disable
 - `OTEL_INJECTOR_LOG_LEVEL`: Set to `debug` for verbose sitecustomize.py logging
 
@@ -62,12 +66,13 @@ export OTEL_CONFIG_FILE=/etc/opentelemetry/python/otel-config.yaml
 `sitecustomize.py` performs the following checks at startup before activating instrumentation:
 
 1. **Python version**: Requires Python ≥ 3.10. Older versions are skipped gracefully.
-2. **OTLP protocol / configuration file**: Without `OTEL_CONFIG_FILE`, requires
-   `OTEL_EXPORTER_OTLP_PROTOCOL` to be set and not `grpc`. With `OTEL_CONFIG_FILE` set,
+2. **OTLP protocol / configuration file**: Without `OTEL_CONFIG_FILE`, accepts
+   `OTEL_EXPORTER_OTLP_PROTOCOL` of `grpc` (the default when unset) or `http/protobuf`;
+   `http/json` self-deactivates. With `OTEL_CONFIG_FILE` set,
    the SDK ignores the `OTEL_*` exporter variables, so instead the bundled
    `otel-config-check` utility validates the configuration file (readable, valid YAML,
-   `file_format: "1.0"`, no `otlp_grpc` exporter). Self-deactivates with the
-   validation error if the file is not usable.
+   `file_format: "1.0"`; both `otlp_http` and `otlp_grpc` exporters are accepted).
+   Self-deactivates with the validation error if the file is not usable.
 3. **Double instrumentation**: Detects if the application already carries OTel SDK
    dependencies and self-deactivates to avoid conflicts.
 4. **Dependency conflicts**: Compares the bundled package versions against those installed

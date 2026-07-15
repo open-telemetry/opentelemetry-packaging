@@ -54,8 +54,8 @@ const supportedFileFormat = "1.0"
 // checkConfig validates the declarative configuration document. The checks
 // mirror the failure modes observed with the Python SDK's file configurator:
 // unparsable YAML and a missing or unsupported file_format crash it at
-// startup, and the otlp_grpc exporter type resolves to the gRPC exporter
-// package that this system package does not bundle.
+// startup. Both the otlp_http and otlp_grpc exporter types are supported —
+// the package bundles pure-Python exporters for each.
 func checkConfig(data []byte) (warning string, err error) {
 	var root map[string]any
 	if err := yaml.Unmarshal(data, &root); err != nil {
@@ -86,37 +86,7 @@ func checkConfig(data []byte) (warning string, err error) {
 		return "", fmt.Errorf(`unsupported file_format %q: the packaged agents support declarative configuration file format %q`,
 			formatString, supportedFileFormat)
 	}
-	if path := findKey(root, "otlp_grpc", nil); path != nil {
-		return "", fmt.Errorf(
-			"%s selects the otlp_grpc exporter, but this package bundles only the OTLP/HTTP exporter; use otlp_http instead",
-			strings.Join(path, "."))
-	}
 	return "", nil
-}
-
-// findKey walks the document depth-first and returns the path at which key
-// occurs as a mapping key, or nil if it does not occur.
-func findKey(node any, key string, path []string) []string {
-	switch v := node.(type) {
-	case map[string]any:
-		for k, child := range v {
-			childPath := append(append([]string(nil), path...), k)
-			if k == key {
-				return childPath
-			}
-			if found := findKey(child, key, childPath); found != nil {
-				return found
-			}
-		}
-	case []any:
-		for i, child := range v {
-			childPath := append(append([]string(nil), path...), fmt.Sprintf("%d", i))
-			if found := findKey(child, key, childPath); found != nil {
-				return found
-			}
-		}
-	}
-	return nil
 }
 
 // isDuplicateKeyOnly reports whether the unmarshal error consists solely of

@@ -18,23 +18,25 @@ urllib3 <2.6.4
 #   opentelemetry-exporter-otlp-pyproto-http==<version>
 #
 # Until published, the exporter and its two pyproto-only dependencies are
-# vendored under vendor/ — see vendor/README.md for provenance and the sync
-# procedure. They are pure-Python (no google-protobuf C extension) and are
+# developed in this repository under vendor/ — see vendor/README.md.
+# They are pure-Python (no google-protobuf C extension) and are
 # installed from source by the build's source pass with --no-deps; their only
 # dependencies beyond each other (opentelemetry-api, opentelemetry-sdk) are
 # covered by the pins above. The exporter transports via urllib and needs no
 # HTTP client dependency.
 #
-# The exporter is a drop-in replacement for opentelemetry-exporter-otlp-proto-http:
-# it owns the public opentelemetry.exporter.otlp.proto.http module path (a shim
-# over the private pure-Python implementation) and registers the otlp_proto_http
-# entry points. This also covers declarative configuration (the SDK's file
-# configurator resolves the otlp_http exporter type through exactly that module
-# path), so the real proto-http package and its google-protobuf C extension must
-# NOT be bundled — the two distributions ship conflicting files.
-# The vendored pyproto-grpc exporter is not shipped: it requires grpcio, a C
-# extension, which would break the pure-Python property of this bundle.
+# The exporters are drop-in replacements for the standard proto exporters:
+# they own the public opentelemetry.exporter.otlp.proto.{http,grpc} module
+# paths (shims over the private pure-Python implementations) and register the
+# standard otlp_proto_http / otlp_proto_grpc entry points. This also covers
+# declarative configuration (the SDK's file configurator resolves the
+# otlp_http / otlp_grpc exporter types through exactly those module paths), so
+# the real proto exporters and their google-protobuf C extension must NOT be
+# bundled — the distributions ship conflicting files.
+# The gRPC exporter transports over the pure-Python _pygrpc client (stdlib
+# sockets + ssl, no grpcio C extension), so the whole bundle stays extension-free.
 ./vendor/opentelemetry-exporter-otlp-pyproto-http
+./vendor/opentelemetry-exporter-otlp-pyproto-grpc
 ./vendor/opentelemetry-exporter-otlp-pyproto-common
 ./vendor/opentelemetry-pyproto
 

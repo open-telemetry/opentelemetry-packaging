@@ -42,16 +42,18 @@ def _load_sitecustomize(stderr_buffer):
 def _load_benign():
     """Load sitecustomize with import_distro() short-circuiting harmlessly.
 
-    Without OTEL_EXPORTER_OTLP_PROTOCOL, import_distro() self-deactivates at
-    the protocol guard, before reading files or package metadata. os.environ
-    and sys.path are patched so the deactivation cannot leak into the test
-    process. Returns (module, stderr buffer).
+    An unsupported OTEL_EXPORTER_OTLP_PROTOCOL makes import_distro()
+    self-deactivate at the protocol guard, before reading files or package
+    metadata. os.environ and sys.path are patched so the deactivation cannot
+    leak into the test process. Returns (module, stderr buffer).
     """
     buf = StringIO()
     env = {
         k: v for k, v in os.environ.items()
         if k not in ("OTEL_EXPORTER_OTLP_PROTOCOL", "OTEL_CONFIG_FILE")
     }
+    # http/json is unsupported, so the guard deactivates without side effects.
+    env["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/json"
     with patch.dict(os.environ, env, clear=True), patch.object(sys, "path", list(sys.path)):
         module = _load_sitecustomize(buf)
     # Discard the protocol-guard warning the short circuit itself produced, so
@@ -247,12 +249,21 @@ class ImportDistroTests(unittest.TestCase):
             observed_env = dict(os.environ)
         return buf.getvalue(), auto_instrumentation, observed_env
 
-    def _assert_activated(self, auto_instrumentation, observed_env):
+    def _assert_activated(
+        self, auto_instrumentation, observed_env, exporter="otlp_proto_http"
+    ):
         auto_instrumentation.initialize.assert_called_once_with()
         self.assertIn(self.site_dir, observed_env["PYTHONPATH"])
-        self.assertEqual("otlp_proto_http", observed_env["OTEL_TRACES_EXPORTER"])
-        self.assertEqual("otlp_proto_http", observed_env["OTEL_METRICS_EXPORTER"])
-        self.assertEqual("otlp_proto_http", observed_env["OTEL_LOGS_EXPORTER"])
+        self.assertEqual(exporter, observed_env["OTEL_TRACES_EXPORTER"])
+        self.assertEqual(exporter, observed_env["OTEL_METRICS_EXPORTER"])
+        self.assertEqual(exporter, observed_env["OTEL_LOGS_EXPORTER"])
+
+    def _assert_initialized(self, auto_instrumentation, observed_env):
+        # Activation without asserting exporter selection: under OTEL_CONFIG_FILE
+        # the configuration file drives the exporter and sitecustomize leaves
+        # OTEL_*_EXPORTER untouched.
+        auto_instrumentation.initialize.assert_called_once_with()
+        self.assertIn(self.site_dir, observed_env["PYTHONPATH"])
 
     def _assert_deactivated(self, auto_instrumentation, observed_env):
         auto_instrumentation.initialize.assert_not_called()
@@ -293,20 +304,37 @@ class ImportDistroTests(unittest.TestCase):
         self._assert_deactivated(auto_instrumentation, observed_env)
         self.assertIn("dependency conflicts", output)
 
-    def test_deactivates_when_protocol_is_not_set(self):
+    def test_activates_with_grpc_when_protocol_unset(self):
+        # An unset protocol follows the OTel default of grpc, which this
+        # package now bundles (over the pure-Python transport).
         output, auto_instrumentation, observed_env = self._exec_sitecustomize(
             all_dependencies="foo==1.0.0\n",
         )
-        self._assert_deactivated(auto_instrumentation, observed_env)
-        self.assertIn("OTEL_EXPORTER_OTLP_PROTOCOL is not set", output)
+        self._assert_activated(
+            auto_instrumentation, observed_env, exporter="otlp_proto_grpc"
+        )
+        self.assertEqual("", output)
 
-    def test_deactivates_when_protocol_is_grpc(self):
+    def test_activates_with_grpc_when_protocol_is_grpc(self):
         output, auto_instrumentation, observed_env = self._exec_sitecustomize(
             extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"},
             all_dependencies="foo==1.0.0\n",
         )
+        self._assert_activated(
+            auto_instrumentation, observed_env, exporter="otlp_proto_grpc"
+        )
+        self.assertEqual("", output)
+
+    def test_deactivates_when_protocol_is_http_json(self):
+        # The bundled pyproto exporter emits protobuf only; http/json must be
+        # rejected until the exporter chain supports JSON encoding.
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/json"},
+            all_dependencies="foo==1.0.0\n",
+        )
         self._assert_deactivated(auto_instrumentation, observed_env)
-        self.assertIn("OTEL_EXPORTER_OTLP_PROTOCOL=grpc is not supported", output)
+        self.assertIn("OTEL_EXPORTER_OTLP_PROTOCOL=http/json is not supported", output)
+        self.assertIn("supports grpc and http/protobuf", output)
 
     def test_deactivates_when_dependencies_file_is_missing(self):
         output, auto_instrumentation, observed_env = self._exec_sitecustomize(
@@ -324,12 +352,12 @@ class ImportDistroTests(unittest.TestCase):
             extra_env={"OTEL_CONFIG_FILE": os.path.join(self.base_dir, "otel-config.yaml")},
             all_dependencies="foo==1.0.0\n",
         )
-        self._assert_activated(auto_instrumentation, observed_env)
+        self._assert_initialized(auto_instrumentation, observed_env)
         self.assertEqual("", output)
 
     def test_config_file_validation_failure_deactivates(self):
         self._write_fake_validator(
-            exit_code=1, message="selects the otlp_grpc exporter, use otlp_http instead"
+            exit_code=1, message="file_format 1.0 is required"
         )
         output, auto_instrumentation, observed_env = self._exec_sitecustomize(
             extra_env={"OTEL_CONFIG_FILE": os.path.join(self.base_dir, "otel-config.yaml")},
@@ -337,7 +365,7 @@ class ImportDistroTests(unittest.TestCase):
         )
         self._assert_deactivated(auto_instrumentation, observed_env)
         self.assertIn("is not usable", output)
-        self.assertIn("selects the otlp_grpc exporter", output)
+        self.assertIn("file_format 1.0 is required", output)
 
     def test_config_file_without_validator_binary_proceeds(self):
         # The validator is an aid; its absence must not block activation.
@@ -345,7 +373,7 @@ class ImportDistroTests(unittest.TestCase):
             extra_env={"OTEL_CONFIG_FILE": os.path.join(self.base_dir, "otel-config.yaml")},
             all_dependencies="foo==1.0.0\n",
         )
-        self._assert_activated(auto_instrumentation, observed_env)
+        self._assert_initialized(auto_instrumentation, observed_env)
 
     def test_config_file_validator_execution_failure_proceeds(self):
         # A validator that exists but cannot be executed makes subprocess.run
@@ -359,7 +387,7 @@ class ImportDistroTests(unittest.TestCase):
             extra_env={"OTEL_CONFIG_FILE": os.path.join(self.base_dir, "otel-config.yaml")},
             all_dependencies="foo==1.0.0\n",
         )
-        self._assert_activated(auto_instrumentation, observed_env)
+        self._assert_initialized(auto_instrumentation, observed_env)
         self.assertIn("cannot run otel-config-check", output)
 
     def test_deactivates_on_double_instrumentation(self):

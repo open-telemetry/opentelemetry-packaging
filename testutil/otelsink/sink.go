@@ -144,6 +144,17 @@ func (s *Sink) Env() map[string]string {
 	}
 }
 
+// GRPCEnv is Env for OTLP/gRPC: an insecure (plaintext h2c) gRPC endpoint
+// reachable from inside the container. The http scheme signals insecure to the
+// exporter, matching the sink's plaintext gRPC listener.
+func (s *Sink) GRPCEnv() map[string]string {
+	return map[string]string{
+		"OTEL_EXPORTER_OTLP_ENDPOINT": fmt.Sprintf("http://%s:%d", hostGateway, s.grpcPort),
+		"OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
+		"OTEL_RESOURCE_ATTRIBUTES":    fmt.Sprintf("%s=%s", TestIDAttribute, s.testID),
+	}
+}
+
 // writeSignal appends one Export request to the given signal file as a single
 // protojson line.
 func (s *Sink) writeSignal(file string, msg proto.Message) error {

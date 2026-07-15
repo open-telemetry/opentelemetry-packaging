@@ -232,6 +232,13 @@ integration-test-deb-dotnet: local-apt-repo
 integration-test-deb-python: local-apt-repo
 	go test -v -timeout 30m -run '/deb' ./packaging/tests/python/
 
+# Pure-Python gRPC transport (_pygrpc) against otelsink (host-side, no
+# containers). Runs against the vendored pyproto-grpc package by default;
+# PYGRPC_SRC_DIR overrides the source tree (e.g. a fork checkout).
+.PHONY: pyproto-grpc-integration-tests
+pyproto-grpc-integration-tests:
+	go test -v -timeout 5m ./packaging/tests/pyprotogrpc/
+
 .PHONY: integration-test-rpm-java
 integration-test-rpm-java: local-rpm-repo
 	go test -v -timeout 30m -run '/rpm' ./packaging/tests/java/
@@ -314,7 +321,7 @@ PYPROTO_EQUIV_VENV = build/python-vendor-equivalence-venv
 pyproto-unit-tests:
 	python3 -m venv $(PYPROTO_DROPIN_VENV)
 	$(PYPROTO_DROPIN_VENV)/bin/pip install --quiet pytest \
-		opentelemetry-sdk==1.43.0 grpcio
+		opentelemetry-sdk==1.43.0 hpack
 	$(PYPROTO_DROPIN_VENV)/bin/pip install --quiet --no-deps \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-pyproto \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-common \
@@ -322,7 +329,8 @@ pyproto-unit-tests:
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-grpc
 	set -e; for suite in \
 		opentelemetry-exporter-otlp-pyproto-http/tests \
-		opentelemetry-exporter-otlp-pyproto-grpc/tests; do \
+		opentelemetry-exporter-otlp-pyproto-grpc/tests \
+		opentelemetry-exporter-otlp-pyproto-grpc/tests_pygrpc; do \
 		echo "=== $$suite (drop-in venv) ==="; \
 		$(abspath $(PYPROTO_DROPIN_VENV))/bin/python -m pytest -q \
 			--rootdir $(PYPROTO_VENDOR_DIR)/$${suite%%/*} \

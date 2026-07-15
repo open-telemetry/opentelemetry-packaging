@@ -93,7 +93,7 @@ file_format: "0.3"
 			wantErr: `unsupported file_format "0.3"`,
 		},
 		{
-			name: "otlp_grpc trace exporter rejected",
+			name: "otlp_grpc trace exporter passes",
 			config: `
 file_format: "1.0"
 tracer_provider:
@@ -103,10 +103,10 @@ tracer_provider:
           otlp_grpc:
             endpoint: https://otlp.example.com
 `,
-			wantErr: "otlp_grpc",
+			wantErr: "",
 		},
 		{
-			name: "otlp_grpc metric exporter rejected with its path",
+			name: "otlp_grpc metric exporter passes",
 			config: `
 file_format: "1.0"
 meter_provider:
@@ -115,7 +115,7 @@ meter_provider:
         exporter:
           otlp_grpc: {}
 `,
-			wantErr: "meter_provider.readers.0.periodic.exporter.otlp_grpc",
+			wantErr: "",
 		},
 	}
 

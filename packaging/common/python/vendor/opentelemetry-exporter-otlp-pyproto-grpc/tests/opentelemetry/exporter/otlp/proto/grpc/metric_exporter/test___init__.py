@@ -6,8 +6,8 @@
 import unittest
 from unittest.mock import Mock, patch
 
-import grpc
-from grpc import Compression, StatusCode
+from opentelemetry.exporter.otlp._proto.grpc._pygrpc import api as grpc
+from opentelemetry.exporter.otlp._proto.grpc._pygrpc.api import Compression, StatusCode
 
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.metrics.export import (

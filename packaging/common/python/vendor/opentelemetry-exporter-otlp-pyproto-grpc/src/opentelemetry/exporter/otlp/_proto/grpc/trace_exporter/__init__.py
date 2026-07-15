@@ -5,7 +5,11 @@ from collections.abc import Iterable, Sequence
 from collections.abc import Sequence as TypingSequence
 from os import environ
 
-from grpc import ChannelCredentials, Compression, StatusCode
+from opentelemetry.exporter.otlp._proto.grpc._pygrpc.api import (
+    ChannelCredentials,
+    Compression,
+    StatusCode,
+)
 
 from opentelemetry.exporter.otlp._proto.common._internal.trace_encoder import encode_spans
 from opentelemetry.exporter.otlp._proto.grpc.exporter import (

@@ -219,6 +219,20 @@ def _validate_config_file(current_site, config_file):
     return None
 
 
+def _exporter_for_protocol(otlp_protocol):
+    # This package bundles pure-Python OTLP exporters for both gRPC and
+    # HTTP/protobuf (the gRPC one transports over the stdlib-only _pygrpc
+    # client, so neither needs a C extension). http/json is not supported: the
+    # exporters emit protobuf only. An unset protocol follows the OpenTelemetry
+    # default of grpc. Returns the exporter entry-point name, or None if the
+    # protocol is unsupported.
+    if otlp_protocol is None or otlp_protocol == "grpc":
+        return "otlp_proto_grpc"
+    if otlp_protocol == "http/protobuf":
+        return "otlp_proto_http"
+    return None
+
+
 def import_distro():
     _log_debug("checking Python version")
     current_site = dirname(__file__)
@@ -231,6 +245,10 @@ def import_distro():
         return
     _log_debug("found eligible Python version: {}".format(version_info))
 
+    # Exporter selected from OTEL_EXPORTER_OTLP_PROTOCOL below (env-var mode).
+    # Under OTEL_CONFIG_FILE the configuration file drives exporter selection
+    # and OTEL_*_EXPORTER is ignored, so this default is inert in that mode.
+    default_exporter = "otlp_proto_grpc"
     config_file = os.environ.get("OTEL_CONFIG_FILE")
     if config_file:
         # With OTEL_CONFIG_FILE in effect the SDK ignores the OTEL_* exporter
@@ -249,22 +267,12 @@ def import_distro():
         _log_debug("checking OTEL_EXPORTER_OTLP_PROTOCOL")
 
         otlp_protocol = os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL")
-        if otlp_protocol is None:
-            # Without an explicit protocol, opentelemetry-distro defaults to grpc, which is not
-            # included in this package. Self-deactivate to avoid a RuntimeError at startup.
+        default_exporter = _exporter_for_protocol(otlp_protocol)
+        if default_exporter is None:
             _self_deactivate(current_site)
             _print_cannot_auto_instrument_message(
-                "OTEL_EXPORTER_OTLP_PROTOCOL is not set. "
-                "(If OTEL_EXPORTER_OTLP_ENDPOINT is set on the container, the injector cannot set its own "
-                "OTEL_EXPORTER_OTLP_PROTOCOL. Remove OTEL_EXPORTER_OTLP_ENDPOINT from the container if "
-                "you want Python auto-instrumentation.)"
-            )
-            return
-        if otlp_protocol == "grpc":
-            _self_deactivate(current_site)
-            _print_cannot_auto_instrument_message(
-                "OTEL_EXPORTER_OTLP_PROTOCOL=grpc is not supported. "
-                "This package only includes the HTTP exporter. Use http/protobuf or http/json."
+                "OTEL_EXPORTER_OTLP_PROTOCOL={} is not supported. "
+                "This package supports grpc and http/protobuf.".format(otlp_protocol)
             )
             return
         _log_debug("found eligible OTEL_EXPORTER_OTLP_PROTOCOL value: {}".format(otlp_protocol))
@@ -303,13 +311,15 @@ def import_distro():
             break
 
     if not version_conflicts:
-        # Default to the OTLP HTTP exporter bundled in this package: the
-        # pure-Python pyproto exporter, registered as a drop-in replacement
-        # under the standard otlp_proto_http entry points.
-        # These are no-ops if the user has already set the variables explicitly.
-        os.environ.setdefault("OTEL_TRACES_EXPORTER", "otlp_proto_http")
-        os.environ.setdefault("OTEL_METRICS_EXPORTER", "otlp_proto_http")
-        os.environ.setdefault("OTEL_LOGS_EXPORTER", "otlp_proto_http")
+        if not config_file:
+            # Select the bundled pure-Python OTLP exporter matching the protocol
+            # (otlp_proto_grpc or otlp_proto_http), both registered as drop-in
+            # replacements under the standard entry points. No-ops if the user
+            # already set these. Skipped under OTEL_CONFIG_FILE, where the
+            # configuration file drives exporter selection and these are ignored.
+            os.environ.setdefault("OTEL_TRACES_EXPORTER", default_exporter)
+            os.environ.setdefault("OTEL_METRICS_EXPORTER", default_exporter)
+            os.environ.setdefault("OTEL_LOGS_EXPORTER", default_exporter)
         try:
             _log_debug("importing and initializing the Python auto-instrumentation now")
             from opentelemetry.instrumentation import auto_instrumentation

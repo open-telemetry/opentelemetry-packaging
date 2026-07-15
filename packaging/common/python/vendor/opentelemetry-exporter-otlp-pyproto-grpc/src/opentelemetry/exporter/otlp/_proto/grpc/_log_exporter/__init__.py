@@ -6,7 +6,11 @@ from collections.abc import Sequence as TypingSequence
 from os import environ
 from typing import Literal
 
-from grpc import ChannelCredentials, Compression, StatusCode
+from opentelemetry.exporter.otlp._proto.grpc._pygrpc.api import (
+    ChannelCredentials,
+    Compression,
+    StatusCode,
+)
 
 from opentelemetry.exporter.otlp._proto.common._internal._log_encoder import encode_logs
 from opentelemetry.exporter.otlp._proto.grpc.exporter import (

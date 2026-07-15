@@ -8,7 +8,11 @@ from collections.abc import Sequence as TypingSequence
 from dataclasses import replace
 from os import environ
 
-from grpc import ChannelCredentials, Compression, StatusCode
+from opentelemetry.exporter.otlp._proto.grpc._pygrpc.api import (
+    ChannelCredentials,
+    Compression,
+    StatusCode,
+)
 
 from opentelemetry.exporter.otlp._proto.common._internal.metrics_encoder import OTLPMetricExporterMixin, encode_metrics
 from opentelemetry.exporter.otlp._proto.grpc.exporter import (

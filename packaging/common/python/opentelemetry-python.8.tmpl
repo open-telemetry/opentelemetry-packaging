@@ -54,24 +54,24 @@ Set the service name for telemetry data.
 Set the OTLP exporter endpoint (e.g., http://localhost:4318).
 .TP
 .B OTEL_EXPORTER_OTLP_PROTOCOL
-Must be set to
+Set to
+.B grpc
+(the default when unset) or
 .B http/protobuf
-or
-.B http/json
-(grpc is not supported by this package). Ignored when
+(http/json is not supported by this package). Ignored when
 .B OTEL_CONFIG_FILE
 is set; the configuration file is then validated by the bundled
 .B otel-config-check
 utility instead.
 .TP
 .B OTEL_TRACES_EXPORTER
-Set the traces exporter (default: otlp_proto_http).
+Set the traces exporter (default follows the protocol: otlp_proto_grpc or otlp_proto_http).
 .TP
 .B OTEL_METRICS_EXPORTER
-Set the metrics exporter (default: otlp_proto_http).
+Set the metrics exporter (default follows the protocol).
 .TP
 .B OTEL_LOGS_EXPORTER
-Set the logs exporter (default: otlp_proto_http).
+Set the logs exporter (default follows the protocol).
 .TP
 .B OTEL_PYTHON_DISABLED_INSTRUMENTATIONS
 Comma-separated list of instrumentation packages to disable.
