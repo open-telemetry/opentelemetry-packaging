@@ -123,10 +123,21 @@ jobs:
           path: ./artifacts/
           pattern: opentelemetry-packages-*
 
-      - name: List release artifacts
+      - name: Stage release assets
         run: |
-          echo "=== Release artifacts ==="
-          find artifacts -type f \( -name '*.deb' -o -name '*.rpm' \) | sort
+          # Architecture-independent packages (RPM noarch, DEB _all: the
+          # metapackage plus the Java and Node.js agents) are built identically
+          # by every ARCH matrix job, so each appears once per arch artifact
+          # under the same filename. Flatten all artifacts into one directory so
+          # each basename becomes a single release asset; the per-arch copies of
+          # a noarch/all package share their NEVRA (only build metadata differs),
+          # so collapsing them to one is correct. Without this, the release step
+          # would try to upload two assets with the same name and fail.
+          mkdir -p dist
+          find artifacts -type f \( -name '*.deb' -o -name '*.rpm' \) \
+            -exec cp -f {} dist/ \;
+          echo "=== Release assets ==="
+          ls -1 dist | sort
 
       - name: Release
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
@@ -134,5 +145,5 @@ jobs:
           fail_on_unmatched_files: true
           generate_release_notes: true
           files: |
-            artifacts/**/*.deb
-            artifacts/**/*.rpm
+            dist/*.deb
+            dist/*.rpm
