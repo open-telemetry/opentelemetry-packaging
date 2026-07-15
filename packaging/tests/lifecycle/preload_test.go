@@ -76,6 +76,24 @@ var preloadScenarios = []scenario{
 		},
 	},
 	{
+		// dpkg runs prerm with failed-upgrade or deconfigure on non-removal
+		// transitions; the guard must keep the preload entry for those, not
+		// just for "upgrade". Invoke the installed prerm directly with each
+		// action (they are dpkg-only, hence deb-only) and assert the entry
+		// survives. Fails against a guard that only matches "upgrade".
+		name:    "preload-survives-non-removal-prerm-actions",
+		formats: []string{"deb"},
+		run: func(t *testing.T, ctx context.Context, h *harness) {
+			h.install(t, ctx, "opentelemetry-injector")
+			prerm := "/var/lib/dpkg/info/opentelemetry-injector.prerm"
+			for _, action := range []string{"upgrade", "failed-upgrade", "deconfigure"} {
+				h.exec(t, ctx, prerm, action, "0.0.0-dev")
+				require.Equal(t, 1, h.preloadEntryCount(t, ctx),
+					"preload entry must survive prerm %q", action)
+			}
+		},
+	},
+	{
 		name: "preload-preserves-foreign-entries",
 		run: func(t *testing.T, ctx context.Context, h *harness) {
 			// Pre-seed a foreign preload entry, as another product might have.
