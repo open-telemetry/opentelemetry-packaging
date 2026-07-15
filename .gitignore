@@ -15,8 +15,10 @@ obj/
 # Agentic configs
 .agents
 .claude
-# Working notes (scratch; not versioned)
+# Working artifacts (scratch; not versioned). docs/design/ is kept.
 docs/notes/
+docs/plans/
+docs/brainstorms/
 
 # Stray root build artifact from direct otel-config-check builds
 /otel-config-check

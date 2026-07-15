@@ -158,7 +158,6 @@ make pyproto-unit-tests
 
 Transport-level tests for the grpcio-free gRPC client (`_pygrpc`) of the pyproto OTLP/gRPC exporter, run against `testutil/otelsink` — which serves OTLP through grpc-go, the same server stack as the Collector's OTLP receiver.
 The suite runs against the vendored package by default; `PYGRPC_SRC_DIR` overrides the source tree (e.g. a fork checkout).
-See `docs/plans/2026-07-14-001-feat-pyproto-grpc-without-grpcio-plan.md` for the full plan.
 
 ```sh
 make pyproto-grpc-integration-tests

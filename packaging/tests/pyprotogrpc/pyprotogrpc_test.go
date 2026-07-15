@@ -4,7 +4,7 @@
 // Package pyprotogrpc tests the pure-Python gRPC transport (_pygrpc) of the
 // pyproto OTLP/gRPC exporter against otelsink, which serves the OTLP services
 // through grpc-go — the same server stack as the OpenTelemetry Collector's
-// OTLP receiver. See docs/plans/2026-07-14-001-feat-pyproto-grpc-without-grpcio-plan.md.
+// OTLP receiver.
 package pyprotogrpc
 
 import (

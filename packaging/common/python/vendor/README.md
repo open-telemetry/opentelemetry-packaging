@@ -5,7 +5,7 @@ This directory contains four unpublished, pure-Python OpenTelemetry packages, de
 - `opentelemetry-pyproto` — pure-Python protobuf encoding of the OTLP messages (no `google-protobuf` C extension), plus a shim exposing the encoding as a drop-in for `opentelemetry-proto` under the public `opentelemetry.proto` module path.
 - `opentelemetry-exporter-otlp-pyproto-common` — shared OTLP encoders on top of `opentelemetry-pyproto`.
 - `opentelemetry-exporter-otlp-pyproto-http` — the OTLP/HTTP exporter, transporting via `urllib` (no HTTP client dependency).
-- `opentelemetry-exporter-otlp-pyproto-grpc` — the OTLP/gRPC exporter. It transports over its `_pygrpc/` subpackage, a pure-Python (stdlib-only) HTTP/2 and gRPC unary client, so it has no `grpcio` (or any C-extension) dependency. Its `api.py` presents the small grpc-python surface (`Compression`, `StatusCode`, `RpcError`, `insecure_channel`/`secure_channel`/`ssl_channel_credentials`) that `exporter.py` and the generated stubs consume. See `docs/plans/2026-07-14-001-feat-pyproto-grpc-without-grpcio-plan.md`.
+- `opentelemetry-exporter-otlp-pyproto-grpc` — the OTLP/gRPC exporter. It transports over its `_pygrpc/` subpackage, a pure-Python (stdlib-only) HTTP/2 and gRPC unary client, so it has no `grpcio` (or any C-extension) dependency. Its `api.py` presents the small grpc-python surface (`Compression`, `StatusCode`, `RpcError`, `insecure_channel`/`secure_channel`/`ssl_channel_credentials`) that `exporter.py` and the generated stubs consume.
 
 They are the reason the Python auto-instrumentation bundle works on any manylinux target without compiled extensions.
 
