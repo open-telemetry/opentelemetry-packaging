@@ -12,16 +12,18 @@
 # echo for file content: dash's echo interprets backslash escapes and
 # could corrupt foreign preload entries.
 
-# On upgrade, keep the preload entry: dpkg invokes prerm with "upgrade", rpm
-# invokes %preun with the count of remaining package instances ("1"). On RPM
-# the old version's %preun runs AFTER the new version's %post, so cleaning up
-# here would strip the entry the new version just configured. Only a real
+# Keep the preload entry on every non-removal transition. dpkg invokes prerm
+# with "upgrade", "failed-upgrade", or "deconfigure" (each optionally followed
+# by version/package arguments) when the package is not actually going away;
+# rpm invokes %preun with the count of remaining instances ("1" on upgrade). On
+# RPM the old version's %preun runs AFTER the new version's %post, so cleaning
+# up here would strip the entry the new version just configured. Only a real
 # removal (dpkg "remove", rpm "0") cleans up.
 # Captured before the field-splitting `set --` below can clobber it.
 action="${1:-}"
 
 case "$action" in
-    upgrade|1)
+    upgrade*|deconfigure*|failed-upgrade*|1)
         exit 0
         ;;
 esac
