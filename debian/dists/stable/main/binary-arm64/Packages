@@ -1,0 +1,95 @@
+Package: opentelemetry
+Version: 0.0.2
+Architecture: all
+Maintainer: The OpenTelemetry Authors
+Installed-Size: 0
+Depends: opentelemetry-injector1
+Recommends: opentelemetry-java-autoinstrumentation1, opentelemetry-nodejs-autoinstrumentation1, opentelemetry-dotnet-autoinstrumentation1, opentelemetry-python-autoinstrumentation1
+Filename: pool/opentelemetry_0.0.2_all.deb
+Size: 824
+MD5sum: 1d47cd45f73281a7a0af52f6d4066601
+SHA1: f5eca129664edbc3ee83e1bd2ab502556e53bcbe
+SHA256: 71b039ee081d343b21c2f02be90c759d5d5bd21dd7863b51d2cc77a45100913b
+Priority: optional
+Homepage: https://github.com/open-telemetry/opentelemetry-packaging
+Description: OpenTelemetry Auto-Instrumentation Suite (metapackage)
+
+Package: opentelemetry-dotnet-autoinstrumentation
+Version: 0.0.2
+Architecture: arm64
+Maintainer: The OpenTelemetry Authors
+Installed-Size: 48115
+Suggests: opentelemetry-injector1
+Provides: opentelemetry-dotnet-autoinstrumentation1
+Filename: pool/opentelemetry-dotnet-autoinstrumentation_0.0.2_arm64.deb
+Size: 17826706
+MD5sum: 54087c6452674744a95759f307ce0c38
+SHA1: dc2824af3bf1ad40cc83b6fc9c2afed69c682cc1
+SHA256: a0d6591bd1ab15413c8a9c015521e0e058dd1a39483ffad4700ddf600590da76
+Priority: optional
+Homepage: https://github.com/open-telemetry/opentelemetry-packaging
+Description: OpenTelemetry .NET Automatic Instrumentation
+
+Package: opentelemetry-injector
+Version: 0.0.2
+Architecture: arm64
+Maintainer: The OpenTelemetry Authors
+Installed-Size: 3137
+Provides: opentelemetry-injector1
+Filename: pool/opentelemetry-injector_0.0.2_arm64.deb
+Size: 917400
+MD5sum: b5556e48dd393fd474529b3ae8ebe2a5
+SHA1: 9d3f770817d2c5c7dd9b5f522c5d4837699e7046
+SHA256: 43653d4798f4526acbb468a9352d0881b228388ff279ef73cacdeaa82ac4d2d5
+Priority: optional
+Homepage: https://github.com/open-telemetry/opentelemetry-packaging
+Description: OpenTelemetry LD_PRELOAD-based automatic instrumentation injector
+
+Package: opentelemetry-java-autoinstrumentation
+Version: 0.0.2
+Architecture: all
+Maintainer: The OpenTelemetry Authors
+Installed-Size: 23829
+Suggests: opentelemetry-injector1
+Provides: opentelemetry-java-autoinstrumentation1
+Filename: pool/opentelemetry-java-autoinstrumentation_0.0.2_all.deb
+Size: 20911592
+MD5sum: 497f471d29065f77a90d29a992ace8f3
+SHA1: 8110c954e8c10456544f3c0b39bae00767c30ac7
+SHA256: e1d8212376de62336950569940ef45ac95fbf06a03e9793ca317127d8bfd4613
+Priority: optional
+Homepage: https://github.com/open-telemetry/opentelemetry-packaging
+Description: OpenTelemetry Java Auto-Instrumentation Agent
+
+Package: opentelemetry-nodejs-autoinstrumentation
+Version: 0.0.2
+Architecture: all
+Maintainer: The OpenTelemetry Authors
+Installed-Size: 54091
+Suggests: opentelemetry-injector1
+Provides: opentelemetry-nodejs-autoinstrumentation1
+Filename: pool/opentelemetry-nodejs-autoinstrumentation_0.0.2_all.deb
+Size: 10199348
+MD5sum: d977bbd451a37cd62fcc6641028acd97
+SHA1: 365f93dad333b5d097c0366a80fded21b2b152f6
+SHA256: d296b0cff70d7b7a5c46a2fd963b64bbaf2388df7bd8ab78a8ef8275c2db9e82
+Priority: optional
+Homepage: https://github.com/open-telemetry/opentelemetry-packaging
+Description: OpenTelemetry Node.js Auto-Instrumentation
+
+Package: opentelemetry-python-autoinstrumentation
+Version: 0.0.2
+Architecture: arm64
+Maintainer: The OpenTelemetry Authors
+Installed-Size: 14407
+Suggests: opentelemetry-injector1
+Provides: opentelemetry-python-autoinstrumentation1
+Filename: pool/opentelemetry-python-autoinstrumentation_0.0.2_arm64.deb
+Size: 4544360
+MD5sum: 752293e859468be4ab75a81371789636
+SHA1: f2daca3d1118848d59b75c3b4970f94d012f3de6
+SHA256: e9989381cb830722546bdf992eaa985a1f434538a6159e87aec5781205cc69f3
+Priority: optional
+Homepage: https://github.com/open-telemetry/opentelemetry-packaging
+Description: OpenTelemetry Python Auto-Instrumentation
+
