@@ -17,7 +17,7 @@ SHELL = /bin/bash
 
 # Package version. Derived from the latest git tag if available, otherwise
 # falls back to a development placeholder.
-VERSION ?= $(shell v=`git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null` && echo "$${v\#v}" || echo "0.0.0-dev")
+VERSION ?= $(shell v=`git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null` && echo "$${v#v}" || echo "0.0.0-dev")
 
 # Target CPU architecture (amd64 or arm64).
 ARCH ?= amd64
