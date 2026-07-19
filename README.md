@@ -129,6 +129,7 @@ receivers:
        http:
          endpoint: 127.0.0.1:4318
 
+
 exporters:
   otlphttp:
     endpoint: https://otlp.example.com
