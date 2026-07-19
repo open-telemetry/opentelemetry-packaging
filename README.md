@@ -53,7 +53,7 @@ sudo dnf install opentelemetry
 
 ## Configuring where telemetry goes
 
-By default, every auto-instrumentation package exports OTLP to `localhost`.
+By default, every auto-instrumentation package exports OTLP to `localhost` (`localhost:4317` for OTLP/gRPC, and `localhost:4318` for OTLP/HTTP).
 Point it at a real destination with one of the two options below.
 
 ### Option 1: Declarative SDK configuration file
