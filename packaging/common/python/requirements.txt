@@ -9,7 +9,7 @@ opentelemetry-distro==0.64b0
 # The file-configuration extra (pyyaml, jsonschema) enables declarative
 # configuration via OTEL_CONFIG_FILE; without it, setting that variable makes
 # the configurator crash with ModuleNotFoundError.
-opentelemetry-sdk[file-configuration]==1.43.0
+opentelemetry-sdk[file-configuration]==1.44.0
 
 urllib3 <2.6.4
 
