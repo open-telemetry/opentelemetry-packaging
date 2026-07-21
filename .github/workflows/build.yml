@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out the codebase.
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Lint shell scripts
         run: make lint
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out the codebase.
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Run the Go command unit tests
         run: make go-unit-tests
@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out the codebase.
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Run sitecustomize.py under every supported Python interpreter generation
         run: make integration-test-sitecustomize
@@ -56,7 +56,7 @@ jobs:
         ARCH: [ "amd64", "arm64" ]
     steps:
       - name: Check out the codebase.
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
 
@@ -91,7 +91,7 @@ jobs:
     runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     steps:
       - name: Check out the codebase.
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
 
@@ -112,7 +112,7 @@ jobs:
       contents: write
     steps:
       - name: Check out the codebase.
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Create artifacts directory
         run: mkdir -p artifacts
@@ -140,7 +140,7 @@ jobs:
           ls -1 dist | sort
 
       - name: Release
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           fail_on_unmatched_files: true
           generate_release_notes: true
