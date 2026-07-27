@@ -11,7 +11,7 @@ opentelemetry-distro==0.64b0
 # the configurator crash with ModuleNotFoundError.
 opentelemetry-sdk[file-configuration]==1.43.0
 
-urllib3 <2.6.4
+urllib3 <2.7.1
 
 # TODO: publish the pure-Python pyproto exporter chain to PyPI and replace the
 # three vendored requirements below with a single pinned release, e.g.:
