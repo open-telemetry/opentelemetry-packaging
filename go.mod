@@ -5,7 +5,7 @@ go 1.26.4
 require (
 	github.com/cavaliergopher/rpm v1.3.0
 	github.com/goreleaser/nfpm/v2 v2.47.0
-	github.com/moby/moby/client v0.5.0
+	github.com/moby/moby/client v0.5.1
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.43.0
