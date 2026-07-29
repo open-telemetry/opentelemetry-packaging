@@ -38,6 +38,11 @@ Two escaping rules apply to the text below, both of them rpm's:
 %global __strip /bin/true
 %global _build_id_links none
 
+# This spec carries no changelog, so there is no date in it to derive
+# SOURCE_DATE_EPOCH from. Saying so is better than fabricating an entry to
+# satisfy the macro, which would otherwise warn on every build.
+%global source_date_epoch_from_changelog 0
+
 %ifarch x86_64
 %global otel_arch amd64
 %endif
