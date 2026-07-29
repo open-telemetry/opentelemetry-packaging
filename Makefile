@@ -92,6 +92,83 @@ packages: otel-config-check
 	go run ./cmd/build-packages -version $(VERSION) -arch $(ARCH) -format all -output $(OUTPUT_DIR)
 
 # ============================================================================
+# Source RPM (rpmbuild path, used by COPR)
+# ============================================================================
+
+# COPR builds with mock, from a source RPM, so the RPMs it publishes are built
+# by rpmbuild rather than by nfpm. Both producers read the same component
+# metadata: the spec is generated from it, and its %install section calls this
+# same builder back in staging mode. See packaging/builder/spec.go.
+
+# rpmbuild's _topdir for the source RPM build.
+SRPM_TOPDIR := $(CURDIR)/build/srpm
+
+# Image used by srpm-container to run rpmbuild on hosts without RPM tooling.
+SRPM_CONTAINER_IMAGE ?= fedora:latest
+
+# Renders the spec, exports the working tree, vendors the Go modules, and tars
+# the result into SOURCES. Needs Go and git, and no RPM tooling at all, which is
+# what lets srpm-container keep rpmbuild by itself in a container.
+#
+# The tarball holds the working tree rather than HEAD, so uncommitted work is
+# testable; .gitignore still keeps build output and scratch files out of it. The
+# vendored module cache travels along, so the per-chroot build needs no network
+# access for the Go dependencies.
+.PHONY: srpm-sources
+srpm-sources:
+	@rm -rf $(SRPM_TOPDIR)
+	@mkdir -p $(SRPM_TOPDIR)/SPECS $(SRPM_TOPDIR)/SOURCES
+	go run ./cmd/build-packages -version $(VERSION) -format spec -output $(SRPM_TOPDIR)/SPECS
+	@set -euo pipefail; \
+	spec="$$(ls $(SRPM_TOPDIR)/SPECS/*.spec)"; \
+	prefix="$$(basename "$$spec" .spec)-$$(go run ./cmd/build-packages -version $(VERSION) -print-rpm-version)"; \
+	export_dir="$(SRPM_TOPDIR)/export/$$prefix"; \
+	mkdir -p "$$export_dir"; \
+	echo "Exporting the source tree into $$export_dir"; \
+	if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then \
+		git ls-files -z --cached --others --exclude-standard \
+			| tar --null --files-from=- -cf - \
+			| tar -xf - -C "$$export_dir"; \
+	else \
+		tar --exclude=./.git --exclude=./build -cf - . | tar -xf - -C "$$export_dir"; \
+	fi; \
+	echo "Vendoring the Go modules"; \
+	( cd "$$export_dir" && go mod vendor ); \
+	tar -czf "$(SRPM_TOPDIR)/SOURCES/$$prefix.tar.gz" -C "$(SRPM_TOPDIR)/export" "$$prefix"; \
+	rm -rf "$(SRPM_TOPDIR)/export"; \
+	echo "Wrote $(SRPM_TOPDIR)/SOURCES/$$prefix.tar.gz"
+
+# Builds the source RPM consumed by COPR's per-chroot rebuild.
+#
+# _topdir is the only define: COPR rebuilds the spec embedded in the source RPM
+# once per chroot and inherits nothing from here, so a spec that resolved its
+# version from a define would lose it there. The generator writes the version as
+# a literal for exactly that reason.
+.PHONY: srpm
+srpm: check-rpmbuild-installed srpm-sources
+	rpmbuild -bs $(SRPM_TOPDIR)/SPECS/*.spec --define "_topdir $(SRPM_TOPDIR)"
+	@ls -1 $(SRPM_TOPDIR)/SRPMS/*.src.rpm
+
+# Same output as srpm, for hosts without RPM tooling. Only build/srpm is mounted
+# and only rpmbuild runs inside, so the container needs neither Go nor git nor
+# the repository — which also keeps it working when the checkout is a git
+# worktree, whose .git file points outside any bind mount.
+.PHONY: srpm-container
+srpm-container: srpm-sources
+	$(CONTAINER_ENGINE) run --rm \
+		-v $(SRPM_TOPDIR):/srpm \
+		$(SRPM_CONTAINER_IMAGE) \
+		sh -c 'dnf install -q -y rpm-build >/dev/null && rpmbuild -bs /srpm/SPECS/*.spec --define "_topdir /srpm"'
+	@ls -1 $(SRPM_TOPDIR)/SRPMS/*.src.rpm
+
+.PHONY: check-rpmbuild-installed
+check-rpmbuild-installed:
+	@if ! rpmbuild --version > /dev/null 2>&1; then \
+		echo "error: rpmbuild is not installed. Install the rpm-build package of your distribution, or run \`make srpm-container\` to build the source RPM in a container instead."; \
+		exit 1; \
+	fi
+
+# ============================================================================
 # Local Package Repositories for Testing
 # ============================================================================
 

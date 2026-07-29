@@ -14,6 +14,10 @@ make rpm-packages              # Build RPM packages only
 make deb-package-<component>   # Build a single DEB (injector, java, nodejs, dotnet, meta)
 make rpm-package-<component>   # Build a single RPM
 
+make srpm                      # Build the source RPM (COPR path; needs rpmbuild)
+make srpm-container            # Same, running rpmbuild in a container instead
+make srpm-sources              # Generated spec + vendored source tarball only
+
 make go-unit-tests             # Go command unit tests (otel-config-check)
 make python-unit-tests         # sitecustomize.py unit tests (throwaway venv, no containers)
 make pyproto-unit-tests        # Vendored pyproto exporter test suites (throwaway venvs, no containers)
