@@ -6,12 +6,14 @@
 - **npm** (needed to fetch the Node.js auto-instrumentation agent from the npm registry)
 - **Python 3 with pip** (needed to fetch the Python auto-instrumentation packages; invoked as `python3 -m pip`)
 - **A container engine** (Podman or Docker — needed for local repository generation and integration tests)
+- **`rpmbuild`** (optional — only for building the source RPM natively; `make srpm-container` runs it in a container instead)
 
 No Ruby, FPM, or special Docker images are required to build packages.
 
 ## Repository layout
 
 ```
+.copr/Makefile               COPR SCM entry point; installs the source-RPM tooling and calls make srpm
 cmd/build-packages/          CLI entry point for building .deb and .rpm packages
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
 packaging/
@@ -97,6 +99,28 @@ go run ./cmd/build-packages -version 1.0.0 -arch amd64 -component injector -stag
 
 Staging materializes the component's `files.Contents` into the buildroot and writes the matching `%files` fragment, so the file lists and the packaged tree come from one traversal and cannot disagree.
 The generated spec is never committed, and never edited by hand.
+
+Those two invocations are wired together by the source RPM targets, which is what COPR drives:
+
+```sh
+make srpm
+```
+
+That renders the spec, exports the working tree (not `HEAD`, so uncommitted work is testable), vendors the Go modules into the source tarball, and runs `rpmbuild -bs` with `_topdir` as its only define.
+The vendored modules are what let the per-chroot build compile without network access for the Go dependencies; only the upstream agents are still fetched at build time.
+
+On a host without `rpmbuild`, run `rpmbuild` in a container instead:
+
+```sh
+make srpm-container
+```
+
+Only `build/srpm` is mounted into that container, and nothing but `rpmbuild` runs inside it — no Go, no git, no repository — so it also works when the checkout is a git worktree.
+`make srpm-sources` stops after the spec and the tarball, for inspecting either without any RPM tooling.
+
+Two consequences of rpmbuild owning the packaging step are worth knowing.
+Its `Release` carries the distribution tag (`0.dev.1.fc44`), so a COPR package sorts above the identically versioned one built by nfpm.
+It also generates dependencies automatically from the payload, which nfpm does not: the Node.js package gains `Requires: /usr/bin/node`, the Python package `Requires: /usr/bin/python3`, and both the .NET and Python packages pick up the glibc symbol versions their bundled binaries need.
 
 ### Upstream version pins
 
