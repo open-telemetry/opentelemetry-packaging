@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goreleaser/nfpm/v2"
 	"github.com/goreleaser/nfpm/v2/files"
 )
 
@@ -33,44 +32,73 @@ const (
 
 // Injector is the opentelemetry-injector package component.
 var Injector = Component{
-	Name:        "injector",
-	Description: injectorDescription,
-	InfoFunc:    injectorInfo,
+	Name:         "injector",
+	PackageName:  "opentelemetry-injector",
+	Description:  injectorDescription,
+	Provides:     []string{"opentelemetry-injector1"},
+	PostInstall:  "postinstall-injector.sh",
+	PreRemove:    "preuninstall-injector.sh",
+	ContentsFunc: injectorContents,
 }
 
 // Java is the opentelemetry-java-autoinstrumentation package component.
 var Java = Component{
-	Name:        "java",
-	Description: javaDescription,
-	InfoFunc:    javaInfo,
+	Name:         "java",
+	PackageName:  "opentelemetry-java-autoinstrumentation",
+	Description:  javaDescription,
+	Noarch:       true,
+	Provides:     []string{"opentelemetry-java-autoinstrumentation1"},
+	Suggests:     []string{"opentelemetry-injector1"},
+	ContentsFunc: javaContents,
 }
 
 // Nodejs is the opentelemetry-nodejs-autoinstrumentation package component.
 var Nodejs = Component{
-	Name:        "nodejs",
-	Description: nodejsDescription,
-	InfoFunc:    nodejsInfo,
+	Name:         "nodejs",
+	PackageName:  "opentelemetry-nodejs-autoinstrumentation",
+	Description:  nodejsDescription,
+	Noarch:       true,
+	Provides:     []string{"opentelemetry-nodejs-autoinstrumentation1"},
+	Suggests:     []string{"opentelemetry-injector1"},
+	ContentsFunc: nodejsContents,
 }
 
 // Dotnet is the opentelemetry-dotnet-autoinstrumentation package component.
 var Dotnet = Component{
-	Name:        "dotnet",
-	Description: dotnetDescription,
-	InfoFunc:    dotnetInfo,
+	Name:         "dotnet",
+	PackageName:  "opentelemetry-dotnet-autoinstrumentation",
+	Description:  dotnetDescription,
+	Provides:     []string{"opentelemetry-dotnet-autoinstrumentation1"},
+	Suggests:     []string{"opentelemetry-injector1"},
+	ContentsFunc: dotnetContents,
 }
 
 // Python is the opentelemetry-python-autoinstrumentation package component.
 var Python = Component{
 	Name:        "python",
+	PackageName: "opentelemetry-python-autoinstrumentation",
 	Description: pythonDescription,
-	InfoFunc:    pythonInfo,
+	// Not Noarch: the bundled wheels may carry compiled C extensions, so the
+	// package is architecture-specific.
+	Provides:     []string{"opentelemetry-python-autoinstrumentation1"},
+	Suggests:     []string{"opentelemetry-injector1"},
+	ContentsFunc: pythonContents,
 }
 
 // Meta is the opentelemetry metapackage component.
 var Meta = Component{
 	Name:        "meta",
+	PackageName: "opentelemetry",
 	Description: metaDescription,
-	InfoFunc:    metaInfo,
+	Noarch:      true,
+	Depends:     []string{"opentelemetry-injector1"},
+	Recommends: []string{
+		"opentelemetry-java-autoinstrumentation1",
+		"opentelemetry-nodejs-autoinstrumentation1",
+		"opentelemetry-dotnet-autoinstrumentation1",
+		"opentelemetry-python-autoinstrumentation1",
+	},
+	ContentsFunc: metaContents,
 }
 
 const (
@@ -82,7 +110,7 @@ const (
 	metaDescription     = "OpenTelemetry Auto-Instrumentation Suite (metapackage)"
 )
 
-func injectorInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
+func injectorContents(cfg Config) (files.Contents, func(), error) {
 	staging, err := os.MkdirTemp("", "otel-injector-*")
 	if err != nil {
 		return nil, nil, err
@@ -101,25 +129,17 @@ func injectorInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 
 	commonDir := filepath.Join(cfg.PackagingDir, "common")
 
-	info := commonInfo(cfg, "opentelemetry-injector", injectorDescription, cfg.Arch)
-	info.Overridables.Provides = []string{"opentelemetry-injector1"}
-	info.Overridables.Scripts = nfpm.Scripts{
-		PostInstall: filepath.Join(commonDir, "scripts", "postinstall-injector.sh"),
-		PreRemove:   filepath.Join(commonDir, "scripts", "preuninstall-injector.sh"),
-	}
-	info.Overridables.Contents = files.Contents{
+	return files.Contents{
 		regularFile(soPath, injectorInstallDir+"/libotelinject.so", 0o755),
 		configFile(filepath.Join(commonDir, "injector", "injector.conf"), injectorConfigDir+"/injector.conf"),
 		configFile(filepath.Join(commonDir, "injector", "default_env.conf"), injectorConfigDir+"/default_env.conf"),
 		directory(injectorConfigDir + "/conf.d"),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-injector.8.gz", 0o644),
 		regularFile(filepath.Join(commonDir, "injector", "README.md"), "/usr/share/doc/opentelemetry-injector/README.md", 0o644),
-	}
-
-	return info, cleanup, nil
+	}, cleanup, nil
 }
 
-func javaInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
+func javaContents(cfg Config) (files.Contents, func(), error) {
 	staging, err := os.MkdirTemp("", "otel-java-*")
 	if err != nil {
 		return nil, nil, err
@@ -138,24 +158,16 @@ func javaInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 
 	commonDir := filepath.Join(cfg.PackagingDir, "common")
 
-	info := commonInfo(cfg, "opentelemetry-java-autoinstrumentation", javaDescription, "all")
-	if format == "rpm" {
-		info.Arch = "noarch"
-	}
-	info.Overridables.Provides = []string{"opentelemetry-java-autoinstrumentation1"}
-	info.Overridables.Suggests = []string{"opentelemetry-injector1"}
-	info.Overridables.Contents = files.Contents{
+	return files.Contents{
 		regularFile(jarPath, javaInstallDir+"/opentelemetry-javaagent.jar", 0o644),
 		configFile(filepath.Join(commonDir, "java", "otel-config.yaml"), javaConfigDir+"/otel-config.yaml"),
 		regularFile(filepath.Join(commonDir, "java", "injector.conf"), injectorConfigDir+"/conf.d/java.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-java.8.gz", 0o644),
 		regularFile(filepath.Join(commonDir, "java", "README.md"), "/usr/share/doc/opentelemetry-java-autoinstrumentation/README.md", 0o644),
-	}
-
-	return info, cleanup, nil
+	}, cleanup, nil
 }
 
-func nodejsInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
+func nodejsContents(cfg Config) (files.Contents, func(), error) {
 	staging, err := os.MkdirTemp("", "otel-nodejs-*")
 	if err != nil {
 		return nil, nil, err
@@ -173,25 +185,17 @@ func nodejsInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 
 	commonDir := filepath.Join(cfg.PackagingDir, "common")
 
-	info := commonInfo(cfg, "opentelemetry-nodejs-autoinstrumentation", nodejsDescription, "all")
-	if format == "rpm" {
-		info.Arch = "noarch"
-	}
-	info.Overridables.Provides = []string{"opentelemetry-nodejs-autoinstrumentation1"}
-	info.Overridables.Suggests = []string{"opentelemetry-injector1"}
-	info.Overridables.Contents = files.Contents{
+	return files.Contents{
 		tree(filepath.Join(staging, "nodejs"), nodejsInstallDir),
 		regularFile(filepath.Join(commonDir, "nodejs", "register.js"), nodejsInstallDir+"/register.js", 0o644),
 		configFile(filepath.Join(commonDir, "nodejs", "otel-config.yaml"), nodejsConfigDir+"/otel-config.yaml"),
 		regularFile(filepath.Join(commonDir, "nodejs", "injector.conf"), injectorConfigDir+"/conf.d/nodejs.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-nodejs.8.gz", 0o644),
 		regularFile(filepath.Join(commonDir, "nodejs", "README.md"), "/usr/share/doc/opentelemetry-nodejs-autoinstrumentation/README.md", 0o644),
-	}
-
-	return info, cleanup, nil
+	}, cleanup, nil
 }
 
-func dotnetInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
+func dotnetContents(cfg Config) (files.Contents, func(), error) {
 	staging, err := os.MkdirTemp("", "otel-dotnet-*")
 	if err != nil {
 		return nil, nil, err
@@ -213,21 +217,16 @@ func dotnetInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 
 	commonDir := filepath.Join(cfg.PackagingDir, "common")
 
-	info := commonInfo(cfg, "opentelemetry-dotnet-autoinstrumentation", dotnetDescription, cfg.Arch)
-	info.Overridables.Provides = []string{"opentelemetry-dotnet-autoinstrumentation1"}
-	info.Overridables.Suggests = []string{"opentelemetry-injector1"}
-	info.Overridables.Contents = files.Contents{
+	return files.Contents{
 		tree(dotnetDir, dotnetInstallDir),
 		configFile(filepath.Join(commonDir, "dotnet", "otel-config.yaml"), dotnetConfigDir+"/otel-config.yaml"),
 		regularFile(filepath.Join(commonDir, "dotnet", "injector.conf"), injectorConfigDir+"/conf.d/dotnet.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-dotnet.8.gz", 0o644),
 		regularFile(filepath.Join(commonDir, "dotnet", "README.md"), "/usr/share/doc/opentelemetry-dotnet-autoinstrumentation/README.md", 0o644),
-	}
-
-	return info, cleanup, nil
+	}, cleanup, nil
 }
 
-func pythonInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
+func pythonContents(cfg Config) (files.Contents, func(), error) {
 	// sitecustomize.py invokes this validator when OTEL_CONFIG_FILE is set, so
 	// that a broken declarative configuration self-deactivates instrumentation
 	// instead of crashing the SDK's file configurator. It is cross-compiled
@@ -275,11 +274,7 @@ func pythonInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 		return nil, cleanup, err
 	}
 
-	// Python packages may include compiled C extensions, so the package is architecture-specific.
-	info := commonInfo(cfg, "opentelemetry-python-autoinstrumentation", pythonDescription, cfg.Arch)
-	info.Overridables.Provides = []string{"opentelemetry-python-autoinstrumentation1"}
-	info.Overridables.Suggests = []string{"opentelemetry-injector1"}
-	info.Overridables.Contents = files.Contents{
+	return files.Contents{
 		// The injector resolves the agent path as <prefix>/<libc> (the same scheme
 		// as .NET), so the bundle installs under a glibc/ subdirectory while the
 		// conf.d prefix stays pythonInstallDir. The bundled wheels are glibc
@@ -294,12 +289,10 @@ func pythonInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 		// NOTICE at the repository root carries the attribution required by
 		// Apache-2.0 and ships alongside the package documentation.
 		regularFile(filepath.Join(filepath.Dir(cfg.PackagingDir), "NOTICE"), "/usr/share/doc/opentelemetry-python-autoinstrumentation/NOTICE", 0o644),
-	}
-
-	return info, cleanup, nil
+	}, cleanup, nil
 }
 
-func metaInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
+func metaContents(cfg Config) (files.Contents, func(), error) {
 	staging, err := os.MkdirTemp("", "otel-meta-*")
 	if err != nil {
 		return nil, nil, err
@@ -311,24 +304,9 @@ func metaInfo(cfg Config, format string) (*nfpm.Info, func(), error) {
 		return nil, cleanup, err
 	}
 
-	arch := "all"
-	if format == "rpm" {
-		arch = "noarch"
-	}
-
-	info := commonInfo(cfg, "opentelemetry", metaDescription, arch)
-	info.Overridables.Depends = []string{"opentelemetry-injector1"}
-	info.Overridables.Recommends = []string{
-		"opentelemetry-java-autoinstrumentation1",
-		"opentelemetry-nodejs-autoinstrumentation1",
-		"opentelemetry-dotnet-autoinstrumentation1",
-		"opentelemetry-python-autoinstrumentation1",
-	}
-	info.Overridables.Contents = files.Contents{
+	return files.Contents{
 		regularFile(readmePath, "/usr/share/doc/opentelemetry/README", 0o644),
-	}
-
-	return info, cleanup, nil
+	}, cleanup, nil
 }
 
 // generateManPage expands @VERSION@ and @DATE@ placeholders in a man page

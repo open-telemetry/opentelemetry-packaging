@@ -19,6 +19,8 @@ packaging/
     builder.go               Build orchestration, common metadata
     components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
     download.go              Upstream artifact download helpers
+    spec.go                  RPM spec generation for the COPR build (projection of components.go)
+    stage.go                 Payload staging into an rpmbuild buildroot, with generated %files lists
   common/                    Shared assets referenced by the builder
     <lang>/otel-config.yaml   Language-specific declarative configuration file, shipped by that language package (valid as shipped)
     scripts/                 POSIX lifecycle scripts (postinstall, preuninstall)
@@ -70,6 +72,31 @@ The `cmd/build-packages` program:
    - Lifecycle scripts, config files, man pages, and documentation
 
 3. **Writes the package file** via nfpm's `Packager.Package()` — produces valid `.deb` or `.rpm` without requiring `dpkg-deb`, `rpmbuild`, or any platform-specific tools.
+
+### Where package metadata lives
+
+Each component in `components.go` declares its metadata — package name, architecture independence, `Provides`, `Requires`, `Recommends`, `Suggests`, and lifecycle scripts — as plain struct fields, separately from the `ContentsFunc` that stages its payload.
+That separation has one purpose: the metadata alone is enough to generate an RPM spec, so `spec.go` can render one without downloading a single upstream artifact.
+
+Add or change a package relationship in `components.go` and nothing else.
+Both producers read it from there: nfpm through `Component.Info`, and rpmbuild through the generated spec.
+
+### Building RPMs with rpmbuild instead of nfpm
+
+RPMs have a second producer, used by the [COPR](https://copr.fedorainfracloud.org/) build, where mock owns the packaging step and only accepts a source RPM.
+
+```sh
+go run ./cmd/build-packages -version 1.0.0 -format spec -output build/srpm/SPECS
+```
+
+That renders `opentelemetry-packaging.spec`, whose `%install` section calls the same builder back in staging mode:
+
+```sh
+go run ./cmd/build-packages -version 1.0.0 -arch amd64 -component injector -stage-root /path/to/buildroot -filelist-dir /path/to/filelists
+```
+
+Staging materializes the component's `files.Contents` into the buildroot and writes the matching `%files` fragment, so the file lists and the packaged tree come from one traversal and cannot disagree.
+The generated spec is never committed, and never edited by hand.
 
 ### Upstream version pins
 
