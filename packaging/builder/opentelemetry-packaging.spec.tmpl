@@ -43,6 +43,14 @@ Two escaping rules apply to the text below, both of them rpm's:
 # satisfy the macro, which would otherwise warn on every build.
 %global source_date_epoch_from_changelog 0
 
+# Keep the bundled libraries private: rpm would otherwise publish the injector's
+# SONAME as "Provides: libinjector.so()(64bit)", which could satisfy an unrelated
+# package. Safe to filter, as the injector is preloaded by absolute path and
+# never resolved by SONAME. Requires generation stays on: the glibc symbol
+# versions are real install constraints. The pattern matches /usr/lib, where
+# these packages install on every architecture, not /usr/lib64.
+%global __provides_exclude_from ^%{_prefix}/lib/opentelemetry/.*$
+
 %ifarch x86_64
 %global otel_arch amd64
 %endif

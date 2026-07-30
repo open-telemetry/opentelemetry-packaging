@@ -94,6 +94,21 @@ func TestWriteSpecPreamble(t *testing.T) {
 	assert.Contains(t, spec, "%global _build_id_links none")
 }
 
+// The bundled libraries are private: rpm must not publish their SONAMEs as
+// system-wide provides, where they could satisfy an unrelated package. Nothing
+// resolves them by SONAME — the injector is preloaded by absolute path — so
+// filtering costs nothing. Requires generation must stay on, so that the glibc
+// symbol versions the bundled binaries need keep gating installation.
+func TestWriteSpecDoesNotPublishBundledLibraries(t *testing.T) {
+	spec := renderSpec(t, "1.2.3")
+
+	assert.Contains(t, spec, "%global __provides_exclude_from ^%{_prefix}/lib/opentelemetry/.*$")
+	assert.NotContains(t, spec, "%global __requires_exclude_from",
+		"automatically generated requires are real constraints and must not be filtered")
+	assert.NotContains(t, spec, "%{_libdir}/opentelemetry",
+		"these packages install to /usr/lib on every architecture, not /usr/lib64")
+}
+
 // The version must be a literal: COPR rebuilds the spec embedded in the SRPM
 // per chroot without the defines passed at SRPM build time.
 func TestWriteSpecBakesVersionLiterally(t *testing.T) {
