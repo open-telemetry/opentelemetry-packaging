@@ -193,7 +193,7 @@ rpm-rebuild-container:
 	@mkdir -p $(REBUILD_OUTPUT_DIR)
 	$(CONTAINER_ENGINE) run --rm \
 		-v $(SRPM_TOPDIR)/SRPMS:/srpms:ro \
-		-v $(REBUILD_OUTPUT_DIR):/out \
+		-v $(abspath $(REBUILD_OUTPUT_DIR)):/out \
 		$(REBUILD_IMAGE) \
 		sh -euc 'dnf install -q -y rpm-build $(REBUILD_ENABLE_EPEL) >/dev/null; \
 			dnf install -q -y dnf5-plugins >/dev/null 2>&1 || dnf install -q -y dnf-plugins-core >/dev/null; \
