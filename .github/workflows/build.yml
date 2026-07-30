@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Check out the codebase.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Lint shell scripts
         run: make lint
@@ -29,6 +31,8 @@ jobs:
     steps:
       - name: Check out the codebase.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Run the Go command unit tests
         run: make go-unit-tests
@@ -44,6 +48,8 @@ jobs:
     steps:
       - name: Check out the codebase.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Run sitecustomize.py under every supported Python interpreter generation
         run: make integration-test-sitecustomize
@@ -59,6 +65,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Determine version
         id: version
@@ -71,7 +78,11 @@ jobs:
           fi
 
       - name: Build ${{ matrix.ARCH }} ${{ matrix.SYS_PACKAGE }} packages
-        run: make ${{ matrix.SYS_PACKAGE }}-packages ARCH=${{ matrix.ARCH }} VERSION=${{ steps.version.outputs.version }}
+        env:
+          ARCH: ${{ matrix.ARCH }}
+          SYS_PACKAGE: ${{ matrix.SYS_PACKAGE }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: make "${SYS_PACKAGE}-packages" ARCH="${ARCH}" VERSION="${VERSION}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -94,6 +105,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Download packages
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -113,6 +125,8 @@ jobs:
     steps:
       - name: Check out the codebase.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Create artifacts directory
         run: mkdir -p artifacts
@@ -140,10 +154,20 @@ jobs:
           ls -1 dist | sort
 
       - name: Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
-        with:
-          fail_on_unmatched_files: true
-          generate_release_notes: true
-          files: |
-            dist/*.deb
-            dist/*.rpm
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          assets=(dist/*.deb dist/*.rpm)
+          if (( ${#assets[@]} == 0 )); then
+            echo "No release assets found" >&2
+            exit 1
+          fi
+
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
+              --generate-notes \
+              --verify-tag
+          fi
