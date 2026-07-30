@@ -25,12 +25,26 @@ import (
 // Helpers
 // --------------------------------------------------------------------------
 
+// packagesDir returns the directory the packages under test live in.
+//
+// It defaults to the nfpm build output. PACKAGES_DIR overrides it, so the same
+// assertions can run against RPMs built by rpmbuild from the generated spec —
+// the COPR path — and catch any drift between the two producers.
+func packagesDir(t *testing.T) string {
+	t.Helper()
+	if dir := os.Getenv("PACKAGES_DIR"); dir != "" {
+		abs, err := filepath.Abs(dir)
+		require.NoError(t, err)
+		return abs
+	}
+	return filepath.Join(testutil.RepoRoot(t), "build", "packages")
+}
+
 // findPackage finds a .deb or .rpm file matching the given name prefix in the
-// build output directory.
+// package directory.
 func findPackage(t *testing.T, namePrefix, ext string) string {
 	t.Helper()
-	root := testutil.RepoRoot(t)
-	pattern := filepath.Join(root, "build", "packages", namePrefix+"*"+ext)
+	pattern := filepath.Join(packagesDir(t), namePrefix+"*"+ext)
 	matches, err := filepath.Glob(pattern)
 	require.NoError(t, err)
 	require.NotEmpty(t, matches, "no %s package found matching %s", ext, pattern)

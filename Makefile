@@ -168,6 +168,42 @@ check-rpmbuild-installed:
 		exit 1; \
 	fi
 
+# Rebuilds the source RPM into binary RPMs in a container, the way COPR does.
+#
+# The point is the "--rebuild" and the absence of any define: this unpacks the
+# SRPM and builds the spec embedded in it, with no macro definitions inherited
+# from the source RPM build. That is exactly the step that failed on every chroot
+# in the earlier proof of concept, so it is the step worth reproducing locally.
+#
+# REBUILD_IMAGE selects the buildroot. Run it against a Fedora image and against
+# the EL images, whose older rpm is what broke before.
+REBUILD_IMAGE ?= fedora:latest
+REBUILD_OUTPUT_DIR ?= $(CURDIR)/build/rebuild
+
+# EPEL images need the EPEL repository for the build dependencies, and the
+# CodeReady/PowerTools repository that some of them live in.
+REBUILD_ENABLE_EPEL ?=
+
+.PHONY: rpm-rebuild-container
+rpm-rebuild-container:
+	@if [ -z "$$(ls $(SRPM_TOPDIR)/SRPMS/*.src.rpm 2>/dev/null)" ]; then \
+		echo "error: no source RPM found in $(SRPM_TOPDIR)/SRPMS. Run \`make srpm-container\` (or \`make srpm\`) first."; \
+		exit 1; \
+	fi
+	@mkdir -p $(REBUILD_OUTPUT_DIR)
+	$(CONTAINER_ENGINE) run --rm \
+		-v $(SRPM_TOPDIR)/SRPMS:/srpms:ro \
+		-v $(REBUILD_OUTPUT_DIR):/out \
+		$(REBUILD_IMAGE) \
+		sh -euc 'dnf install -q -y rpm-build $(REBUILD_ENABLE_EPEL) >/dev/null; \
+			dnf install -q -y dnf5-plugins >/dev/null 2>&1 || dnf install -q -y dnf-plugins-core >/dev/null; \
+			dnf builddep -q -y /srpms/*.src.rpm >/dev/null; \
+			rpmbuild --rebuild /srpms/*.src.rpm --define "_topdir /build"; \
+			cp -v /build/RPMS/*/*.rpm /out/'
+	@echo ""
+	@echo "Rebuilt RPMs in $(REBUILD_OUTPUT_DIR):"
+	@ls -1 $(REBUILD_OUTPUT_DIR)/*.rpm
+
 # ============================================================================
 # Local Package Repositories for Testing
 # ============================================================================

@@ -17,6 +17,8 @@ make rpm-package-<component>   # Build a single RPM
 make srpm                      # Build the source RPM (COPR path; needs rpmbuild)
 make srpm-container            # Same, running rpmbuild in a container instead
 make srpm-sources              # Generated spec + vendored source tarball only
+make rpm-rebuild-container     # Rebuild the SRPM into binary RPMs the way COPR does
+                               #   REBUILD_IMAGE=almalinux:9 to exercise the EL rpm
 
 make go-unit-tests             # Go command unit tests (otel-config-check)
 make python-unit-tests         # sitecustomize.py unit tests (throwaway venv, no containers)
