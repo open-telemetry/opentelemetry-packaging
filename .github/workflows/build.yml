@@ -100,6 +100,11 @@ jobs:
         lang: [ "java", "nodejs", "dotnet", "python", "lifecycle", "vendor" ]
         arch: [ "amd64", "arm64" ]
     runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
+    env:
+      # The Makefile prefers podman, which fails on the ubuntu-24.04 images from
+      # 20260726 with "crun: unknown version specified". Docker is unaffected;
+      # revert once the runner images ship a working podman.
+      CONTAINER_ENGINE: docker
     steps:
       - name: Check out the codebase.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
