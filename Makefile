@@ -104,7 +104,7 @@ packages: otel-config-check
 SRPM_TOPDIR := $(CURDIR)/build/srpm
 
 # Image used by srpm-container to run rpmbuild on hosts without RPM tooling.
-SRPM_CONTAINER_IMAGE ?= fedora:latest
+SRPM_CONTAINER_IMAGE ?= registry.fedoraproject.org/fedora@sha256:cffa25ae42f013b76653abd96137c05c776cd6e6bc1ac4a79290296ff42cbc7b # fedora:44
 
 # Renders the spec, exports the working tree, vendors the Go modules, and tars
 # the result into SOURCES. Needs Go and git, and no RPM tooling at all, which is
@@ -177,7 +177,7 @@ check-rpmbuild-installed:
 #
 # REBUILD_IMAGE selects the buildroot. Run it against a Fedora image and against
 # the EL images, whose older rpm is what broke before.
-REBUILD_IMAGE ?= fedora:latest
+REBUILD_IMAGE ?= registry.fedoraproject.org/fedora@sha256:cffa25ae42f013b76653abd96137c05c776cd6e6bc1ac4a79290296ff42cbc7b # fedora:44
 REBUILD_OUTPUT_DIR ?= $(CURDIR)/build/rebuild
 
 # EPEL images need the EPEL repository for the build dependencies, and the
