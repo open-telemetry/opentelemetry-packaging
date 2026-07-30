@@ -120,6 +120,9 @@ Recommends:     {{ .Name }}
 # needs no network access for the Go dependencies.
 export CGO_ENABLED=0
 export GOFLAGS="-mod=vendor"
+# Certain Fedora versions ship old version of Go + sets GOTOOLCHAIN=local.
+# Override that to automatically download relevant Go version on build.
+export GOTOOLCHAIN=auto
 go build -trimpath -o build/bin/build-packages ./cmd/build-packages
 go build -trimpath -o build/bin/otel-config-check ./cmd/otel-config-check
 
