@@ -30,13 +30,15 @@ gh workflow run publish-repos.yml -f tag=v1.0.0
 ## Building in Fedora COPR
 
 The COPR build is independent of the release above.
-It supplements the YUM repository rather than replacing it, and it is currently a proof of concept in the personal project `x1unix/opentelemetry-packaging`.
+It supplements the YUM repository rather than replacing it, and it publishes to the project `x1unix/opentelemetry-packaging`.
 
 COPR builds with mock from a source RPM, so its RPMs come from `rpmbuild` and the generated spec rather than from nfpm.
 It clones the repository itself and runs `.copr/Makefile`, which installs the source-RPM tooling and calls `make srpm`.
 
-Dispatch the [Build in COPR workflow](.github/workflows/copr-build.yml) to submit a build.
+The [Build in COPR workflow](.github/workflows/copr-build.yml) runs automatically when a release is published, building the release tag alongside the repository publication above.
 It waits for the result and fails if any single chroot did not succeed, which the aggregate build state alone would hide.
+
+It can also be dispatched manually against any branch, tag, or commit, which is how the spec is exercised outside a release.
 
 ```sh
 gh workflow run copr-build.yml -f committish=main

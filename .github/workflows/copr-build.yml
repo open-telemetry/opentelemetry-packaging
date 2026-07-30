@@ -5,12 +5,14 @@
 # rather than with nfpm. COPR clones this repository itself and runs
 # .copr/Makefile; this workflow only submits the build and waits for the result.
 #
-# workflow_dispatch is the only trigger for now, so the integration can be fired
-# and debugged on demand. A tag trigger is the natural second step once it has
-# proven itself.
+# A release build takes its committish from the release tag, so COPR's own
+# `git describe` yields the released version. workflow_dispatch stays available
+# to fire and debug the integration on demand.
 name: Build in COPR
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       committish:
@@ -51,11 +53,13 @@ jobs:
           chmod 600 ~/.config/copr
 
       # Event-controlled values go through env rather than inline interpolation.
+      # The inputs are empty on a release event, hence the fallbacks: the
+      # workflow_dispatch default does not apply to other triggers.
       - name: Submit the build
         id: submit
         env:
-          PROJECT: ${{ inputs.project }}
-          COMMITTISH: ${{ inputs.committish || github.ref_name }}
+          PROJECT: ${{ inputs.project || 'x1unix/opentelemetry-packaging' }}
+          COMMITTISH: ${{ inputs.committish || github.event.release.tag_name || github.ref_name }}
           CLONE_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           set -o pipefail
