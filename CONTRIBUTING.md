@@ -146,6 +146,8 @@ The metadata tests accept a `PACKAGES_DIR` override, so the same assertions that
 PACKAGES_DIR=build/rebuild/fedora go test -run TestRpm ./packaging/tests/metadata/
 ```
 
+Once the local rebuild is green, the same source RPM can be built for every distribution and architecture at once in COPR — see [Building in Fedora COPR](RELEASING.md#building-in-fedora-copr).
+
 ### Upstream version pins
 
 Each upstream artifact version is pinned in a `packaging/common/<component>/release.txt` file (Python instead pins its packages in `packaging/common/python/requirements.txt`):
