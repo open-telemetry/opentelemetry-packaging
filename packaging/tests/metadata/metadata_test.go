@@ -28,16 +28,45 @@ import (
 // packagesDir returns the directory the packages under test live in.
 //
 // It defaults to the nfpm build output. PACKAGES_DIR overrides it, so the same
-// assertions can run against RPMs built by rpmbuild from the generated spec —
-// the COPR path — and catch any drift between the two producers.
+// assertions can run against the rpmbuild output — the COPR path — and catch
+// drift between the two producers.
+//
+// A relative override resolves against the repository root, not the working
+// directory: go test runs in the package directory, so filepath.Abs would look
+// under packaging/tests/metadata/ and every assertion would silently skip.
 func packagesDir(t *testing.T) string {
 	t.Helper()
-	if dir := os.Getenv("PACKAGES_DIR"); dir != "" {
-		abs, err := filepath.Abs(dir)
-		require.NoError(t, err)
-		return abs
+	dir := os.Getenv("PACKAGES_DIR")
+	if dir == "" {
+		return filepath.Join(testutil.RepoRoot(t), "build", "packages")
 	}
-	return filepath.Join(testutil.RepoRoot(t), "build", "packages")
+	if filepath.IsAbs(dir) {
+		return dir
+	}
+	return filepath.Join(testutil.RepoRoot(t), dir)
+}
+
+// TestPackagesDir covers the override itself: every other test here skips when
+// it finds no packages, so a broken override reads as a pass, not a failure.
+func TestPackagesDir(t *testing.T) {
+	root := testutil.RepoRoot(t)
+
+	t.Run("defaults to the nfpm build output", func(t *testing.T) {
+		t.Setenv("PACKAGES_DIR", "")
+		assert.Equal(t, filepath.Join(root, "build", "packages"), packagesDir(t))
+	})
+
+	t.Run("resolves a relative override against the repository root", func(t *testing.T) {
+		t.Setenv("PACKAGES_DIR", "build/rebuild")
+		assert.Equal(t, filepath.Join(root, "build", "rebuild"), packagesDir(t),
+			"go test runs in the package directory, so a relative override must not resolve against it")
+	})
+
+	t.Run("passes an absolute override through", func(t *testing.T) {
+		abs := filepath.Join(t.TempDir(), "packages")
+		t.Setenv("PACKAGES_DIR", abs)
+		assert.Equal(t, abs, packagesDir(t))
+	})
 }
 
 // findPackage finds a .deb or .rpm file matching the given name prefix in the
@@ -126,8 +155,8 @@ func pathsContain(paths []string, substr string) bool {
 // matching cannot distinguish it from "opentelemetry-injector", etc.
 func findRpmByName(t *testing.T, name string) string {
 	t.Helper()
-	root := testutil.RepoRoot(t)
-	matches, err := filepath.Glob(filepath.Join(root, "build", "packages", "*.rpm"))
+	dir := packagesDir(t)
+	matches, err := filepath.Glob(filepath.Join(dir, "*.rpm"))
 	require.NoError(t, err)
 	for _, m := range matches {
 		p, err := rpm.Open(m)
@@ -138,7 +167,7 @@ func findRpmByName(t *testing.T, name string) string {
 			return m
 		}
 	}
-	t.Fatalf("no .rpm package with Name=%q found in build/packages/", name)
+	t.Fatalf("no .rpm package with Name=%q found in %s", name, dir)
 	return ""
 }
 
@@ -172,30 +201,28 @@ func rpmFileNames(p *rpm.Package) []string {
 // hasDebPackages returns true if .deb packages have been built.
 func hasDebPackages(t *testing.T) bool {
 	t.Helper()
-	root := testutil.RepoRoot(t)
-	matches, _ := filepath.Glob(filepath.Join(root, "build", "packages", "*.deb"))
+	matches, _ := filepath.Glob(filepath.Join(packagesDir(t), "*.deb"))
 	return len(matches) > 0
 }
 
 // hasRpmPackages returns true if .rpm packages have been built.
 func hasRpmPackages(t *testing.T) bool {
 	t.Helper()
-	root := testutil.RepoRoot(t)
-	matches, _ := filepath.Glob(filepath.Join(root, "build", "packages", "*.rpm"))
+	matches, _ := filepath.Glob(filepath.Join(packagesDir(t), "*.rpm"))
 	return len(matches) > 0
 }
 
 func skipIfNoDebPackages(t *testing.T) {
 	t.Helper()
 	if !hasDebPackages(t) {
-		t.Skip("no .deb packages built — run 'make deb-packages' first")
+		t.Skipf("no .deb packages found in %s — run 'make deb-packages' first, or set PACKAGES_DIR", packagesDir(t))
 	}
 }
 
 func skipIfNoRpmPackages(t *testing.T) {
 	t.Helper()
 	if !hasRpmPackages(t) {
-		t.Skip("no .rpm packages built — run 'make rpm-packages' first")
+		t.Skipf("no .rpm packages found in %s — run 'make rpm-packages' first, or set PACKAGES_DIR", packagesDir(t))
 	}
 }
 
