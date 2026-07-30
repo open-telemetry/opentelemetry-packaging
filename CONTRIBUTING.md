@@ -125,6 +125,26 @@ Those requirements are kept, since they are real constraints on where a package 
 The matching `Provides` are not.
 The spec sets `__provides_exclude_from` for `/usr/lib/opentelemetry`, so the bundled libraries never advertise their SONAMEs as system-wide providers — the injector is preloaded by absolute path and is never resolved by SONAME, so publishing `libinjector.so()(64bit)` would only risk satisfying an unrelated package's dependency.
 
+### Verifying the rpmbuild path
+
+Rebuild the source RPM into binary RPMs the way COPR does, with `--rebuild` and no defines at all, so the spec embedded in the SRPM is what gets built:
+
+```sh
+make rpm-rebuild-container
+```
+
+`REBUILD_IMAGE` selects the buildroot, which matters because the EL rpm is older than Fedora's and is stricter about the preamble:
+
+```sh
+make rpm-rebuild-container REBUILD_IMAGE=almalinux:9 REBUILD_OUTPUT_DIR=build/rebuild/el9
+```
+
+The metadata tests accept a `PACKAGES_DIR` override, so the same assertions that cover the nfpm packages can be pointed at the rebuilt ones to catch drift between the two producers:
+
+```sh
+PACKAGES_DIR=build/rebuild/fedora go test -run TestRpm ./packaging/tests/metadata/
+```
+
 ### Upstream version pins
 
 Each upstream artifact version is pinned in a `packaging/common/<component>/release.txt` file (Python instead pins its packages in `packaging/common/python/requirements.txt`):
