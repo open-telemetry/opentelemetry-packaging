@@ -51,6 +51,12 @@ Two escaping rules apply to the text below, both of them rpm's:
 # these packages install on every architecture, not /usr/lib64.
 %global __provides_exclude_from ^%{_prefix}/lib/opentelemetry/.*$
 
+# The agents instrument the runtime the application already has, so a dependency
+# on one is wrong: on EL 9 it resolves to a nodejs older than the bundled agent
+# supports. The DEB packages declare none either. Filtered by dependency rather
+# than by path, which would drop the glibc symbol versions too.
+%global __requires_exclude ^%{_bindir}/(node|python3)$
+
 %ifarch x86_64
 %global otel_arch amd64
 %endif
