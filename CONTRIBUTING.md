@@ -120,6 +120,10 @@ Only `build/srpm` is mounted into that container, and nothing but `rpmbuild` run
 Two consequences of rpmbuild owning the packaging step are worth knowing.
 Its `Release` carries the distribution tag (`0.dev.1.fc44`), so a COPR package sorts above the identically versioned one built by nfpm.
 It also generates dependencies automatically from the payload, which nfpm does not: the Node.js package gains `Requires: /usr/bin/node`, the Python package `Requires: /usr/bin/python3`, and both the .NET and Python packages pick up the glibc symbol versions their bundled binaries need.
+Those requirements are kept, since they are real constraints on where a package can install.
+
+The matching `Provides` are not.
+The spec sets `__provides_exclude_from` for `/usr/lib/opentelemetry`, so the bundled libraries never advertise their SONAMEs as system-wide providers — the injector is preloaded by absolute path and is never resolved by SONAME, so publishing `libinjector.so()(64bit)` would only risk satisfying an unrelated package's dependency.
 
 ### Upstream version pins
 
