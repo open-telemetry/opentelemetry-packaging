@@ -14,13 +14,13 @@ on:
   workflow_dispatch:
     inputs:
       committish:
-        description: 'Branch, tag, or commit COPR should build (defaults to this workflow run ref)'
+        description: "Branch, tag, or commit COPR should build (defaults to this workflow run ref)"
         required: false
         type: string
       project:
-        description: 'Target COPR project, as owner/project'
+        description: "Target COPR project, as owner/project"
         required: false
-        default: 'x1unix/opentelemetry-packaging'
+        default: "x1unix/opentelemetry-packaging"
         type: string
 
 permissions:
@@ -29,27 +29,15 @@ permissions:
 jobs:
   copr-build:
     runs-on: ubuntu-24.04
+    container:
+      image: registry.fedoraproject.org/fedora@sha256:cffa25ae42f013b76653abd96137c05c776cd6e6bc1ac4a79290296ff42cbc7b # fedora:44
     steps:
-      # No repository checkout: COPR clones the sources itself, and every value
-      # this job needs arrives through the workflow inputs.
-      #
-      # copr-cli is not packaged for Ubuntu, so it comes from PyPI. A virtualenv
-      # sidesteps the externally-managed-environment rule that makes a plain
-      # "pip install" fail on Ubuntu 24.04. "rich" is installed explicitly
-      # because copr-cli imports it without declaring it as a dependency, and
-      # crashes on startup without it.
+      # COPR clones sources itself, thus repo checkout isn't needed.
       - name: Install copr-cli
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends python3-venv
-          python3 -m venv "${HOME}/.venv/copr"
-          "${HOME}/.venv/copr/bin/pip" install --quiet copr-cli rich
-          echo "${HOME}/.venv/copr/bin" >> "$GITHUB_PATH"
-          "${HOME}/.venv/copr/bin/copr-cli" --version
+          dnf install --assumeyes --setopt=install_weak_deps=False copr-cli
+          copr-cli --version
 
-      # The token is the whole config file, copied verbatim from the "API
-      # tokens" page of the COPR account that owns the project. Storing it whole
-      # avoids reassembling the five separate fields copr-cli expects.
       - name: Configure copr-cli
         env:
           COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
