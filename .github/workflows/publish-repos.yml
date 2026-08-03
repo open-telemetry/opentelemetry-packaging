@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Determine release tag
         id: release
@@ -78,6 +80,8 @@ jobs:
           ls -la repo/rpm/packages/ || true
 
       - name: Generate YUM repository
+        env:
+          REPO_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
         run: |
           docker run --rm \
             -v "$PWD/repo/rpm:/repo" \
@@ -85,7 +89,6 @@ jobs:
             fedora:latest /scripts/generate-rpm-repo.sh /repo
 
           # Generate .repo file
-          REPO_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
           cat > repo/rpm/opentelemetry.repo <<EOF
           [opentelemetry]
           name=OpenTelemetry Auto-Instrumentation System Packages
@@ -96,10 +99,9 @@ jobs:
 
       - name: Generate landing page
         env:
+          REPO_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
           VERSION: ${{ steps.release.outputs.tag }}
         run: |
-          REPO_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
-
           # Copy template and substitute placeholders
           sed -e "s|@VERSION@|${VERSION}|g" \
               -e "s|@REPO_URL@|${REPO_URL}|g" \
