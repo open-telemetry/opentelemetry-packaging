@@ -58,9 +58,10 @@ Point it at a real destination with one of the two options below.
 
 ### Option 1: Declarative SDK configuration file
 
-Every language package ships the same declarative configuration file at `/etc/opentelemetry/<language>/otel-config.yaml`.
-It is valid as shipped: it interpolates the endpoint, headers, and service name from environment variables the injector already injects into every instrumented process.
-Pointing it at a remote destination is therefore a matter of editing `/etc/opentelemetry/injector/default_env.conf`, the injector's single source of endpoint and credentials.
+Every language package installs a reference declarative configuration file at `/etc/opentelemetry/<language>/otel-config.yaml`.
+Use one as a starting point: copy or adapt it to a location of your choice.
+The schema is portable across all supported languages, so one central file covers Java, Node.js, .NET, and Python.
+The reference files interpolate the OTLP endpoint, headers, and service name from environment variables the injector injects, so `default_env.conf` remains the single source of credentials whether or not declarative configuration is active.
 
 Set the destination endpoint and any required headers, for example an API key:
 
@@ -71,11 +72,11 @@ OTEL_EXPORTER_OTLP_HEADERS=api-key=REPLACE_ME
 EOF
 ```
 
-Activate the shipped configuration file for the language you installed, for example Java:
+Activate your configuration file by setting `OTEL_CONFIG_FILE` to the path where you placed it:
 
 ```sh
 cat <<'EOF' | sudo tee -a /etc/opentelemetry/injector/default_env.conf
-OTEL_CONFIG_FILE=/etc/opentelemetry/java/otel-config.yaml
+OTEL_CONFIG_FILE=/etc/opentelemetry/config.yaml
 EOF
 ```
 
