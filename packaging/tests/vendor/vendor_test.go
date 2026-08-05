@@ -37,7 +37,7 @@ const (
 	vendorMarker = "ACME"
 	// upstreamDropInMarker appears in the upstream drop-in
 	// (packaging/common/java/injector.conf).
-	upstreamDropInMarker = "Installed by opentelemetry-java-autoinstrumentation package"
+	upstreamDropInMarker = "Installed by the opentelemetry-java package"
 )
 
 // target is one (package format, base image) combination in the test matrix.
