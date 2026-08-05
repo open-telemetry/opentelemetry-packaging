@@ -49,6 +49,7 @@ make clean                     # Remove build/
 - Man pages use section 8 (system administration).
 - All config files are `config|noreplace` type in nfpm (preserved on upgrade).
 - nfpm `Info` structs must set `Platform: "linux"` explicitly — omitting it causes malformed `Architecture` fields in DEB packages.
+- In configuration files (`.conf`, `.yaml` shipped under `packaging/common/`), use `##` for prose/explanatory comments and `#` for commented-out configuration entries that users can activate by removing the `#` prefix.
 
 ## Prose rules
 
