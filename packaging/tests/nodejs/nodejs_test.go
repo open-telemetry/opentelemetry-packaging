@@ -63,8 +63,8 @@ func TestNodejsAutoInstrumentation(t *testing.T) {
 }
 
 // TestNodejsDeclarativeConfiguration exercises OTEL_CONFIG_FILE end to end: the shipped
-// /etc/opentelemetry/nodejs/otel-config.yaml (installed by the package, shared
-// across all language packages) drives the agent instead of the OTEL_* env
+// /etc/opentelemetry/nodejs/otel-config.yaml (the Node.js-specific reference
+// installed by the package) drives the agent instead of the OTEL_* env
 // vars. One format and base image suffices: the configuration-file mechanism
 // does not vary with the packaging format.
 func TestNodejsDeclarativeConfiguration(t *testing.T) {

@@ -1,35 +1,31 @@
 # Copyright The OpenTelemetry Authors
 # SPDX-License-Identifier: Apache-2.0
 
-## OpenTelemetry declarative configuration for the auto-instrumentation system
-## packages. One and the same file is shipped for every packaged language
-## agent (Java, Node.js, .NET, and Python); the schema is portable across
-## languages, and language-specific sections are ignored by the other SDKs.
+## OpenTelemetry declarative configuration reference for the Java
+## auto-instrumentation package.
 ## See: https://opentelemetry.io/docs/languages/sdk-configuration/declarative-configuration/
 ##
-## Each language package installs this file at
-## /etc/opentelemetry/<language>/otel-config.yaml as a reference.
+## The opentelemetry-java package installs this file at
+## /etc/opentelemetry/java/otel-config.yaml as a reference.
 ## Use it as a starting point: copy or adapt it to a location of your choice,
 ## then activate declarative configuration for every injected process by
 ## appending to /etc/opentelemetry/injector/default_env.conf:
 ##
 ##   OTEL_CONFIG_FILE=/etc/opentelemetry/config.yaml
-##   OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED=true
 ##
-## (The second line is only required by .NET and ignored by the others.)
-##
-## Once OTEL_CONFIG_FILE is in effect, the SDKs ignore all other OTEL_*
+## Once OTEL_CONFIG_FILE is in effect, the SDK ignores all other OTEL_*
 ## environment variables as direct configuration. The environment-variable
 ## interpolations below deliberately keep consuming the variables the injector
 ## injects, so default_env.conf remains the single source of endpoint and
 ## credentials for both environment-variable-configured and declaratively
 ## configured processes.
 ##
-## Every interpolation carries a default: the Python SDK rejects a reference
-## to an unset variable that has none (Java and Node.js substitute an empty
-## string). For the same reason comments in this file must not contain
-## dollar-brace variable references: Python substitutes on the raw file text,
-## comments included.
+## Every interpolation carries a default so the reference is valid as shipped;
+## the Java SDK substitutes an empty string for a reference to an unset
+## variable that has none.
+##
+## The Java agent subscribes its instrumentations automatically under
+## declarative configuration, so no instrumentation section is required here.
 
 file_format: "1.0"
 
@@ -69,14 +65,3 @@ logger_provider:
           otlp_http:
             endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}/v1/logs
             headers_list: ${OTEL_EXPORTER_OTLP_HEADERS:-}
-
-# .NET enables no instrumentations under file-based configuration until they
-# are listed here — unlike Java, Node.js, and Python, which subscribe their
-# instrumentations automatically, and unlike .NET's own environment-variable
-# mode. The other SDKs ignore this section. List every .NET instrumentation
-# the applications on this host need:
-instrumentation/development:
-  dotnet:
-    traces:
-      aspnetcore: {}
-      httpclient: {}
