@@ -39,6 +39,26 @@
       "schedule": [
         "before 8am on Tuesday"
       ]
+    },
+    {
+      // The opentelemetry-python-contrib packages (distro + every
+      // instrumentation) are only ever published as PEP 440 pre-releases
+      // (e.g. 0.65b0). Renovate treats pre-releases as unstable and skips
+      // them by default (ignoreUnstable), so these pins never advance while
+      // the stable opentelemetry-sdk (1.x.0) does - leaving the bundle in an
+      // inconsistent state. Opt into the pre-release stream and keep the SDK
+      // and contrib trains in a single PR so their pins stay mutually
+      // consistent.
+      "groupName": "opentelemetry-python",
+      "matchDatasources": ["pypi"],
+      "matchPackageNames": [
+        "opentelemetry-sdk",
+        "opentelemetry-distro",
+        "opentelemetry-instrumentation",
+        "opentelemetry-propagator-ot-trace",
+        "/^opentelemetry-instrumentation-/"
+      ],
+      "ignoreUnstable": false
     }
   ],
   "labels": [
