@@ -58,9 +58,9 @@ Point it at a real destination with one of the two options below.
 
 ### Option 1: Declarative SDK configuration file
 
-Every language package installs a reference declarative configuration file at `/etc/opentelemetry/<language>/otel-config.yaml`.
-Use one as a starting point: copy or adapt it to a location of your choice.
-The schema is portable across all supported languages, so one central file covers Java, Node.js, .NET, and Python.
+Every language package installs a reference declarative configuration file at `/etc/opentelemetry/<language>/otel-config.yaml`, tailored to that language.
+Use it as a starting point: copy or adapt it to a location of your choice.
+The schema is portable across all supported languages, but each reference file carries only the sections and guidance relevant to its SDK — for example, the `.NET` file lists the `instrumentation/development` section that `.NET` requires and the others omit.
 The reference files interpolate the OTLP endpoint, headers, and service name from environment variables the injector injects, so `default_env.conf` remains the single source of credentials whether or not declarative configuration is active.
 
 Set the destination endpoint and any required headers, for example an API key:

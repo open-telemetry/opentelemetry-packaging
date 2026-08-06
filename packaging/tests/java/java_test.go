@@ -63,8 +63,8 @@ func TestJavaAutoInstrumentation(t *testing.T) {
 }
 
 // TestJavaDeclarativeConfiguration exercises OTEL_CONFIG_FILE end to end: the shipped
-// /etc/opentelemetry/java/otel-config.yaml (installed by the package, shared
-// across all language packages) drives the agent instead of the OTEL_* env
+// /etc/opentelemetry/java/otel-config.yaml (the Java-specific reference
+// installed by the package) drives the agent instead of the OTEL_* env
 // vars. One format and base image suffices: the configuration-file mechanism
 // does not vary with the packaging format.
 func TestJavaDeclarativeConfiguration(t *testing.T) {
