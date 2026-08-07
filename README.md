@@ -51,6 +51,19 @@ Install the full auto-instrumentation suite:
 sudo dnf install opentelemetry
 ```
 
+## Verifying the installation
+
+Confirm the injector is active and the language agents are wired up before pointing telemetry anywhere:
+
+```sh
+otel-instrumentation-check
+```
+
+This command ships with the injector package and needs no running application and no OTLP receiver.
+The injector is a preloaded library rather than a service, so there is no daemon whose status could report "instrumentation is on"; the check instead reads the same files a newly started process would (`/etc/ld.so.preload`, the `conf.d/` drop-ins, and `default_env.conf`) and reports, per language, whether each registered agent is present on disk.
+It exits zero when the injector is active and at least one language agent is present, and non-zero otherwise, so it also works in a provisioning script.
+It reports the configured telemetry destination too, so a missing backend is never mistaken for a broken install.
+
 ## Configuring where telemetry goes
 
 By default, every auto-instrumentation package exports OTLP to `localhost` (`localhost:4317` for OTLP/gRPC, and `localhost:4318` for OTLP/HTTP).

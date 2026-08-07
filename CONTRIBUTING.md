@@ -14,6 +14,7 @@ No Ruby, FPM, or special Docker images are required to build packages.
 ```
 cmd/build-packages/          CLI entry point for building .deb and .rpm packages
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
+cmd/otel-instrumentation-check/  Post-install sanity check shipped inside the injector package
 packaging/
   builder/                   Go library that drives nfpm to create packages
     builder.go               Build orchestration, common metadata

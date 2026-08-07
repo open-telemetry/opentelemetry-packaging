@@ -16,10 +16,21 @@ Node.js, .NET, and Python runtimes.
 When a process starts, the injector library detects the runtime environment
 and loads the appropriate OpenTelemetry agent to enable automatic telemetry
 collection without code changes.
+.PP
+To confirm the injector is active and the installed language agents are wired
+up, run
+.B otel-instrumentation-check
+after installation. It inspects the preload and configuration files a new
+process would read and reports the result; it needs no running application and
+no OTLP receiver.
 .SH FILES
 .TP
 .B /usr/lib/opentelemetry/injector/libotelinject.so
 The injector shared library that is preloaded into processes.
+.TP
+.B /usr/bin/otel-instrumentation-check
+Post-install sanity check that verifies the injector is active and the
+registered language agents are present.
 .TP
 .B /etc/opentelemetry/injector/injector.conf
 Main configuration file specifying the default environment variables path
