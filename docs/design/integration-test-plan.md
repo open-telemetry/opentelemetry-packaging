@@ -159,6 +159,18 @@ This proves the whole declarative chain: the shipped file is valid, the `${VAR}`
 Declarative runs assert traces only: under `OTEL_CONFIG_FILE` the SDKs ignore the env-var schedule tuning the images set, so metrics follow the default 60-second cadence.
 The scenarios run inside the `integration-test-deb-<language>` targets.
 
+### 9. Post-install sanity check
+
+Validate the `otel-instrumentation-check` command shipped in the injector package, which confirms the injector is active and the language agents are wired up without a running application or an OTLP receiver.
+
+| Scenario | Assertion |
+|----------|-----------|
+| Full install, then run the check | Exit 0, reports the injector active and at least one language agent registered |
+| Injector alone (no language agent), then run the check | Exit non-zero, reports that no language agents are registered |
+
+**Implementation:** Install packages in a container and run the command, asserting on its exit code and output.
+Implemented in `packaging/tests/lifecycle/sanitycheck_test.go`.
+
 ## Test infrastructure
 
 ### Package metadata and contents tests
