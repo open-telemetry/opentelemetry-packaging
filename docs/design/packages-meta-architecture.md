@@ -28,7 +28,8 @@ This document describes all packages in the first version of the system packages
 
 ## Packages overview
 
-The first version ships six packages, each available as both DEB and RPM.
+The first version ships seven packages, each available as both DEB and RPM.
+Six of them form an integrated suite around the injector; the seventh, `opentelemetry-jmx-scraper`, is fully independent — see [Independent packages](#independent-packages).
 
 | Package | Description | Architecture |
 |---------|-------------|-------------|
@@ -38,6 +39,7 @@ The first version ships six packages, each available as both DEB and RPM.
 | `opentelemetry-dotnet-autoinstrumentation` | OpenTelemetry .NET Automatic Instrumentation (glibc only) | Per-arch (`amd64`, `arm64`) |
 | `opentelemetry-python-autoinstrumentation` | OpenTelemetry Python auto-instrumentation | Per-arch (`amd64`, `arm64`) |
 | `opentelemetry` | Metapackage that pulls in the injector and all language packages | `all` / `noarch` |
+| `opentelemetry-jmx-scraper` | Standalone OpenTelemetry JMX metrics scraper (independent of the metapackage) | `all` / `noarch` |
 
 ### Dependency graph
 
@@ -121,8 +123,11 @@ All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfound
 │   └── otel-config.yaml
 ├── dotnet/
 │   └── otel-config.yaml
-└── python/
-    └── otel-config.yaml
+├── python/
+│   └── otel-config.yaml
+└── jmx-scraper/
+    ├── config.properties
+    └── jmx-scraper.env
 
 /usr/share/man/
 └── man8/
@@ -138,7 +143,19 @@ All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfound
 ├── opentelemetry-nodejs-autoinstrumentation/
 ├── opentelemetry-dotnet-autoinstrumentation/
 ├── opentelemetry-python-autoinstrumentation/
-└── opentelemetry/
+├── opentelemetry/
+└── opentelemetry-jmx-scraper/
+```
+
+`opentelemetry-jmx-scraper` is not part of the `/usr/lib/opentelemetry/` tree above; its JAR and systemd unit install under their own paths, shown below.
+Its configuration file does sit under the shared `/etc/opentelemetry/` tree (`jmx-scraper/`, shown above) — see [Independent packages](#independent-packages) for why that does not make it part of the injector's dependency graph.
+
+```
+/usr/lib/opentelemetry-jmx-scraper/
+└── opentelemetry-jmx-scraper.jar
+
+/usr/lib/systemd/system/
+└── opentelemetry-jmx-scraper.service
 ```
 
 ## Package definitions
@@ -324,6 +341,78 @@ If `Depends` were used instead, removing any single language package would force
 
 See [Injector interface versioning](#injector-interface-versioning) for the upgrade scenario.
 
+### `opentelemetry-jmx-scraper`
+
+The package build fetches the pre-built upstream [OpenTelemetry JMX scraper](https://github.com/open-telemetry/opentelemetry-java-contrib/tree/main/jmx-scraper) JAR and packages it, following the same build-time download model as `opentelemetry-java-autoinstrumentation`.
+The JAR file is part of the system package; no files are downloaded at package installation time or afterwards.
+
+Unlike the other packages in this document, the JMX scraper is not an auto-instrumentation agent activated by the injector.
+It runs as its own long-lived process, managed by systemd, that connects to a JMX endpoint (local or remote) and exports metrics via OTLP.
+See [Independent packages](#independent-packages) for why it has no relationship to the injector, the metapackage, or the other language packages.
+
+#### Contents
+
+| Path | Description |
+|------|-------------|
+| `/usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar` | JMX scraper JAR |
+| `/etc/opentelemetry/jmx-scraper/config.properties` | Scraper configuration (JMX endpoint, OTLP exporter settings, metric definitions) |
+| `/etc/opentelemetry/jmx-scraper/jmx-scraper.env` | Environment overrides read by the systemd unit before it starts the JVM (`JAVA_HOME`, `JMX_SCRAPER_CONFIG`) |
+| `/usr/lib/systemd/system/opentelemetry-jmx-scraper.service` | systemd unit that runs the scraper |
+| `/usr/share/man/man8/opentelemetry-jmx-scraper.8.gz` | Man page |
+| `/usr/share/doc/opentelemetry-jmx-scraper/` | Documentation and copyright |
+
+#### Package metadata
+
+| Field | DEB | RPM |
+|-------|-----|-----|
+| Architecture | `all` | `noarch` |
+| Suggests | `default-jre \| java8-runtime` | `java-headless` |
+| Config files | `/etc/opentelemetry/jmx-scraper/config.properties`, `/etc/opentelemetry/jmx-scraper/jmx-scraper.env` | Same |
+| Post-install | `systemctl daemon-reload` (unit not enabled by default) | Same |
+| Pre-uninstall | `systemctl disable --now opentelemetry-jmx-scraper.service` if active | Same |
+
+#### Overriding `JAVA_HOME` and the config file path
+
+The systemd unit does not hardcode `java -jar …` or a `-config` path directly.
+Instead, it declares:
+
+```ini
+EnvironmentFile=-/etc/opentelemetry/jmx-scraper/jmx-scraper.env
+ExecStart=${JAVA_HOME}/bin/java -jar /usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar -config ${JMX_SCRAPER_CONFIG}
+```
+
+`jmx-scraper.env` ships with both variables set to their defaults:
+
+```sh
+JAVA_HOME=/usr/lib/jvm/default-java
+JMX_SCRAPER_CONFIG=/etc/opentelemetry/jmx-scraper/config.properties
+```
+
+The leading `-` in `EnvironmentFile=-…` tells systemd to keep starting the unit even if the file is missing (matching the "config file, safe to edit or remove" contract used elsewhere in this project).
+A user who has a JVM installed at a non-standard path, or who wants a scraper config outside `/etc/opentelemetry/`, edits `jmx-scraper.env` and runs `systemctl restart opentelemetry-jmx-scraper.service`; no package rebuild or unit-file edit is needed.
+Because `jmx-scraper.env` is a `config|noreplace` file like `config.properties`, package upgrades never clobber a user's overrides.
+
+The Java runtime is a soft dependency: a suitable JRE/JDK can already be present on the host through a distribution package, a version manager (e.g., SDKMAN!), or a manually installed JDK, and a hard `Depends` would conflict with whichever one is already providing `java`.
+`apt`/`dnf` still surface the suggestion so users without a JVM know what to install, but package installation and removal never blocks on it.
+
+The scraper is disabled by default after install; a user who wants it running must edit `config.properties` and run `systemctl enable --now opentelemetry-jmx-scraper.service`.
+This mirrors the JMX scraper's nature as an opt-in monitoring tool for a specific JVM target, rather than a suite component installed for every host.
+
+## Independent packages
+
+`opentelemetry-jmx-scraper` is deliberately kept outside the dependency graph described in [Dependency graph](#dependency-graph).
+It has:
+
+- **No `Provides` virtual package.** It is not a swappable alternative — there is no injector-mediated contract for it to implement, so there is no interface generation to version.
+- **No relationship to `opentelemetry-injector`.** The injector activates in-process language agents via `/etc/ld.so.preload`; the JMX scraper is an out-of-process metrics collector that polls a JMX endpoint over the network or a local socket. The two mechanisms do not interact.
+- **No entry in the `opentelemetry` metapackage's `Recommends`.** Installing `opentelemetry` (or any language package) never pulls in the JMX scraper, and installing the JMX scraper never pulls in the injector or any language package.
+- **Its own install prefix, but a config path under the shared config tree.** The JAR and systemd unit live under `/usr/lib/opentelemetry-jmx-scraper/`, not a subdirectory of `/usr/lib/opentelemetry/`, since it is not one of the injector-activated agents.
+  Its configuration file lives at `/etc/opentelemetry/jmx-scraper/config.properties`, alongside the other components' config directories, purely because `/etc/opentelemetry/` is the recognizable, documented location for this project's configuration — not because the scraper participates in the injector's `conf.d/` mechanism or any vendor-override contract.
+  Either way, its files remain disjoint from every other package's paths (see [File ownership boundaries](#file-ownership-boundaries)).
+
+This reflects a real difference in what the package does: the JMX scraper monitors JVMs (application servers, message brokers, databases exposing JMX) whether or not they are instrumented by `opentelemetry-java-autoinstrumentation`, and it is commonly deployed on hosts that run no other package from this suite at all (e.g., a host that only runs a JMX-exposing off-the-shelf JVM application).
+Folding it into the metapackage's dependency graph would incorrectly imply it is part of the auto-instrumentation contract, and would pull a systemd-managed background service onto every host that just wants language auto-instrumentation.
+
 ## Configuration system
 
 ### Hierarchy
@@ -402,6 +491,7 @@ This is critical for `Conflicts`/`Replaces` to work correctly.
 | `opentelemetry-dotnet-autoinstrumentation` | `/usr/lib/opentelemetry/dotnet/`, `/etc/opentelemetry/injector/conf.d/dotnet.conf`, `/etc/opentelemetry/dotnet/` |
 | `opentelemetry-python-autoinstrumentation` | `/usr/lib/opentelemetry/python/`, `/etc/opentelemetry/injector/conf.d/python.conf`, `/etc/opentelemetry/python/` |
 | `opentelemetry` | `/usr/share/doc/opentelemetry/` |
+| `opentelemetry-jmx-scraper` | `/usr/lib/opentelemetry-jmx-scraper/`, `/etc/opentelemetry/jmx-scraper/`, `/usr/lib/systemd/system/opentelemetry-jmx-scraper.service` |
 
 A vendor replacement package *must* own the same set of paths as the upstream package it replaces.
 This is what makes `--replaces` work: `dpkg` allows the new package to overwrite files owned by the replaced package.
