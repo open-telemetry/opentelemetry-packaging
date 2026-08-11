@@ -7,6 +7,8 @@ import (
 	"archive/zip"
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -83,6 +85,57 @@ func downloadFile(url, dest string) (retErr error) {
 	}()
 	_, retErr = io.Copy(f, resp.Body)
 	return retErr
+}
+
+// fetchChecksums downloads a sha256sum(1)-style manifest (lines of
+// "<hex digest>  <filename>", optionally with a "*" binary-mode marker before
+// the filename) and returns it as a map from filename to lowercase hex digest.
+func fetchChecksums(url string) (map[string]string, error) {
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("fetching %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching %s: HTTP %d", url, resp.StatusCode)
+	}
+
+	sums := make(map[string]string)
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) < 2 {
+			continue
+		}
+		digest := strings.ToLower(fields[0])
+		name := strings.TrimPrefix(fields[len(fields)-1], "*")
+		sums[name] = digest
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("reading %s: %w", url, err)
+	}
+	return sums, nil
+}
+
+// verifyFileSHA256 hashes the file at path and returns an error if it does
+// not match the expected lowercase hex digest.
+func verifyFileSHA256(path, want string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return fmt.Errorf("hashing %s: %w", path, err)
+	}
+
+	got := hex.EncodeToString(h.Sum(nil))
+	if got != strings.ToLower(want) {
+		return fmt.Errorf("checksum mismatch for %s: got %s, want %s", path, got, want)
+	}
+	return nil
 }
 
 // downloadInjector fetches libotelinject.so from GitHub releases.
@@ -182,6 +235,14 @@ func downloadDotnetAgent(cfg Config, destDir string) error {
 
 	baseURL := "https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/download"
 
+	// Every release publishes a checksums.txt alongside the archives; verify
+	// the downloaded artifact against it before extracting.
+	checksumsURL := fmt.Sprintf("%s/%s/checksums.txt", baseURL, tag)
+	checksums, err := fetchChecksums(checksumsURL)
+	if err != nil {
+		return fmt.Errorf("fetching checksums: %w", err)
+	}
+
 	// Download and extract glibc archive into a glibc/ subdirectory.
 	// The injector expects all glibc files (managed DLLs and native library)
 	// under <prefix>/glibc/.
@@ -195,6 +256,13 @@ func downloadDotnetAgent(cfg Config, destDir string) error {
 	glibcZipPath := glibcZip.Name()
 	defer os.Remove(glibcZipPath)
 	if err := downloadFile(glibcURL, glibcZipPath); err != nil {
+		return err
+	}
+	want, ok := checksums[glibcPkg]
+	if !ok {
+		return fmt.Errorf("no checksum published for %s in %s", glibcPkg, checksumsURL)
+	}
+	if err := verifyFileSHA256(glibcZipPath, want); err != nil {
 		return err
 	}
 	glibcDest := filepath.Join(destDir, "glibc")
