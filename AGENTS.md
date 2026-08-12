@@ -14,7 +14,7 @@ make rpm-packages              # Build RPM packages only
 make deb-package-<component>   # Build a single DEB (injector, java, nodejs, dotnet, meta)
 make rpm-package-<component>   # Build a single RPM
 
-make go-unit-tests             # Go command unit tests (otel-config-check)
+make go-unit-tests             # Go command unit tests (otel-config-check, packaging/builder)
 make python-unit-tests         # sitecustomize.py unit tests (throwaway venv, no containers)
 make pyproto-unit-tests        # Vendored pyproto exporter test suites (throwaway venvs, no containers)
 make integration-test-metadata # Fast metadata tests (no containers)
