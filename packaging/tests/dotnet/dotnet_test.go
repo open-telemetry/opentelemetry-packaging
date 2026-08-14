@@ -63,8 +63,8 @@ func TestDotnetAutoInstrumentation(t *testing.T) {
 }
 
 // TestDotnetDeclarativeConfiguration exercises OTEL_CONFIG_FILE end to end: the shipped
-// /etc/opentelemetry/dotnet/otel-config.yaml (installed by the package, shared
-// across all language packages) drives the agent instead of the OTEL_* env
+// /etc/opentelemetry/dotnet/otel-config.yaml (the .NET-specific reference
+// installed by the package) drives the agent instead of the OTEL_* env
 // vars. One format and base image suffices: the configuration-file mechanism
 // does not vary with the packaging format.
 func TestDotnetDeclarativeConfiguration(t *testing.T) {

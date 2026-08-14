@@ -141,14 +141,18 @@ func TestDuplicateKeysAcceptedWithWarning(t *testing.T) {
 	assert.Contains(t, warning, "duplicate mapping keys")
 }
 
-// TestShippedConfigIsValid pins the property that the sample configuration
-// installed at /etc/opentelemetry/<language>/otel-config.yaml is valid as
-// shipped: pointing OTEL_CONFIG_FILE at it must never deactivate
+// TestShippedConfigIsValid pins the property that every language-specific
+// sample configuration installed at /etc/opentelemetry/<language>/otel-config.yaml
+// is valid as shipped: pointing OTEL_CONFIG_FILE at it must never deactivate
 // instrumentation.
 func TestShippedConfigIsValid(t *testing.T) {
-	warning, err := checkFile(filepath.Join("..", "..", "packaging", "common", "otel-config.yaml"))
-	assert.NoError(t, err)
-	assert.Empty(t, warning, "the shipped configuration must validate fully, not via the duplicate-key bypass")
+	for _, language := range []string{"java", "nodejs", "dotnet", "python"} {
+		t.Run(language, func(t *testing.T) {
+			warning, err := checkFile(filepath.Join("..", "..", "packaging", "common", language, "otel-config.yaml"))
+			assert.NoError(t, err)
+			assert.Empty(t, warning, "the shipped configuration must validate fully, not via the duplicate-key bypass")
+		})
+	}
 }
 
 func TestCheckFileUnreadable(t *testing.T) {

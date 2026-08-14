@@ -1,0 +1,67 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+## OpenTelemetry declarative configuration reference for the Node.js
+## auto-instrumentation package.
+## See: https://opentelemetry.io/docs/languages/sdk-configuration/declarative-configuration/
+##
+## The opentelemetry-nodejs package installs this file at
+## /etc/opentelemetry/nodejs/otel-config.yaml as a reference.
+## Use it as a starting point: copy or adapt it to a location of your choice,
+## then activate declarative configuration for every injected process by
+## appending to /etc/opentelemetry/injector/default_env.conf:
+##
+##   OTEL_CONFIG_FILE=/etc/opentelemetry/config.yaml
+##
+## Once OTEL_CONFIG_FILE is in effect, the SDK ignores all other OTEL_*
+## environment variables as direct configuration. The environment-variable
+## interpolations below deliberately keep consuming the variables the injector
+## injects, so default_env.conf remains the single source of endpoint and
+## credentials for both environment-variable-configured and declaratively
+## configured processes.
+##
+## Every interpolation carries a default so the reference is valid as shipped;
+## the Node.js SDK substitutes an empty string for a reference to an unset
+## variable that has none.
+##
+## The Node.js agent subscribes its instrumentations automatically under
+## declarative configuration, so no instrumentation section is required here.
+
+file_format: "1.0"
+
+resource:
+  attributes:
+    - name: service.name
+      value: ${OTEL_SERVICE_NAME:-unknown_service}
+  # attributes_list accepts the OTEL_RESOURCE_ATTRIBUTES wire format as-is,
+  # so resource attributes injected via default_env.conf keep applying under
+  # declarative configuration. Entries under attributes take precedence.
+  attributes_list: ${OTEL_RESOURCE_ATTRIBUTES:-}
+
+tracer_provider:
+  processors:
+    - batch:
+        exporter:
+          otlp_http:
+            # Unlike OTEL_EXPORTER_OTLP_ENDPOINT, declarative endpoints are
+            # full per-signal URLs.
+            endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}/v1/traces
+            # headers_list accepts the OTEL_EXPORTER_OTLP_HEADERS wire format
+            # (comma-separated, percent-encoded) as-is.
+            headers_list: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+
+meter_provider:
+  readers:
+    - periodic:
+        exporter:
+          otlp_http:
+            endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}/v1/metrics
+            headers_list: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+
+logger_provider:
+  processors:
+    - batch:
+        exporter:
+          otlp_http:
+            endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}/v1/logs
+            headers_list: ${OTEL_EXPORTER_OTLP_HEADERS:-}

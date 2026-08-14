@@ -208,7 +208,7 @@ The JAR file is part of the system package; no files are downloaded at package i
 |------|-------------|
 | `/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar` | Java agent JAR |
 | `/etc/opentelemetry/injector/conf.d/java.conf` | Drop-in: `jvm_auto_instrumentation_agent_path=/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar` |
-| `/etc/opentelemetry/java/otel-config.yaml` | Declarative configuration file (shared across all language packages) |
+| `/etc/opentelemetry/java/otel-config.yaml` | Declarative configuration file (Java-specific reference) |
 | `/usr/share/man/man8/opentelemetry-java.8.gz` | Man page |
 | `/usr/share/doc/opentelemetry-java-autoinstrumentation/` | Documentation and copyright |
 
@@ -232,7 +232,7 @@ The modules are part of the system package; no files are downloaded at package i
 |------|-------------|
 | `/usr/lib/opentelemetry/nodejs/node_modules/…` | Node.js auto-instrumentation modules |
 | `/etc/opentelemetry/injector/conf.d/nodejs.conf` | Drop-in: `nodejs_auto_instrumentation_agent_path=…/register.js` |
-| `/etc/opentelemetry/nodejs/otel-config.yaml` | Declarative configuration file (shared across all language packages) |
+| `/etc/opentelemetry/nodejs/otel-config.yaml` | Declarative configuration file (Node.js-specific reference) |
 | `/usr/share/man/man8/opentelemetry-nodejs.8.gz` | Man page |
 | `/usr/share/doc/opentelemetry-nodejs-autoinstrumentation/` | Documentation and copyright |
 
@@ -257,7 +257,7 @@ The binaries are part of the system package; no files are downloaded at package 
 |------|-------------|
 | `/usr/lib/opentelemetry/dotnet/glibc/…` | Managed assemblies and native profiler library (glibc) |
 | `/etc/opentelemetry/injector/conf.d/dotnet.conf` | Drop-in: `dotnet_auto_instrumentation_agent_path_prefix=/usr/lib/opentelemetry/dotnet` |
-| `/etc/opentelemetry/dotnet/otel-config.yaml` | Declarative configuration file (shared across all language packages) |
+| `/etc/opentelemetry/dotnet/otel-config.yaml` | Declarative configuration file (.NET-specific reference) |
 | `/usr/share/man/man8/opentelemetry-dotnet.8.gz` | Man page |
 | `/usr/share/doc/opentelemetry-dotnet-autoinstrumentation/` | Documentation and copyright |
 
@@ -283,7 +283,7 @@ The packages are part of the system package; no files are downloaded at package 
 | `/usr/lib/opentelemetry/python/glibc/…` | Bundled wheels, `sitecustomize.py`, and `all-dependencies.txt` |
 | `/usr/lib/opentelemetry/python/otel-config-check` | Declarative configuration validator invoked by `sitecustomize.py` |
 | `/etc/opentelemetry/injector/conf.d/python.conf` | Drop-in: `python_auto_instrumentation_agent_path_prefix=/usr/lib/opentelemetry/python` |
-| `/etc/opentelemetry/python/otel-config.yaml` | Declarative configuration file (shared across all language packages) |
+| `/etc/opentelemetry/python/otel-config.yaml` | Declarative configuration file (Python-specific reference) |
 | `/usr/share/man/man8/opentelemetry-python.8.gz` | Man page |
 | `/usr/share/doc/opentelemetry-python-autoinstrumentation/` | Documentation, copyright, and NOTICE |
 
@@ -348,9 +348,9 @@ See [Injector interface versioning](#injector-interface-versioning) for the upgr
 
 ### Declarative configuration
 
-All language packages ship one and the same declarative configuration file: each package installs the shared source `packaging/common/otel-config.yaml` as `/etc/opentelemetry/<language>/otel-config.yaml`.
-The [declarative configuration](https://opentelemetry.io/docs/languages/sdk-configuration/declarative-configuration/) schema is portable across languages, and each SDK ignores the sections that pertain to the other languages.
-The per-language install paths exist to keep each copy owned by its package, preserving the [file ownership boundaries](#file-ownership-boundaries) that vendor overrides rely on.
+Each language package ships its own declarative configuration file: the package installs its language-specific source `packaging/common/<language>/otel-config.yaml` as `/etc/opentelemetry/<language>/otel-config.yaml`.
+The [declarative configuration](https://opentelemetry.io/docs/languages/sdk-configuration/declarative-configuration/) schema is portable across languages, but each file carries only the sections and language-specific guidance relevant to its SDK — the `.NET` file, for example, lists the `instrumentation/development` section that `.NET` requires and the others omit.
+The per-language install paths keep each file owned by its package, preserving the [file ownership boundaries](#file-ownership-boundaries) that vendor overrides rely on.
 
 The file is valid as shipped, but inert until activated.
 To activate it for every injected process, append to `default_env.conf`:
