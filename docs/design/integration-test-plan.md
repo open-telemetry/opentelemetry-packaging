@@ -162,11 +162,12 @@ The scenarios run inside the `integration-test-deb-<language>` targets.
 ### 9. Post-install sanity check
 
 Validate the `otel-instrumentation-check` command shipped in the injector package, which confirms the injector is active and the language agents are wired up without a running application or an OTLP receiver.
+It also scans the processes running now and reports which are already instrumented and which started before install and must be restarted, exiting `3` (distinct from `0`) when a restart is needed so a provisioning script can act on it.
 
 | Scenario | Assertion |
 |----------|-----------|
-| Full install, then run the check | Exit 0, reports the injector active and at least one language agent registered |
-| Injector alone (no language agent), then run the check | Exit non-zero, reports that no language agents are registered |
+| Full install, then run the check | Exit 0 or 3 (both mean the install is correct; 3 signals a running process must be restarted), reports the injector active, at least one language agent registered, and the running-process scan summary |
+| Injector alone (no language agent), then run the check | Exit 1, reports that no language agents are registered |
 
 **Implementation:** Install packages in a container and run the command, asserting on its exit code and output.
 Implemented in `packaging/tests/lifecycle/sanitycheck_test.go`.

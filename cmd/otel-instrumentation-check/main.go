@@ -16,9 +16,14 @@
 //
 // Usage: otel-instrumentation-check
 //
-// Exit codes: 0 the injector is active and at least one language agent is
-// registered and present; 1 a problem was found (details are printed to
-// stdout); 2 usage error.
+// Exit codes: 0 the injector is active, at least one language agent is
+// registered and present, and no running process needs a restart; 1 an
+// installation problem was found (details are printed to stdout); 2 usage error;
+// 3 the installation is correct but one or more already-running processes started
+// before the package was installed and must be restarted before they are
+// instrumented. Code 3 is distinct from 0 so a provisioning script can detect
+// the "needs restart" case and act on it (for example, restart the affected
+// systemd units) without treating it as an installation failure.
 package main
 
 import (
@@ -32,7 +37,21 @@ import (
 const usage = "usage: otel-instrumentation-check\n\n" +
 	"Verifies that the OpenTelemetry injector is active and that the installed\n" +
 	"language auto-instrumentation agents are wired up. Takes no arguments and\n" +
-	"needs no OTLP receiver."
+	"needs no OTLP receiver.\n\n" +
+	"Exit codes:\n" +
+	"  0  the injector is active, an agent is present, and no running process\n" +
+	"     needs a restart\n" +
+	"  1  an installation problem was found\n" +
+	"  2  usage error\n" +
+	"  3  the installation is correct but one or more already-running processes\n" +
+	"     started before install and must be restarted to be instrumented"
+
+// Exit codes. 0 (success) is Go's implicit default and is not named here.
+const (
+	exitInstallProblem = 1 // an installation problem was found
+	exitUsage          = 2 // usage error
+	exitNeedsRestart   = 3 // install OK, but running processes must be restarted
+)
 
 func main() {
 	if len(os.Args) > 1 {
@@ -42,11 +61,13 @@ func main() {
 			return
 		default:
 			fmt.Fprintln(os.Stderr, usage)
-			os.Exit(2)
+			os.Exit(exitUsage)
 		}
 	}
 
 	results, ok := checkInstallation(systemLayout())
+	processResults, needsRestart := describeRunningProcesses(scanRunningProcesses(systemProcLayout()))
+	results = append(results, processResults...)
 
 	fmt.Println("OpenTelemetry auto-instrumentation post-install check")
 	fmt.Println()
@@ -55,12 +76,19 @@ func main() {
 	}
 	fmt.Println()
 
-	if ok {
-		fmt.Println("Result: PASS. The injector is active; newly started processes will be instrumented.")
-		return
+	// An installation problem outranks a needs-restart: if the injector is not
+	// wired up, restarting a process would not help, so report the install
+	// failure first.
+	if !ok {
+		fmt.Println("Result: FAIL. See the items marked [fail] above.")
+		os.Exit(exitInstallProblem)
 	}
-	fmt.Println("Result: FAIL. See the items marked [fail] above.")
-	os.Exit(1)
+	if needsRestart {
+		fmt.Println("Result: ACTION NEEDED. The injector is active, but some already-running " +
+			"processes started before install and must be restarted to be instrumented; see the [warn] items above.")
+		os.Exit(exitNeedsRestart)
+	}
+	fmt.Println("Result: PASS. The injector is active; newly started processes will be instrumented.")
 }
 
 // layout locates the files the check inspects. The defaults are the FHS paths

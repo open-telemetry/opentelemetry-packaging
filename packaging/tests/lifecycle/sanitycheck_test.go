@@ -25,11 +25,18 @@ var sanityCheckScenarios = []scenario{
 			h.install(t, ctx, "opentelemetry")
 
 			code, output := testutil.ExecInContainer(t, ctx, h.container, sanityCheckBin)
-			assert.Equal(t, 0, code, "the check must pass on a full install.\n\nOutput:\n%s", output)
-			assert.Contains(t, output, "Result: PASS", output)
+			// A correct installation exits 0 (no already-running process needs a
+			// restart) or 3 (the install is correct, but a process that started
+			// before install must be restarted to be instrumented). Both mean the
+			// installation itself is wired up; only 1 (install problem) and 2
+			// (usage error) are failures here.
+			assert.Contains(t, []int{0, 3}, code,
+				"the check must report a correct install (exit 0 or 3).\n\nOutput:\n%s", output)
 			assert.Contains(t, output, "injector active", output)
 			assert.GreaterOrEqual(t, strings.Count(output, "agent registered"), 1,
 				"at least one language agent should be reported as registered")
+			assert.Contains(t, output, "running processes on supported runtimes",
+				"the running-process scan must report its summary")
 		},
 	},
 	{

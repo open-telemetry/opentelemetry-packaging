@@ -23,6 +23,24 @@ up, run
 after installation. It inspects the preload and configuration files a new
 process would read and reports the result; it needs no running application and
 no OTLP receiver.
+.PP
+The check also scans the processes running now and reports which are already
+instrumented and which started before the package was installed and so must be
+restarted to pick it up, detected by testing whether the injector library is
+mapped into each process via /proc/<pid>/maps. Reading another user's process
+requires root, so run the check as root for full coverage. A mapped injector
+proves the injector ran in the process, not that the language SDK finished
+attaching, so this is the best signal available without a running application,
+not a guarantee. Runtime detection is a best-effort match on the process command
+name.
+.PP
+.B otel-instrumentation-check
+exits 0 when the injector is active, an agent is present, and no running process
+needs a restart; 1 when an installation problem is found; 2 on a usage error;
+and 3 when the installation is correct but one or more already-running processes
+must be restarted before they are instrumented. Exit code 3 is distinct from 0
+so a provisioning script can restart the affected units without treating the
+situation as an installation failure.
 .SH FILES
 .TP
 .B /usr/lib/opentelemetry/injector/libotelinject.so
