@@ -6,6 +6,7 @@ package builder
 import (
 	"archive/zip"
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -18,6 +19,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/ProtonMail/go-crypto/openpgp"
 )
 
 // npmTimeout is the maximum duration for a single npm subprocess.
@@ -138,6 +141,54 @@ func verifyFileSHA256(path, want string) error {
 	return nil
 }
 
+// fetchBytes downloads a URL and returns its full body.
+func fetchBytes(url string) ([]byte, error) {
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("fetching %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching %s: HTTP %d", url, resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
+}
+
+// verifyDetachedSignature checks that sigData is a valid, armored OpenPGP
+// detached signature over the file at path, made by the key in the armored
+// keyring at keyringPath, and that the signing key's fingerprint matches
+// wantFingerprint (guards against the keyring file being swapped for a
+// different, still-technically-valid key).
+func verifyDetachedSignature(path, keyringPath, wantFingerprint string, sigData []byte) error {
+	keyringFile, err := os.Open(keyringPath)
+	if err != nil {
+		return err
+	}
+	defer keyringFile.Close()
+
+	keyring, err := openpgp.ReadArmoredKeyRing(keyringFile)
+	if err != nil {
+		return fmt.Errorf("reading keyring %s: %w", keyringPath, err)
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	signer, err := openpgp.CheckArmoredDetachedSignature(keyring, f, bytes.NewReader(sigData), nil)
+	if err != nil {
+		return fmt.Errorf("verifying signature for %s: %w", path, err)
+	}
+
+	fingerprint := strings.ToUpper(hex.EncodeToString(signer.PrimaryKey.Fingerprint))
+	if fingerprint != wantFingerprint {
+		return fmt.Errorf("signature for %s was made by unexpected key %s (want %s)", path, fingerprint, wantFingerprint)
+	}
+	return nil
+}
+
 // downloadInjector fetches libotelinject.so from GitHub releases.
 func downloadInjector(cfg Config, dest string) error {
 	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", "injector", "release.txt"))
@@ -148,14 +199,43 @@ func downloadInjector(cfg Config, dest string) error {
 	return downloadFile(url, dest)
 }
 
-// downloadJavaAgent fetches the Java agent JAR from GitHub releases.
+// javaReleaseKeyFingerprint is the OpenTelemetry Java release-signing key
+// pinned in packaging/common/java/release-key.asc (RSA 2048, UID "OpenTelemetry
+// Java", no expiration or revocation set as of pinning).
+//
+// The project does not publish this fingerprint through any OpenTelemetry-
+// controlled channel (no KEYS file, no docs page); it is only discoverable on
+// public keyservers because Maven Central's Sonatype Central Portal requires
+// keyserver presence before accepting signed uploads. Trust here is
+// trust-on-first-use: this fingerprint was confirmed to have signed
+// opentelemetry-javaagent.jar consistently across releases spanning roughly
+// two years (v2.10.0, v2.20.1, v2.30.0) before being pinned.
+const javaReleaseKeyFingerprint = "3F05DDA9F317301E927136D417A27CE7A60FF5F0"
+
+// downloadJavaAgent fetches the Java agent JAR from GitHub releases and
+// verifies it against the detached GPG signature ("*.jar.asc") the release
+// also publishes, checked against the pinned key above.
 func downloadJavaAgent(cfg Config, dest string) error {
 	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", "java", "release.txt"))
 	if err != nil {
 		return err
 	}
 	url := fmt.Sprintf("https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/%s/opentelemetry-javaagent.jar", tag)
-	return downloadFile(url, dest)
+	if err := downloadFile(url, dest); err != nil {
+		return err
+	}
+
+	sigData, err := fetchBytes(url + ".asc")
+	if err != nil {
+		return fmt.Errorf("fetching signature: %w", err)
+	}
+
+	keyringPath := filepath.Join(cfg.PackagingDir, "common", "java", "release-key.asc")
+	if err := verifyDetachedSignature(dest, keyringPath, javaReleaseKeyFingerprint, sigData); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // downloadNodejsAgent fetches the Node.js auto-instrumentation from npm.

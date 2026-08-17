@@ -282,10 +282,11 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 # ============================================================================
 
 # Unit tests for the Go commands (e.g. the otel-config-check validator shipped
-# in the Python package).
+# in the Python package) and the package builder (e.g. checksum/signature
+# verification of downloaded upstream artifacts).
 .PHONY: go-unit-tests
 go-unit-tests:
-	go test -v ./cmd/...
+	go test -v ./cmd/... ./packaging/builder/...
 
 # Unit tests for sitecustomize.py. They need the `packaging` module (a runtime
 # dependency of sitecustomize.py itself); a throwaway virtualenv keeps the
