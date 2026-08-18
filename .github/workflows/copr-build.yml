@@ -1,0 +1,118 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Builds the RPMs in Fedora COPR, which builds them with mock from a source RPM
+# rather than with nfpm. COPR clones this repository itself and runs
+# .copr/Makefile; this workflow only submits the build and waits for the result.
+#
+# A release build takes its committish from the release tag, so COPR's own
+# `git describe` yields the released version. workflow_dispatch stays available
+# to fire and debug the integration on demand.
+name: Build in COPR
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      committish:
+        description: "Branch, tag, or commit COPR should build (defaults to this workflow run ref)"
+        required: false
+        type: string
+      project:
+        description: "Target COPR project, as owner/project"
+        required: false
+        default: "x1unix/opentelemetry-packaging"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  copr-build:
+    runs-on: ubuntu-24.04
+    container:
+      image: registry.fedoraproject.org/fedora@sha256:cffa25ae42f013b76653abd96137c05c776cd6e6bc1ac4a79290296ff42cbc7b # fedora:44
+    steps:
+      # COPR clones sources itself, thus repo checkout isn't needed.
+      - name: Install copr-cli
+        run: |
+          dnf install --assumeyes --setopt=install_weak_deps=False copr-cli
+          copr-cli --version
+
+      - name: Configure copr-cli
+        env:
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+        run: |
+          if [ -z "${COPR_CONFIG}" ]; then
+            echo "::error::the COPR_CONFIG secret is not set; copy the contents of https://copr.fedorainfracloud.org/api/ into it"
+            exit 1
+          fi
+          mkdir -p ~/.config
+          printf '%s\n' "${COPR_CONFIG}" > ~/.config/copr
+          chmod 600 ~/.config/copr
+
+      # Event-controlled values go through env rather than inline interpolation.
+      # The inputs are empty on a release event, hence the fallbacks: the
+      # workflow_dispatch default does not apply to other triggers.
+      - name: Submit the build
+        id: submit
+        env:
+          PROJECT: ${{ inputs.project || 'x1unix/opentelemetry-packaging' }}
+          COMMITTISH: ${{ inputs.committish || github.event.release.tag_name || github.ref_name }}
+          CLONE_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -o pipefail
+          echo "Building ${CLONE_URL} at ${COMMITTISH} in ${PROJECT}"
+          # --nowait returns as soon as the build is queued; the wait below
+          # inspects every chroot rather than only the aggregate state.
+          copr-cli buildscm "${PROJECT}" \
+            --clone-url "${CLONE_URL}" \
+            --commit "${COMMITTISH}" \
+            --method make_srpm \
+            --nowait | tee submit.log
+          build_id="$(sed -n 's/^Created builds: //p' submit.log)"
+          if [ -z "${build_id}" ]; then
+            echo "::error::could not determine the build id from copr-cli output"
+            exit 1
+          fi
+          echo "build-id=${build_id}" >> "$GITHUB_OUTPUT"
+          echo "Build https://copr.fedorainfracloud.org/coprs/build/${build_id}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Wait for the build
+        env:
+          BUILD_ID: ${{ steps.submit.outputs.build-id }}
+        run: copr-cli watch-build "${BUILD_ID}"
+
+      # copr-cli exits zero when the aggregate build state is "succeeded", which
+      # it can be while an individual chroot is not, so the chroots are checked
+      # one by one before the job is called green.
+      - name: Verify every chroot
+        env:
+          BUILD_ID: ${{ steps.submit.outputs.build-id }}
+        run: |
+          set -o pipefail
+          api="https://copr.fedorainfracloud.org/api_3"
+          chroots="$(curl -sSf "${api}/build/${BUILD_ID}" | python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["chroots"]))')"
+          if [ -z "${chroots}" ]; then
+            echo "::error::build ${BUILD_ID} reports no chroots"
+            exit 1
+          fi
+
+          failed=0
+          for chroot in ${chroots}; do
+            # The endpoint answers with an empty body while a build is still in
+            # its source-RPM phase and the chroots do not exist yet. That cannot
+            # happen after watch-build has returned, so treat it as an error
+            # rather than as a state, and never as a success.
+            state="$(curl -sSf "${api}/build-chroot?build_id=${BUILD_ID}&chrootname=${chroot}" \
+              | python3 -c 'import json,sys; body=sys.stdin.read().strip(); print(json.loads(body)["state"] if body else "unknown")')"
+            echo "- \`${chroot}\`: ${state}" >> "$GITHUB_STEP_SUMMARY"
+            if [ "${state}" = "succeeded" ]; then
+              echo "${chroot}: ${state}"
+            else
+              echo "::error::${chroot} finished in state ${state}"
+              failed=1
+            fi
+          done
+          exit "${failed}"

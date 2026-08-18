@@ -6,12 +6,14 @@
 - **npm** (needed to fetch the Node.js auto-instrumentation agent from the npm registry)
 - **Python 3 with pip** (needed to fetch the Python auto-instrumentation packages; invoked as `python3 -m pip`)
 - **A container engine** (Podman or Docker — needed for local repository generation and integration tests)
+- **`rpmbuild`** (optional — only for building the source RPM natively; `make srpm-container` runs it in a container instead)
 
 No Ruby, FPM, or special Docker images are required to build packages.
 
 ## Repository layout
 
 ```
+.copr/Makefile               COPR SCM entry point; installs the source-RPM tooling and calls make srpm
 cmd/build-packages/          CLI entry point for building .deb and .rpm packages
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
 packaging/
@@ -19,6 +21,8 @@ packaging/
     builder.go               Build orchestration, common metadata
     components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
     download.go              Upstream artifact download helpers
+    spec.go                  RPM spec generation for the COPR build (projection of components.go)
+    stage.go                 Payload staging into an rpmbuild buildroot, with generated %files lists
   common/                    Shared assets referenced by the builder
     <lang>/otel-config.yaml   Language-specific declarative configuration file, shipped by that language package (valid as shipped)
     scripts/                 POSIX lifecycle scripts (postinstall, preuninstall)
@@ -70,6 +74,79 @@ The `cmd/build-packages` program:
    - Lifecycle scripts, config files, man pages, and documentation
 
 3. **Writes the package file** via nfpm's `Packager.Package()` — produces valid `.deb` or `.rpm` without requiring `dpkg-deb`, `rpmbuild`, or any platform-specific tools.
+
+### Where package metadata lives
+
+Each component in `components.go` declares its metadata — package name, architecture independence, `Provides`, `Requires`, `Recommends`, `Suggests`, and lifecycle scripts — as plain struct fields, separately from the `ContentsFunc` that stages its payload.
+That separation has one purpose: the metadata alone is enough to generate an RPM spec, so `spec.go` can render one without downloading a single upstream artifact.
+
+Add or change a package relationship in `components.go` and nothing else.
+Both producers read it from there: nfpm through `Component.Info`, and rpmbuild through the generated spec.
+
+### Building RPMs with rpmbuild instead of nfpm
+
+RPMs have a second producer, used by the [COPR](https://copr.fedorainfracloud.org/) build, where mock owns the packaging step and only accepts a source RPM.
+
+```sh
+go run ./cmd/build-packages -version 1.0.0 -format spec -output build/srpm/SPECS
+```
+
+That renders `opentelemetry-packaging.spec`, whose `%install` section calls the same builder back in staging mode:
+
+```sh
+go run ./cmd/build-packages -version 1.0.0 -arch amd64 -component injector -stage-root /path/to/buildroot -filelist-dir /path/to/filelists
+```
+
+Staging materializes the component's `files.Contents` into the buildroot and writes the matching `%files` fragment, so the file lists and the packaged tree come from one traversal and cannot disagree.
+The generated spec is never committed, and never edited by hand.
+
+Those two invocations are wired together by the source RPM targets, which is what COPR drives:
+
+```sh
+make srpm
+```
+
+That renders the spec, exports the working tree (not `HEAD`, so uncommitted work is testable), vendors the Go modules into the source tarball, and runs `rpmbuild -bs` with `_topdir` as its only define.
+The vendored modules are what let the per-chroot build compile without network access for the Go dependencies; only the upstream agents are still fetched at build time.
+
+On a host without `rpmbuild`, run `rpmbuild` in a container instead:
+
+```sh
+make srpm-container
+```
+
+Only `build/srpm` is mounted into that container, and nothing but `rpmbuild` runs inside it — no Go, no git, no repository — so it also works when the checkout is a git worktree.
+`make srpm-sources` stops after the spec and the tarball, for inspecting either without any RPM tooling.
+
+Two consequences of rpmbuild owning the packaging step are worth knowing.
+Its `Release` carries the distribution tag (`0.dev.1.fc44`), so a COPR package sorts above the identically versioned one built by nfpm.
+It also generates dependencies automatically from the payload, which nfpm does not: the Node.js package gains `Requires: /usr/bin/node`, the Python package `Requires: /usr/bin/python3`, and both the .NET and Python packages pick up the glibc symbol versions their bundled binaries need.
+Those requirements are kept, since they are real constraints on where a package can install.
+
+The matching `Provides` are not.
+The spec sets `__provides_exclude_from` for `/usr/lib/opentelemetry`, so the bundled libraries never advertise their SONAMEs as system-wide providers — the injector is preloaded by absolute path and is never resolved by SONAME, so publishing `libinjector.so()(64bit)` would only risk satisfying an unrelated package's dependency.
+
+### Verifying the rpmbuild path
+
+Rebuild the source RPM into binary RPMs the way COPR does, with `--rebuild` and no defines at all, so the spec embedded in the SRPM is what gets built:
+
+```sh
+make rpm-rebuild-container
+```
+
+`REBUILD_IMAGE` selects the buildroot, which matters because the EL rpm is older than Fedora's and is stricter about the preamble:
+
+```sh
+make rpm-rebuild-container REBUILD_IMAGE=almalinux:9 REBUILD_OUTPUT_DIR=build/rebuild/el9
+```
+
+The metadata tests accept a `PACKAGES_DIR` override, so the same assertions that cover the nfpm packages can be pointed at the rebuilt ones to catch drift between the two producers:
+
+```sh
+PACKAGES_DIR=build/rebuild/fedora go test -run TestRpm ./packaging/tests/metadata/
+```
+
+Once the local rebuild is green, the same source RPM can be built for every distribution and architecture at once in COPR — see [Building in Fedora COPR](RELEASING.md#building-in-fedora-copr).
 
 ### Upstream version pins
 

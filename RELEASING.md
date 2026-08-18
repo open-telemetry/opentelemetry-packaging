@@ -27,6 +27,34 @@ The workflow can also be dispatched manually with an existing release tag, to re
 gh workflow run publish-repos.yml -f tag=v1.0.0
 ```
 
+## Building in Fedora COPR
+
+The COPR build is independent of the release above.
+It supplements the YUM repository rather than replacing it, and it publishes to the project `x1unix/opentelemetry-packaging`.
+
+COPR builds with mock from a source RPM, so its RPMs come from `rpmbuild` and the generated spec rather than from nfpm.
+It clones the repository itself and runs `.copr/Makefile`, which installs the source-RPM tooling and calls `make srpm`.
+
+The [Build in COPR workflow](.github/workflows/copr-build.yml) runs automatically when a release is published, building the release tag alongside the repository publication above.
+It waits for the result and fails if any single chroot did not succeed, which the aggregate build state alone would hide.
+
+It can also be dispatched manually against any branch, tag, or commit, which is how the spec is exercised outside a release.
+
+```sh
+gh workflow run copr-build.yml -f committish=main
+```
+
+The workflow has no repository guard, so a contributor can point a run at their own COPR project with `-f project=<owner>/<project>`.
+It needs a `COPR_CONFIG` secret holding the whole configuration file from the [COPR API tokens page](https://copr.fedorainfracloud.org/api/) of the account that owns the project.
+
+A build can also be submitted straight from a workstation with `copr-cli`, which is useful when iterating on the spec.
+
+```sh
+copr-cli buildscm x1unix/opentelemetry-packaging --clone-url https://github.com/x1unix/opentelemetry-packaging --commit main --method make_srpm
+```
+
+Note that COPR derives the package version from the newest version tag in the clone, exactly as the `Makefile` does, so a branch without tags produces the development placeholder.
+
 ## One-time GitHub Pages setup
 
 Deploying only pushes the `gh-pages` branch; serving it requires GitHub Pages to be enabled once in the repository settings ("Deploy from a branch", branch `gh-pages`, path `/`).
