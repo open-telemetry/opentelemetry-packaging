@@ -471,6 +471,31 @@ pyproto-unit-tests:
 			$(PYPROTO_VENDOR_DIR)/$$suite; \
 	done
 
+# Check that the sitecustomize.py version gate stays in sync with the strictest
+# Requires-Python across the bundled distributions. The PyPI pins are installed
+# into a throwaway venv (excluding the vendored source lines) purely so the tool
+# can read their Requires-Python metadata; the vendored floor is read straight
+# from each vendor pyproject.toml via --vendor-dir, so the vendored source does
+# not need to be built for the check.
+#
+# The venv is built with the minimum supported interpreter (MINIMUM_PYTHON, the
+# current 3.x floor) on purpose: pip must resolve transitive dependencies the
+# way it would on that floor, so a newer release of a transitive dependency that
+# raised its own Requires-Python does not inflate the derived floor above what
+# actually runs on the minimum interpreter. tomli is the tomllib backport the
+# tool falls back to under Python 3.10 (tomllib is standard library from 3.11).
+MINIMUM_PYTHON ?= python3.10
+.PHONY: check-minimum-python-version
+check-minimum-python-version:
+	$(MINIMUM_PYTHON) -m venv build/minimum-python-version-venv
+	build/minimum-python-version-venv/bin/pip install --quiet packaging tomli
+	grep -v '^\./vendor/' packaging/common/python/requirements.txt | \
+		build/minimum-python-version-venv/bin/pip install --quiet -r /dev/stdin
+	build/minimum-python-version-venv/bin/python \
+		packaging/common/python/sync_minimum_python_version.py --check \
+		--vendor-dir packaging/common/python/vendor \
+		--sitecustomize packaging/common/python/sitecustomize.py
+
 # ============================================================================
 # Lint
 # ============================================================================
