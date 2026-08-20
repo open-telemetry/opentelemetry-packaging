@@ -51,6 +51,26 @@ Install the full auto-instrumentation suite:
 sudo dnf install opentelemetry
 ```
 
+## Verifying the installation
+
+Confirm the injector is active and the language agents are wired up before pointing telemetry anywhere:
+
+```sh
+otel-instrumentation-check
+```
+
+This command ships with the injector package and needs no running application and no OTLP receiver.
+The injector is a preloaded library rather than a service, so there is no daemon whose status could report "instrumentation is on"; the check instead reads the same files a newly started process would (`/etc/ld.so.preload`, the `conf.d/` drop-ins, and `default_env.conf`) and reports, per language, whether each registered agent is present on disk.
+The check also scans the processes running right now and reports which of them are already instrumented and which started before the package was installed and so must be restarted to pick it up.
+It detects the latter by testing whether the injector library is mapped into each process through `/proc/<pid>/maps`; reading another user's process requires root, so run the check as root for full coverage.
+A mapped injector proves the injector ran in the process, not that the language SDK finished attaching, so the running-process result is the best signal available without a running application, not a guarantee.
+
+It exits zero when the injector is active, at least one language agent is present, and no running process needs a restart, so it also works in a provisioning script.
+It exits `1` when an installation problem is found, `2` on a usage error, and `3` when the installation is correct but one or more already-running processes must be restarted before they are instrumented.
+Code `3` is distinct from zero so a provisioning script can detect the "needs restart" case and restart the affected `systemd` units without treating it as an installation failure.
+
+It reports the configured telemetry destination too, so a missing backend is never mistaken for a broken install.
+
 ## Configuring where telemetry goes
 
 By default, every auto-instrumentation package exports OTLP to `localhost` (`localhost:4317` for OTLP/gRPC, and `localhost:4318` for OTLP/HTTP).

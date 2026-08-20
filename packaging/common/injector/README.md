@@ -8,6 +8,19 @@ It enables zero-code instrumentation for applications running on Linux systems.
 The injector library (`libotelinject.so`) is loaded via `/etc/ld.so.preload` into every process.
 It detects the runtime (Java, Node.js, .NET, Python) and injects the appropriate OpenTelemetry auto-instrumentation agent.
 
+## Verifying the installation
+
+Run the bundled sanity check to confirm the injector is active and the installed language agents are wired up:
+
+```sh
+otel-instrumentation-check
+```
+
+The injector is a preloaded library rather than a service, so there is no daemon status to query.
+Instead, the check reads the same files a newly started process would (`/etc/ld.so.preload`, the `conf.d/` drop-ins, and `default_env.conf`) and reports, per language, whether the registered agent is present on disk.
+It needs no running application and no OTLP receiver, and exits non-zero if the injector is not active or a registered agent is missing.
+It also reports where telemetry is configured to go, so a missing backend is not mistaken for a broken install.
+
 ## Configuration
 
 The injector is configured via `/etc/opentelemetry/injector/injector.conf`.
@@ -36,6 +49,7 @@ Use this to configure common settings like:
 ## Files
 
 - `/usr/lib/opentelemetry/injector/libotelinject.so`: The injector shared library
+- `/usr/bin/otel-instrumentation-check`: Post-install sanity check for the injector and language agents
 - `/etc/opentelemetry/injector/injector.conf`: Main configuration file
 - `/etc/opentelemetry/injector/default_env.conf`: Default environment variables
 - `/etc/opentelemetry/injector/conf.d/`: Drop-in configuration directory

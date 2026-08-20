@@ -93,6 +93,9 @@ See [Vendor override](#vendor-override) for the recipe and user experience.
 All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfoundation.org/FHS_3.0/fhs-3.0.html) (FHS).
 
 ```
+/usr/bin/
+└── otel-instrumentation-check    (post-install sanity check; installed by the injector package)
+
 /usr/lib/opentelemetry/
 ├── injector/
 │   └── libotelinject.so
@@ -154,6 +157,7 @@ At runtime, the library inspects each process to determine if it is a Java, Node
 | Path | Description |
 |------|-------------|
 | `/usr/lib/opentelemetry/injector/libotelinject.so` | Injector shared library (per-arch) |
+| `/usr/bin/otel-instrumentation-check` | Post-install sanity check for the injector and language agents (per-arch) |
 | `/etc/opentelemetry/injector/injector.conf` | Main configuration file |
 | `/etc/opentelemetry/injector/default_env.conf` | Default `OTEL_*` environment variables for all agents |
 | `/etc/opentelemetry/injector/conf.d/` | Drop-in directory for language agent paths (empty until language packages are installed) |
@@ -396,7 +400,7 @@ This is critical for `Conflicts`/`Replaces` to work correctly.
 
 | Package | Owns |
 |---------|------|
-| `opentelemetry-injector` | `/usr/lib/opentelemetry/injector/`, `/etc/opentelemetry/injector/injector.conf`, `/etc/opentelemetry/injector/default_env.conf`, `/etc/opentelemetry/injector/conf.d/` (directory only) |
+| `opentelemetry-injector` | `/usr/lib/opentelemetry/injector/`, `/usr/bin/otel-instrumentation-check`, `/etc/opentelemetry/injector/injector.conf`, `/etc/opentelemetry/injector/default_env.conf`, `/etc/opentelemetry/injector/conf.d/` (directory only) |
 | `opentelemetry-java-autoinstrumentation` | `/usr/lib/opentelemetry/java/`, `/etc/opentelemetry/injector/conf.d/java.conf`, `/etc/opentelemetry/java/` |
 | `opentelemetry-nodejs-autoinstrumentation` | `/usr/lib/opentelemetry/nodejs/`, `/etc/opentelemetry/injector/conf.d/nodejs.conf`, `/etc/opentelemetry/nodejs/` |
 | `opentelemetry-dotnet-autoinstrumentation` | `/usr/lib/opentelemetry/dotnet/`, `/etc/opentelemetry/injector/conf.d/dotnet.conf`, `/etc/opentelemetry/dotnet/` |

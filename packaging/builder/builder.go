@@ -34,6 +34,11 @@ type Config struct {
 	// builder only assembles packages; the binary is cross-compiled upfront
 	// (see the otel-config-check Makefile target).
 	ConfigCheckBinary string
+	// SanityCheckBinary is the path to a prebuilt otel-instrumentation-check
+	// binary for the target architecture, shipped inside the injector package.
+	// Like ConfigCheckBinary, it is cross-compiled upfront (see the
+	// otel-instrumentation-check Makefile target).
+	SanityCheckBinary string
 }
 
 // Component describes a single package to build.
