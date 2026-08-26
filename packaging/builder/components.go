@@ -32,10 +32,12 @@ const (
 
 // Injector is the opentelemetry-injector package component.
 var Injector = Component{
-	Name:         "injector",
-	PackageName:  "opentelemetry-injector",
-	Description:  injectorDescription,
-	Provides:     []string{"opentelemetry-injector1"},
+	Name:        "injector",
+	PackageName: "opentelemetry-injector",
+	Description: injectorDescription,
+	Relations: Relations{
+		Provides: []string{"opentelemetry-injector1"},
+	},
 	PostInstall:  "postinstall-injector.sh",
 	PreRemove:    "preuninstall-injector.sh",
 	ContentsFunc: injectorContents,
@@ -43,33 +45,39 @@ var Injector = Component{
 
 // Java is the opentelemetry-java-autoinstrumentation package component.
 var Java = Component{
-	Name:         "java",
-	PackageName:  "opentelemetry-java-autoinstrumentation",
-	Description:  javaDescription,
-	Noarch:       true,
-	Provides:     []string{"opentelemetry-java-autoinstrumentation1"},
-	Suggests:     []string{"opentelemetry-injector1"},
+	Name:        "java",
+	PackageName: "opentelemetry-java-autoinstrumentation",
+	Description: javaDescription,
+	Noarch:      true,
+	Relations: Relations{
+		Provides: []string{"opentelemetry-java-autoinstrumentation1"},
+		Suggests: []string{"opentelemetry-injector1"},
+	},
 	ContentsFunc: javaContents,
 }
 
 // Nodejs is the opentelemetry-nodejs-autoinstrumentation package component.
 var Nodejs = Component{
-	Name:         "nodejs",
-	PackageName:  "opentelemetry-nodejs-autoinstrumentation",
-	Description:  nodejsDescription,
-	Noarch:       true,
-	Provides:     []string{"opentelemetry-nodejs-autoinstrumentation1"},
-	Suggests:     []string{"opentelemetry-injector1"},
+	Name:        "nodejs",
+	PackageName: "opentelemetry-nodejs-autoinstrumentation",
+	Description: nodejsDescription,
+	Noarch:      true,
+	Relations: Relations{
+		Provides: []string{"opentelemetry-nodejs-autoinstrumentation1"},
+		Suggests: []string{"opentelemetry-injector1"},
+	},
 	ContentsFunc: nodejsContents,
 }
 
 // Dotnet is the opentelemetry-dotnet-autoinstrumentation package component.
 var Dotnet = Component{
-	Name:         "dotnet",
-	PackageName:  "opentelemetry-dotnet-autoinstrumentation",
-	Description:  dotnetDescription,
-	Provides:     []string{"opentelemetry-dotnet-autoinstrumentation1"},
-	Suggests:     []string{"opentelemetry-injector1"},
+	Name:        "dotnet",
+	PackageName: "opentelemetry-dotnet-autoinstrumentation",
+	Description: dotnetDescription,
+	Relations: Relations{
+		Provides: []string{"opentelemetry-dotnet-autoinstrumentation1"},
+		Suggests: []string{"opentelemetry-injector1"},
+	},
 	ContentsFunc: dotnetContents,
 }
 
@@ -80,8 +88,10 @@ var Python = Component{
 	Description: pythonDescription,
 	// Not Noarch: the bundled wheels may carry compiled C extensions, so the
 	// package is architecture-specific.
-	Provides:     []string{"opentelemetry-python-autoinstrumentation1"},
-	Suggests:     []string{"opentelemetry-injector1"},
+	Relations: Relations{
+		Provides: []string{"opentelemetry-python-autoinstrumentation1"},
+		Suggests: []string{"opentelemetry-injector1"},
+	},
 	ContentsFunc: pythonContents,
 }
 
@@ -91,12 +101,14 @@ var Meta = Component{
 	PackageName: "opentelemetry",
 	Description: metaDescription,
 	Noarch:      true,
-	Depends:     []string{"opentelemetry-injector1"},
-	Recommends: []string{
-		"opentelemetry-java-autoinstrumentation1",
-		"opentelemetry-nodejs-autoinstrumentation1",
-		"opentelemetry-dotnet-autoinstrumentation1",
-		"opentelemetry-python-autoinstrumentation1",
+	Relations: Relations{
+		Depends: []string{"opentelemetry-injector1"},
+		Recommends: []string{
+			"opentelemetry-java-autoinstrumentation1",
+			"opentelemetry-nodejs-autoinstrumentation1",
+			"opentelemetry-dotnet-autoinstrumentation1",
+			"opentelemetry-python-autoinstrumentation1",
+		},
 	},
 	ContentsFunc: metaContents,
 }

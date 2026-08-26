@@ -41,6 +41,16 @@ type Config struct {
 	ConfigCheckBinary string
 }
 
+// Relations declares a package's relationships to other packages.
+// The values use the interface-versioned virtual names described in
+// docs/design/packages-meta-architecture.md.
+type Relations struct {
+	Provides   []string
+	Depends    []string
+	Recommends []string
+	Suggests   []string
+}
+
 // Component describes a single package to build.
 type Component struct {
 	// Name is the short component name used on the command line and as the
@@ -52,14 +62,8 @@ type Component struct {
 	Description string
 	// Noarch marks a package whose payload is architecture independent. It
 	// selects the "all" DEB architecture and the "noarch" RPM one.
-	Noarch bool
-	// Provides, Depends, Recommends, and Suggests declare the package
-	// relationships. They all use the interface-versioned virtual names
-	// described in docs/design/packages-meta-architecture.md.
-	Provides   []string
-	Depends    []string
-	Recommends []string
-	Suggests   []string
+	Noarch    bool
+	Relations Relations
 	// PostInstall and PreRemove name the lifecycle scripts in
 	// packaging/common/scripts, empty when the component has none.
 	PostInstall string
@@ -101,10 +105,10 @@ func (c Component) Info(cfg Config, format string) (*nfpm.Info, func(), error) {
 		Homepage:    pkgHomepage,
 		Overridables: nfpm.Overridables{
 			Contents:   contents,
-			Provides:   c.Provides,
-			Depends:    c.Depends,
-			Recommends: c.Recommends,
-			Suggests:   c.Suggests,
+			Provides:   c.Relations.Provides,
+			Depends:    c.Relations.Depends,
+			Recommends: c.Relations.Recommends,
+			Suggests:   c.Relations.Suggests,
 			RPM: nfpm.RPM{
 				Summary: c.Description,
 			},
