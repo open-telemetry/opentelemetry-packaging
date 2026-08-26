@@ -37,6 +37,7 @@ make clean                     # Remove build/
 ## Architecture at a glance
 
 - `cmd/build-packages/` — CLI entry point; calls `packaging/builder/`
+- `cmd/build-spec/` — source RPM spec generation and rpmbuild payload staging
 - `cmd/otel-config-check/` — declarative-config validator, cross-compiled into the Python package and invoked by sitecustomize.py
 - `packaging/builder/` — Go package that constructs nfpm.Info per component and writes .deb/.rpm
 - `packaging/common/` — Config files, POSIX lifecycle scripts, man page templates (referenced by builder)

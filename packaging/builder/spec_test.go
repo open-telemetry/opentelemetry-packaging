@@ -276,6 +276,9 @@ func TestWriteSpecStagesEveryComponent(t *testing.T) {
 	assert.Contains(t, spec, "-stage-root %{buildroot}")
 	assert.Contains(t, spec, "-filelist-dir %{_builddir}/filelists")
 	assert.Contains(t, spec, "-arch %{otel_arch}")
+	assert.Contains(t, spec, "go build -trimpath -o build/bin/build-spec ./cmd/build-spec")
+	assert.Contains(t, spec, "build/bin/build-spec \\")
+	assert.NotContains(t, spec, "build/bin/build-packages")
 
 	install := spec[strings.Index(spec, "\n%install\n"):]
 	for _, comp := range AllComponents {
