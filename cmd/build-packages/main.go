@@ -35,7 +35,7 @@ func main() {
 	arch := flag.String("arch", "amd64", "Target architecture (amd64 or arm64)")
 	format := flag.String("format", "all", "Package format: deb, rpm, or all")
 	outputDir := flag.String("output", "build/packages", "Output directory for built packages")
-	component := flag.String("component", "all", "Component to build: injector, java, nodejs, dotnet, meta, or all")
+	component := flag.String("component", "all", "Component to build: injector, java, nodejs, dotnet, python, meta, or all")
 	packagingDir := flag.String("packaging-dir", "", "Path to packaging/ directory (auto-detected if empty)")
 	configCheckBinary := flag.String("config-check-binary", "",
 		"Path to a prebuilt otel-config-check binary for the target architecture "+
