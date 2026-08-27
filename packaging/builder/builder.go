@@ -3,11 +3,16 @@
 
 // Package builder creates OpenTelemetry DEB and RPM packages using nfpm.
 //
-// Each component (injector, java, nodejs, dotnet, meta) is described as a
-// Component that knows how to populate an nfpm.Info with the correct metadata,
-// file contents, and lifecycle scripts. The Build function takes a Config, a
-// format string ("deb" or "rpm"), and a Component, and writes the package file
-// to the output directory.
+// Each component (injector, java, nodejs, dotnet, python, meta) is described as
+// a Component that carries the package metadata declaratively and knows how to
+// stage its payload. The Build function takes a Config, a format string ("deb"
+// or "rpm"), and a Component, and writes the package file to the output
+// directory.
+//
+// Package metadata is deliberately separated from payload staging: the metadata
+// alone drives the RPM spec generation (see spec.go), which must not download
+// any upstream artifact, while the payload staging is shared between the nfpm
+// packagers and the spec-based build (see stage.go).
 package builder
 
 import (
@@ -36,14 +41,89 @@ type Config struct {
 	ConfigCheckBinary string
 }
 
+// Relations declares a package's relationships to other packages.
+// The values use the interface-versioned virtual names described in
+// docs/design/packages-meta-architecture.md.
+type Relations struct {
+	Provides   []string
+	Depends    []string
+	Recommends []string
+	Suggests   []string
+}
+
 // Component describes a single package to build.
 type Component struct {
-	Name        string
+	// Name is the short component name used on the command line and as the
+	// base name of the generated %files fragment.
+	Name string
+	// PackageName is the name of the produced package.
+	PackageName string
+	// Description is used as the package description, and as the RPM summary.
 	Description string
-	// InfoFunc builds an nfpm.Info for this component. It returns the info,
-	// a cleanup function that removes any staging directories, and an error.
-	// The cleanup function must be called after packaging completes.
-	InfoFunc func(cfg Config, format string) (info *nfpm.Info, cleanup func(), err error)
+	// Noarch marks a package whose payload is architecture independent. It
+	// selects the "all" DEB architecture and the "noarch" RPM one.
+	Noarch    bool
+	Relations Relations
+	// PostInstall and PreRemove name the lifecycle scripts in
+	// packaging/common/scripts, empty when the component has none.
+	PostInstall string
+	PreRemove   string
+	// ContentsFunc stages the component's payload and returns its contents. It
+	// also returns a cleanup function that removes any staging directories,
+	// which must be called once packaging completes.
+	ContentsFunc func(cfg Config) (contents files.Contents, cleanup func(), err error)
+}
+
+// Arch returns the package architecture for the given format.
+func (c Component) Arch(cfg Config, format string) string {
+	if !c.Noarch {
+		return cfg.Arch
+	}
+	if format == "rpm" {
+		return "noarch"
+	}
+	return "all"
+}
+
+// Info stages the component's payload and returns a complete nfpm.Info for it.
+// The returned cleanup function must be called once packaging completes.
+func (c Component) Info(cfg Config, format string) (*nfpm.Info, func(), error) {
+	contents, cleanup, err := c.ContentsFunc(cfg)
+	if err != nil {
+		return nil, cleanup, err
+	}
+
+	info := &nfpm.Info{
+		Name:        c.PackageName,
+		Version:     cfg.Version,
+		Arch:        c.Arch(cfg, format),
+		Platform:    "linux",
+		Description: c.Description,
+		Vendor:      pkgVendor,
+		Maintainer:  pkgMaintainer,
+		License:     pkgLicense,
+		Homepage:    pkgHomepage,
+		Overridables: nfpm.Overridables{
+			Contents:   contents,
+			Provides:   c.Relations.Provides,
+			Depends:    c.Relations.Depends,
+			Recommends: c.Relations.Recommends,
+			Suggests:   c.Relations.Suggests,
+			RPM: nfpm.RPM{
+				Summary: c.Description,
+			},
+		},
+	}
+
+	scriptsDir := filepath.Join(cfg.PackagingDir, "common", "scripts")
+	if c.PostInstall != "" {
+		info.Overridables.Scripts.PostInstall = filepath.Join(scriptsDir, c.PostInstall)
+	}
+	if c.PreRemove != "" {
+		info.Overridables.Scripts.PreRemove = filepath.Join(scriptsDir, c.PreRemove)
+	}
+
+	return info, cleanup, nil
 }
 
 // ComponentByName returns the Component with the given name.
@@ -68,7 +148,7 @@ var AllComponents = []Component{
 
 // Build creates a single package file.
 func Build(cfg Config, format string, comp Component) error {
-	info, cleanup, err := comp.InfoFunc(cfg, format)
+	info, cleanup, err := comp.Info(cfg, format)
 	if cleanup != nil {
 		defer cleanup()
 	}
@@ -112,26 +192,6 @@ const (
 	pkgLicense    = "Apache-2.0"
 	pkgHomepage   = "https://github.com/open-telemetry/opentelemetry-packaging"
 )
-
-// commonInfo returns a base nfpm.Info with fields common to all packages.
-func commonInfo(cfg Config, name, description, arch string) *nfpm.Info {
-	return &nfpm.Info{
-		Name:        name,
-		Version:     cfg.Version,
-		Arch:        arch,
-		Platform:    "linux",
-		Description: description,
-		Vendor:      pkgVendor,
-		Maintainer:  pkgMaintainer,
-		License:     pkgLicense,
-		Homepage:    pkgHomepage,
-		Overridables: nfpm.Overridables{
-			RPM: nfpm.RPM{
-				Summary: description,
-			},
-		},
-	}
-}
 
 // configFile creates a Content entry for a config file (noreplace for RPM).
 func configFile(src, dst string) *files.Content {
