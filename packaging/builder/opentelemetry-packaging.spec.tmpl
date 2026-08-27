@@ -129,7 +129,7 @@ export GOFLAGS="-mod=vendor"
 # Certain Fedora versions ship old version of Go + sets GOTOOLCHAIN=local.
 # Override that to automatically download relevant Go version on build.
 export GOTOOLCHAIN=auto
-go build -trimpath -o build/bin/build-spec ./cmd/build-spec
+go build -trimpath -o build/bin/build-spec ./cmd/build-spec/rpm
 go build -trimpath -o build/bin/otel-config-check ./cmd/otel-config-check
 
 %install

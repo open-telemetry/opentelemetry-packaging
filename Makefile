@@ -118,10 +118,10 @@ SRPM_CONTAINER_IMAGE ?= registry.fedoraproject.org/fedora@sha256:cffa25ae42f013b
 srpm-sources:
 	@rm -rf $(SRPM_TOPDIR)
 	@mkdir -p $(SRPM_TOPDIR)/SPECS $(SRPM_TOPDIR)/SOURCES
-	go run ./cmd/build-spec -version $(VERSION) -output $(SRPM_TOPDIR)/SPECS
+	go run ./cmd/build-spec/rpm -version $(VERSION) -output $(SRPM_TOPDIR)/SPECS
 	@set -euo pipefail; \
 	spec="$$(ls $(SRPM_TOPDIR)/SPECS/*.spec)"; \
-	prefix="$$(basename "$$spec" .spec)-$$(go run ./cmd/build-spec -version $(VERSION) -print-rpm-version)"; \
+	prefix="$$(basename "$$spec" .spec)-$$(go run ./cmd/build-spec/rpm -version $(VERSION) -print-rpm-version)"; \
 	export_dir="$(SRPM_TOPDIR)/export/$$prefix"; \
 	mkdir -p "$$export_dir"; \
 	echo "Exporting the source tree into $$export_dir"; \

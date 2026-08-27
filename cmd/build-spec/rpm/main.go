@@ -7,9 +7,9 @@
 //
 // Usage:
 //
-//	go run ./cmd/build-spec -version 1.0.0 -output build/srpm/SPECS
-//	go run ./cmd/build-spec -version 1.0.0 -print-rpm-version
-//	go run ./cmd/build-spec -version 1.0.0 -arch amd64 -component injector -stage-root /path/to/buildroot -filelist-dir /path/to/filelists
+//	go run ./cmd/build-spec/rpm -version 1.0.0 -output build/srpm/SPECS
+//	go run ./cmd/build-spec/rpm -version 1.0.0 -print-rpm-version
+//	go run ./cmd/build-spec/rpm -version 1.0.0 -arch amd64 -component injector -stage-root /path/to/buildroot -filelist-dir /path/to/filelists
 package main
 
 import (

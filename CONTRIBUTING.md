@@ -14,7 +14,7 @@ No Ruby, FPM, or special Docker images are required to build packages.
 
 ```
 cmd/build-packages/          CLI entry point for building .deb and .rpm packages
-cmd/build-spec/              CLI entry point for generating and staging the source RPM spec
+cmd/build-spec/rpm/          CLI entry point for generating and staging the source RPM spec
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
 packaging/
   builder/                   Go library that drives nfpm to create packages
@@ -88,13 +88,13 @@ Both producers read it from there: nfpm through `Component.Info`, and rpmbuild t
 RPMs have a second producer, used by the [COPR](https://copr.fedorainfracloud.org/) build, where mock owns the packaging step and only accepts a source RPM.
 
 ```sh
-go run ./cmd/build-spec -version 1.0.0 -output build/srpm/SPECS
+go run ./cmd/build-spec/rpm -version 1.0.0 -output build/srpm/SPECS
 ```
 
 That renders `opentelemetry-packaging.spec`, whose `%install` section calls the same builder back in staging mode:
 
 ```sh
-go run ./cmd/build-spec -version 1.0.0 -arch amd64 -component injector -stage-root /path/to/buildroot -filelist-dir /path/to/filelists
+go run ./cmd/build-spec/rpm -version 1.0.0 -arch amd64 -component injector -stage-root /path/to/buildroot -filelist-dir /path/to/filelists
 ```
 
 Staging materializes the component's `files.Contents` into the buildroot and writes the matching `%files` fragment, so the file lists and the packaged tree come from one traversal and cannot disagree.
