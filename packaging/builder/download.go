@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,6 +27,61 @@ const npmTimeout = 10 * time.Minute
 // httpClient is used for all artifact downloads. It sets a generous timeout
 // to avoid hanging indefinitely on stalled upstream responses.
 var httpClient = &http.Client{Timeout: 10 * time.Minute}
+
+// githubAPIBaseURL is the base of the GitHub REST API, overridable in tests.
+var githubAPIBaseURL = "https://api.github.com"
+
+// fetchGitHubAssetDigest returns the sha256 digest GitHub itself computed
+// for a release asset when it was uploaded, via the Releases API. This lets
+// a download be verified without depending on the upstream project
+// publishing its own checksum manifest — GitHub attaches this digest to
+// every asset of every public release regardless.
+//
+// A GITHUB_TOKEN in the environment is sent as a bearer token to raise the
+// otherwise very low (60/hour, shared across the whole CI runner IP range)
+// unauthenticated rate limit; it is not required for public repositories.
+func fetchGitHubAssetDigest(owner, repo, tag, assetName string) (string, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/releases/tags/%s", githubAPIBaseURL, owner, repo, tag)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "opentelemetry-packaging")
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("fetching release metadata for %s/%s@%s: %w", owner, repo, tag, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("fetching release metadata for %s/%s@%s: HTTP %d", owner, repo, tag, resp.StatusCode)
+	}
+
+	var release struct {
+		Assets []struct {
+			Name   string `json:"name"`
+			Digest string `json:"digest"`
+		} `json:"assets"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", fmt.Errorf("decoding release metadata for %s/%s@%s: %w", owner, repo, tag, err)
+	}
+	for _, a := range release.Assets {
+		if a.Name != assetName {
+			continue
+		}
+		digest, ok := strings.CutPrefix(a.Digest, "sha256:")
+		if !ok || digest == "" {
+			return "", fmt.Errorf("release asset %s has no sha256 digest", assetName)
+		}
+		return digest, nil
+	}
+	return "", fmt.Errorf("release %s/%s@%s has no asset named %s", owner, repo, tag, assetName)
+}
 
 // readReleaseVersion reads a pinned version from a release file.
 // Lines starting with "#" and blank lines are skipped.
@@ -138,24 +194,49 @@ func verifyFileSHA256(path, want string) error {
 	return nil
 }
 
-// downloadInjector fetches libotelinject.so from GitHub releases.
+// downloadInjector fetches libotelinject.so from GitHub releases and verifies
+// it against the sha256 digest GitHub itself published for that asset.
 func downloadInjector(cfg Config, dest string) error {
 	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", "injector", "release.txt"))
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("https://github.com/open-telemetry/opentelemetry-injector/releases/download/%s/libotelinject_%s.so", tag, cfg.Arch)
-	return downloadFile(url, dest)
+	const owner, repo = "open-telemetry", "opentelemetry-injector"
+	assetName := fmt.Sprintf("libotelinject_%s.so", cfg.Arch)
+
+	want, err := fetchGitHubAssetDigest(owner, repo, tag, assetName)
+	if err != nil {
+		return fmt.Errorf("fetching asset digest: %w", err)
+	}
+
+	url := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", owner, repo, tag, assetName)
+	if err := downloadFile(url, dest); err != nil {
+		return err
+	}
+	return verifyFileSHA256(dest, want)
 }
 
-// downloadJavaAgent fetches the Java agent JAR from GitHub releases.
+// downloadJavaAgent fetches the Java agent JAR from GitHub releases and
+// verifies it against the sha256 digest GitHub itself published for that
+// asset.
 func downloadJavaAgent(cfg Config, dest string) error {
 	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", "java", "release.txt"))
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/%s/opentelemetry-javaagent.jar", tag)
-	return downloadFile(url, dest)
+	const owner, repo = "open-telemetry", "opentelemetry-java-instrumentation"
+	const assetName = "opentelemetry-javaagent.jar"
+
+	want, err := fetchGitHubAssetDigest(owner, repo, tag, assetName)
+	if err != nil {
+		return fmt.Errorf("fetching asset digest: %w", err)
+	}
+
+	url := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", owner, repo, tag, assetName)
+	if err := downloadFile(url, dest); err != nil {
+		return err
+	}
+	return verifyFileSHA256(dest, want)
 }
 
 // downloadNodejsAgent fetches the Node.js auto-instrumentation from npm.

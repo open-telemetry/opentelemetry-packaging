@@ -82,6 +82,11 @@ jobs:
           ARCH: ${{ matrix.ARCH }}
           SYS_PACKAGE: ${{ matrix.SYS_PACKAGE }}
           VERSION: ${{ steps.version.outputs.version }}
+          # Raises the GitHub API rate limit for the release-asset digest
+          # lookups in downloadInjector/downloadJavaAgent from 60/hour
+          # (shared across the whole runner IP range) to 5000/hour. Only
+          # reads public release metadata; no elevated permissions needed.
+          GITHUB_TOKEN: ${{ github.token }}
         run: make "${SYS_PACKAGE}-packages" ARCH="${ARCH}" VERSION="${VERSION}"
 
       - name: Upload artifacts
