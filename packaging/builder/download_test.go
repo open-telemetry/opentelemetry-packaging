@@ -6,6 +6,7 @@ package builder
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -92,4 +93,82 @@ func TestVerifyFileSHA256(t *testing.T) {
 			t.Error("verifyFileSHA256: expected error for missing file, got nil")
 		}
 	})
+}
+
+func TestFetchGitHubAssetDigest(t *testing.T) {
+	const digest = "1457e82f86981ae7af77a06add85eae0c8e6cf0c91d58eb948d4e5af160cff6"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/open-telemetry/opentelemetry-injector/releases/tags/v0.11.0" {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprintf(w, `{"assets":[
+			{"name":"libotelinject_amd64.so","digest":"sha256:%s"},
+			{"name":"libotelinject_arm64.so","digest":"sha256:deadbeef"}
+		]}`, digest)
+	}))
+	defer srv.Close()
+
+	origBase := githubAPIBaseURL
+	githubAPIBaseURL = srv.URL
+	defer func() { githubAPIBaseURL = origBase }()
+
+	got, err := fetchGitHubAssetDigest("open-telemetry", "opentelemetry-injector", "v0.11.0", "libotelinject_amd64.so")
+	if err != nil {
+		t.Fatalf("fetchGitHubAssetDigest: %v", err)
+	}
+	if got != digest {
+		t.Errorf("fetchGitHubAssetDigest = %q, want %q", got, digest)
+	}
+}
+
+func TestFetchGitHubAssetDigestSendsToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Errorf("Authorization header = %q, want %q", got, "Bearer test-token")
+		}
+		fmt.Fprint(w, `{"assets":[{"name":"asset.bin","digest":"sha256:deadbeef"}]}`)
+	}))
+	defer srv.Close()
+
+	origBase := githubAPIBaseURL
+	githubAPIBaseURL = srv.URL
+	defer func() { githubAPIBaseURL = origBase }()
+
+	t.Setenv("GITHUB_TOKEN", "test-token")
+
+	if _, err := fetchGitHubAssetDigest("owner", "repo", "v1.0.0", "asset.bin"); err != nil {
+		t.Fatalf("fetchGitHubAssetDigest: %v", err)
+	}
+}
+
+func TestFetchGitHubAssetDigestNoMatchingAsset(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"assets":[{"name":"other-asset.bin","digest":"sha256:deadbeef"}]}`)
+	}))
+	defer srv.Close()
+
+	origBase := githubAPIBaseURL
+	githubAPIBaseURL = srv.URL
+	defer func() { githubAPIBaseURL = origBase }()
+
+	if _, err := fetchGitHubAssetDigest("owner", "repo", "v1.0.0", "asset.bin"); err == nil {
+		t.Error("fetchGitHubAssetDigest: expected error when no asset matches the name, got nil")
+	}
+}
+
+func TestFetchGitHubAssetDigestHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	origBase := githubAPIBaseURL
+	githubAPIBaseURL = srv.URL
+	defer func() { githubAPIBaseURL = origBase }()
+
+	if _, err := fetchGitHubAssetDigest("owner", "repo", "v1.0.0", "asset.bin"); err == nil {
+		t.Fatal("fetchGitHubAssetDigest: expected error on HTTP 404, got nil")
+	}
 }
