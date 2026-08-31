@@ -119,6 +119,17 @@ jobs:
           path: ./build/packages
 
       - name: Run packaging integration tests for ${{ matrix.SYS_PACKAGE }}/${{ matrix.lang }}/${{ matrix.arch }}
+        env:
+          # local-apt-repo (a prerequisite of every integration-test-*
+          # target) rebuilds the packages locally via the .PHONY
+          # deb-packages/rpm-packages targets, re-running
+          # downloadInjector/downloadJavaAgent's GitHub asset-digest lookups
+          # even though a prebuilt package was already downloaded above.
+          # Without a token those lookups share the 60/hour unauthenticated
+          # GitHub API rate limit across every concurrent job in this
+          # matrix (and the rest of the runner IP pool), which is easy to
+          # exhaust; see the build-packages job for the same reasoning.
+          GITHUB_TOKEN: ${{ github.token }}
         run: make integration-test-${{ matrix.SYS_PACKAGE }}-${{ matrix.lang }} ARCH=${{ matrix.arch }}
 
   publish-release:
