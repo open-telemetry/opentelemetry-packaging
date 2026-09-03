@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,6 +27,65 @@ const npmTimeout = 10 * time.Minute
 // httpClient is used for all artifact downloads. It sets a generous timeout
 // to avoid hanging indefinitely on stalled upstream responses.
 var httpClient = &http.Client{Timeout: 10 * time.Minute}
+
+// githubAPIBaseURL is the base of the GitHub REST API, overridable in tests.
+var githubAPIBaseURL = "https://api.github.com"
+
+// fetchGitHubAssetDigest returns the sha256 digest GitHub itself computed
+// for a release asset when it was uploaded, via the Releases API. This lets
+// a download be verified without depending on the upstream project
+// publishing its own checksum manifest — GitHub attaches this digest to
+// every asset of every public release regardless.
+//
+// A GITHUB_TOKEN in the environment is sent as a bearer token to raise the
+// otherwise very low (60/hour, shared across the whole CI runner IP range)
+// unauthenticated rate limit; it is not required for public repositories.
+func fetchGitHubAssetDigest(owner, repo, tag, assetName string) (string, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/releases/tags/%s", githubAPIBaseURL, owner, repo, tag)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "opentelemetry-packaging")
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("fetching release metadata for %s/%s@%s: %w", owner, repo, tag, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("fetching release metadata for %s/%s@%s: HTTP %d", owner, repo, tag, resp.StatusCode)
+	}
+
+	var release struct {
+		Assets []struct {
+			Name   string `json:"name"`
+			Digest string `json:"digest"`
+		} `json:"assets"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", fmt.Errorf("decoding release metadata for %s/%s@%s: %w", owner, repo, tag, err)
+	}
+	for _, a := range release.Assets {
+		if a.Name != assetName {
+			continue
+		}
+		digest, ok := strings.CutPrefix(a.Digest, "sha256:")
+		if !ok || digest == "" {
+			return "", fmt.Errorf("release asset %s has no sha256 digest", assetName)
+		}
+		return digest, nil
+	}
+	return "", fmt.Errorf("release %s/%s@%s has no asset named %s", owner, repo, tag, assetName)
+}
+
+// pypiBaseURL is the base of PyPI's per-release JSON API, overridable in
+// tests.
+var pypiBaseURL = "https://pypi.org/pypi"
 
 // readReleaseVersion reads a pinned version from a release file.
 // Lines starting with "#" and blank lines are skipped.
@@ -138,24 +198,49 @@ func verifyFileSHA256(path, want string) error {
 	return nil
 }
 
-// downloadInjector fetches libotelinject.so from GitHub releases.
+// downloadInjector fetches libotelinject.so from GitHub releases and verifies
+// it against the sha256 digest GitHub itself published for that asset.
 func downloadInjector(cfg Config, dest string) error {
 	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", "injector", "release.txt"))
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("https://github.com/open-telemetry/opentelemetry-injector/releases/download/%s/libotelinject_%s.so", tag, cfg.Arch)
-	return downloadFile(url, dest)
+	const owner, repo = "open-telemetry", "opentelemetry-injector"
+	assetName := fmt.Sprintf("libotelinject_%s.so", cfg.Arch)
+
+	want, err := fetchGitHubAssetDigest(owner, repo, tag, assetName)
+	if err != nil {
+		return fmt.Errorf("fetching asset digest: %w", err)
+	}
+
+	url := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", owner, repo, tag, assetName)
+	if err := downloadFile(url, dest); err != nil {
+		return err
+	}
+	return verifyFileSHA256(dest, want)
 }
 
-// downloadJavaAgent fetches the Java agent JAR from GitHub releases.
+// downloadJavaAgent fetches the Java agent JAR from GitHub releases and
+// verifies it against the sha256 digest GitHub itself published for that
+// asset.
 func downloadJavaAgent(cfg Config, dest string) error {
 	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", "java", "release.txt"))
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/%s/opentelemetry-javaagent.jar", tag)
-	return downloadFile(url, dest)
+	const owner, repo = "open-telemetry", "opentelemetry-java-instrumentation"
+	const assetName = "opentelemetry-javaagent.jar"
+
+	want, err := fetchGitHubAssetDigest(owner, repo, tag, assetName)
+	if err != nil {
+		return fmt.Errorf("fetching asset digest: %w", err)
+	}
+
+	url := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", owner, repo, tag, assetName)
+	if err := downloadFile(url, dest); err != nil {
+		return err
+	}
+	return verifyFileSHA256(dest, want)
 }
 
 // downloadNodejsAgent fetches the Node.js auto-instrumentation from npm.
@@ -410,16 +495,124 @@ func splitRequirements(requirementsFile string) (pypi, source []string, err erro
 	return pypi, source, nil
 }
 
+// parsePackageFilename extracts the PyPI project name and version from a
+// downloaded wheel (PEP 427/600) or sdist (PEP 625) filename, so a file with
+// no other attached metadata can be looked up against PyPI's per-release
+// file index. Both formats start with "<name>-<version>", with the name
+// normalized ('-', '.' collapsed to '_'); everything after the version is
+// build/interpreter/platform tags (wheels) or the ".tar.gz" suffix (sdists).
+func parsePackageFilename(filename string) (name, version string, err error) {
+	switch {
+	case strings.HasSuffix(filename, ".whl"):
+		parts := strings.Split(strings.TrimSuffix(filename, ".whl"), "-")
+		if len(parts) < 5 {
+			return "", "", fmt.Errorf("malformed wheel filename: %s", filename)
+		}
+		name, version = parts[0], parts[1]
+	case strings.HasSuffix(filename, ".tar.gz"):
+		base := strings.TrimSuffix(filename, ".tar.gz")
+		idx := strings.LastIndex(base, "-")
+		if idx < 0 {
+			return "", "", fmt.Errorf("malformed sdist filename: %s", filename)
+		}
+		name, version = base[:idx], base[idx+1:]
+	default:
+		return "", "", fmt.Errorf("unrecognized package file type: %s", filename)
+	}
+	// PyPI's JSON API resolves any of the project's registered name spellings,
+	// but the filename form always uses underscores; converting back to
+	// hyphens matches how PyPI project names are conventionally written.
+	return strings.ReplaceAll(name, "_", "-"), version, nil
+}
+
+// pypiRelease is the subset of PyPI's "/pypi/<name>/<version>/json" response
+// needed to look up a published file's digest.
+type pypiRelease struct {
+	Urls []struct {
+		Filename string `json:"filename"`
+		Digests  struct {
+			SHA256 string `json:"sha256"`
+		} `json:"digests"`
+	} `json:"urls"`
+}
+
+// fetchPyPIDigest fetches the sha256 digest PyPI itself published for a
+// given project release file, straight from PyPI's JSON API — the same
+// trust model downloadDotnetAgent uses for the .NET checksums.txt: the
+// expected digest is fetched fresh from the upstream registry for the
+// resolved version, not stored in this repo, so a compromised or corrupted
+// download can be caught without any local hash to maintain.
+func fetchPyPIDigest(name, version, filename string) (string, error) {
+	url := fmt.Sprintf("%s/%s/%s/json", pypiBaseURL, name, version)
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("fetching PyPI metadata for %s==%s: %w", name, version, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("fetching PyPI metadata for %s==%s: HTTP %d", name, version, resp.StatusCode)
+	}
+
+	var rel pypiRelease
+	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+		return "", fmt.Errorf("decoding PyPI metadata for %s==%s: %w", name, version, err)
+	}
+	for _, u := range rel.Urls {
+		if u.Filename != filename {
+			continue
+		}
+		if u.Digests.SHA256 == "" {
+			return "", fmt.Errorf("PyPI metadata for %s has no sha256 digest", filename)
+		}
+		return u.Digests.SHA256, nil
+	}
+	return "", fmt.Errorf("PyPI metadata for %s==%s has no entry for %s", name, version, filename)
+}
+
+// verifyPyPIDownloads checks every file pip downloaded into dir against the
+// sha256 digest PyPI published for that exact release file. Because the
+// files are named after the package pip download actually resolved, this
+// covers the full dependency closure (transitive dependencies included), not
+// just the packages explicitly pinned in requirements.txt.
+func verifyPyPIDownloads(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("reading downloaded packages: %w", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		filename := e.Name()
+		name, version, err := parsePackageFilename(filename)
+		if err != nil {
+			return err
+		}
+		want, err := fetchPyPIDigest(name, version, filename)
+		if err != nil {
+			return err
+		}
+		if err := verifyFileSHA256(filepath.Join(dir, filename), want); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // downloadPythonAgent installs Python auto-instrumentation packages into destDir.
 // The packages are defined by packaging/common/python/requirements.txt.
 //
 // Installation happens in two passes so the resulting package is correct for the
 // target Linux architecture and Python version regardless of the build host:
 //
-//  1. PyPI requirements are installed binary-only, pinned to manylinux wheels for
+//  1. PyPI requirements are fetched binary-only, pinned to manylinux wheels for
 //     the target arch and to the target Python version/ABI. This prevents the
 //     build host's OS (e.g. macOS) and Python version from leaking compiled
-//     extensions into the package.
+//     extensions into the package. Every resolved file (pinned requirements and
+//     their transitive dependencies alike) is downloaded to a local cache and
+//     verified against PyPI's own published sha256 digest before anything is
+//     installed; installation then proceeds --no-index from that verified
+//     cache, so a mismatched file can never be silently installed.
 //  2. Source requirements (unpublished pure-Python packages, vendored under
 //     vendor/ or on a git branch) are built from source with --no-deps into a
 //     separate directory, then merged in. Their dependencies must therefore be
@@ -442,7 +635,6 @@ func downloadPythonAgent(cfg Config, destDir string) error {
 
 	python := pythonExecutable()
 
-	// Pass 1: PyPI requirements as cross-platform manylinux wheels.
 	fmt.Printf("  Installing Python OTel packages (PyPI, linux/%s, py%s) into %s\n", cfg.Arch, targetPythonVersion, destDir)
 
 	pypiReqFile := filepath.Join(filepath.Dir(destDir), "requirements-pypi.txt")
@@ -450,11 +642,7 @@ func downloadPythonAgent(cfg Config, destDir string) error {
 		return fmt.Errorf("writing PyPI requirements file: %w", err)
 	}
 
-	pass1Args := []string{
-		"-m", "pip", "install",
-		"--target", destDir,
-		"--no-compile",
-		"--quiet",
+	platformArgs := []string{
 		"--only-binary=:all:",
 		"--python-version", targetPythonVersion,
 		"--implementation", "cp",
@@ -463,11 +651,47 @@ func downloadPythonAgent(cfg Config, destDir string) error {
 		"--abi", "none",
 	}
 	for _, p := range platforms {
-		pass1Args = append(pass1Args, "--platform", p)
+		platformArgs = append(platformArgs, "--platform", p)
 	}
-	pass1Args = append(pass1Args, "-r", pypiReqFile)
 
-	if err := runPip(python, pass1Args); err != nil {
+	// Pass 1a: download the full resolved closure into a local cache and
+	// verify it before anything is installed.
+	downloadDir, err := os.MkdirTemp("", "otel-python-download-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(downloadDir)
+
+	downloadArgs := []string{
+		"-m", "pip", "download",
+		"--dest", downloadDir,
+		"--quiet",
+	}
+	downloadArgs = append(downloadArgs, platformArgs...)
+	downloadArgs = append(downloadArgs, "-r", pypiReqFile)
+
+	if err := runPip(python, downloadArgs); err != nil {
+		return err
+	}
+
+	if err := verifyPyPIDownloads(downloadDir); err != nil {
+		return fmt.Errorf("verifying downloaded Python packages: %w", err)
+	}
+
+	// Pass 1b: install from the verified local cache only. --no-index means
+	// pip cannot fall back to re-fetching a file that was never checked.
+	installArgs := []string{
+		"-m", "pip", "install",
+		"--target", destDir,
+		"--no-compile",
+		"--quiet",
+		"--no-index",
+		"--find-links", downloadDir,
+	}
+	installArgs = append(installArgs, platformArgs...)
+	installArgs = append(installArgs, "-r", pypiReqFile)
+
+	if err := runPip(python, installArgs); err != nil {
 		return err
 	}
 
