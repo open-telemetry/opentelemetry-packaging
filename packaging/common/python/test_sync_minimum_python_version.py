@@ -25,6 +25,47 @@ _MINIMAL_SITECUSTOMIZE = (
 )
 
 
+def write_dist_info_with_requires_python(
+        payload_directory, name, version, requires_python):
+    """Create a <name>-<version>.dist-info/METADATA under payload_directory.
+
+    This is the minimum importlib.metadata needs to enumerate a distribution
+    and report its Requires-Python, so a payload can be assembled offline
+    without installing anything.
+    """
+    dist_info_directory = payload_directory / "{}-{}.dist-info".format(
+        name, version)
+    dist_info_directory.mkdir(parents=True)
+    (dist_info_directory / "METADATA").write_text(
+        "Metadata-Version: 2.1\n"
+        "Name: {}\n"
+        "Version: {}\n"
+        "Requires-Python: {}\n".format(name, version, requires_python),
+        encoding="utf-8")
+
+
+def write_sitecustomize_with_gate_minor(sitecustomize_path, gate_minor):
+    """Write a minimal sitecustomize.py whose gate constant holds gate_minor."""
+    sitecustomize_path.write_text(
+        _MINIMAL_SITECUSTOMIZE.replace(
+            "= 10  #", "= {}  #".format(gate_minor)).replace(
+            ">= 3.10", ">= 3.{}".format(gate_minor)),
+        encoding="utf-8")
+
+
+def run_sync_minimum_python_version(
+        mode, payload_directory, vendor_directory, sitecustomize_path):
+    """Run the tool in --check or --write mode and return the completed run."""
+    return run(
+        [
+            executable, _TOOL_PATH, mode,
+            "--payload-dir", str(payload_directory),
+            "--vendor-dir", str(vendor_directory),
+            "--sitecustomize", str(sitecustomize_path),
+        ],
+        capture_output=True, text=True)
+
+
 class TestDeriveFloorFromRequiresPython(TestCase):
 
     def test_strictest_lower_bound_wins(self):
@@ -49,15 +90,106 @@ class TestDeriveFloorFromRequiresPython(TestCase):
             lowest_supported_major_minor_across_requires_python([None, ""]))
 
 
+class TestPayloadScopedEnumeration(TestCase):
+
+    def test_floor_comes_only_from_the_payload_directory(self):
+        # The payload declares a single distribution at >=3.7, so the floor is
+        # 3.7 and a gate of 7 is in sync. The interpreter running this test has
+        # packaging installed (>=3.9), plus pip and setuptools from the
+        # throwaway venv the python-unit-tests target builds. An enumeration
+        # that walked sys.path instead of --payload-dir would derive at least
+        # 3.9 from those and report the gate as out of sync, so passing here is
+        # what proves the enumeration is scoped to the payload.
+        with TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            payload_directory = temporary_path / "payload"
+            write_dist_info_with_requires_python(
+                payload_directory, "shipped_thing", "1.0", ">=3.7")
+            vendor_directory = temporary_path / "vendor"
+            vendor_directory.mkdir()
+            sitecustomize_path = temporary_path / "sitecustomize.py"
+            write_sitecustomize_with_gate_minor(sitecustomize_path, 7)
+
+            completed = run_sync_minimum_python_version(
+                "--check", payload_directory, vendor_directory,
+                sitecustomize_path)
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("derived minimum Python: 3.7", completed.stdout)
+
+    def test_strictest_payload_distribution_decides_the_floor(self):
+        with TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            payload_directory = temporary_path / "payload"
+            write_dist_info_with_requires_python(
+                payload_directory, "lenient_thing", "1.0", ">=3.9")
+            write_dist_info_with_requires_python(
+                payload_directory, "strict_thing", "2.0", ">=3.11")
+            vendor_directory = temporary_path / "vendor"
+            vendor_directory.mkdir()
+            sitecustomize_path = temporary_path / "sitecustomize.py"
+            write_sitecustomize_with_gate_minor(sitecustomize_path, 11)
+
+            completed = run_sync_minimum_python_version(
+                "--check", payload_directory, vendor_directory,
+                sitecustomize_path)
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("derived minimum Python: 3.11", completed.stdout)
+
+    def test_missing_payload_directory_fails(self):
+        # A mistyped or unbuilt payload path must be an error rather than a
+        # derivation from the vendored pyproject files alone, which would
+        # silently report a floor lower than the one the package ships.
+        with TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            vendor_directory = temporary_path / "vendor" / "some-package"
+            vendor_directory.mkdir(parents=True)
+            (vendor_directory / "pyproject.toml").write_text(
+                "[project]\n"
+                'name = "some-package"\n'
+                'requires-python = ">=3.10"\n',
+                encoding="utf-8")
+            sitecustomize_path = temporary_path / "sitecustomize.py"
+            write_sitecustomize_with_gate_minor(sitecustomize_path, 10)
+
+            completed = run_sync_minimum_python_version(
+                "--check", temporary_path / "no-such-payload",
+                temporary_path / "vendor", sitecustomize_path)
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("no distributions found", completed.stderr)
+
+    def test_empty_payload_directory_fails(self):
+        with TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            payload_directory = temporary_path / "payload"
+            payload_directory.mkdir()
+            vendor_directory = temporary_path / "vendor"
+            vendor_directory.mkdir()
+            sitecustomize_path = temporary_path / "sitecustomize.py"
+            write_sitecustomize_with_gate_minor(sitecustomize_path, 10)
+
+            completed = run_sync_minimum_python_version(
+                "--check", payload_directory, vendor_directory,
+                sitecustomize_path)
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("no distributions found", completed.stderr)
+
+
 class TestVendorPyprojectParsing(TestCase):
 
     def test_check_reads_requires_python_from_vendor_pyproject(self):
-        # A temp vendor dir whose only pyproject floor (3.12) exceeds the gate
-        # (3.10) must drive --check to report an out-of-sync gate. This proves
-        # the tool reads [project].requires-python from pyproject.toml files
-        # found under --vendor-dir.
+        # The payload floor (3.8) is below the only vendored pyproject floor
+        # (3.12), which must therefore drive --check to report the gate (3.10)
+        # as out of sync. This proves the tool reads [project].requires-python
+        # from pyproject.toml files found under --vendor-dir.
         with TemporaryDirectory() as temporary_directory:
             temporary_path = Path(temporary_directory)
+            payload_directory = temporary_path / "payload"
+            write_dist_info_with_requires_python(
+                payload_directory, "shipped_thing", "1.0", ">=3.8")
             vendor_directory = temporary_path / "vendor" / "some-package"
             vendor_directory.mkdir(parents=True)
             (vendor_directory / "pyproject.toml").write_text(
@@ -69,13 +201,9 @@ class TestVendorPyprojectParsing(TestCase):
             sitecustomize_path.write_text(
                 _MINIMAL_SITECUSTOMIZE, encoding="utf-8")
 
-            completed = run(
-                [
-                    executable, _TOOL_PATH, "--check",
-                    "--vendor-dir", str(temporary_path / "vendor"),
-                    "--sitecustomize", str(sitecustomize_path),
-                ],
-                capture_output=True, text=True)
+            completed = run_sync_minimum_python_version(
+                "--check", payload_directory, temporary_path / "vendor",
+                sitecustomize_path)
 
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("3.12", completed.stdout)
@@ -109,66 +237,42 @@ class TestGateConstantReadAndRewrite(TestCase):
 class TestCheckAndWriteEndToEnd(TestCase):
 
     def test_check_exits_zero_when_gate_matches_and_nonzero_when_not(self):
-        # The running interpreter's installed distributions plus an empty
-        # vendor dir yield some 3.x floor. Whatever it is, a gate set to that
-        # exact minor must pass --check, and a gate set one minor higher must
-        # fail. We discover the floor from the passing run, then perturb it.
+        # A payload whose strictest distribution declares >=3.11 fixes the
+        # derived floor at 3.11, so a gate of 11 must pass and a gate of 12
+        # must fail.
         with TemporaryDirectory() as temporary_directory:
             temporary_path = Path(temporary_directory)
-            empty_vendor = temporary_path / "vendor"
-            empty_vendor.mkdir()
-
-            probe_sitecustomize = temporary_path / "probe_sitecustomize.py"
-            probe_sitecustomize.write_text(
-                _MINIMAL_SITECUSTOMIZE, encoding="utf-8")
-            probe = run(
-                [
-                    executable, _TOOL_PATH, "--check",
-                    "--vendor-dir", str(empty_vendor),
-                    "--sitecustomize", str(probe_sitecustomize),
-                ],
-                capture_output=True, text=True)
-            derived_line = next(
-                line for line in probe.stdout.splitlines()
-                if line.startswith("derived minimum Python: 3."))
-            derived_minor = int(derived_line.rsplit(".", 1)[1])
+            payload_directory = temporary_path / "payload"
+            write_dist_info_with_requires_python(
+                payload_directory, "shipped_thing", "1.0", ">=3.11")
+            vendor_directory = temporary_path / "vendor"
+            vendor_directory.mkdir()
 
             matching_sitecustomize = temporary_path / "matching.py"
-            matching_sitecustomize.write_text(
-                _MINIMAL_SITECUSTOMIZE.replace(
-                    "= 10  #", "= {}  #".format(derived_minor)).replace(
-                    ">= 3.10", ">= 3.{}".format(derived_minor)),
-                encoding="utf-8")
-            matching = run(
-                [
-                    executable, _TOOL_PATH, "--check",
-                    "--vendor-dir", str(empty_vendor),
-                    "--sitecustomize", str(matching_sitecustomize),
-                ],
-                capture_output=True, text=True)
+            write_sitecustomize_with_gate_minor(matching_sitecustomize, 11)
+            matching = run_sync_minimum_python_version(
+                "--check", payload_directory, vendor_directory,
+                matching_sitecustomize)
             self.assertEqual(matching.returncode, 0, matching.stderr)
 
             mismatching_sitecustomize = temporary_path / "mismatching.py"
-            mismatching_sitecustomize.write_text(
-                _MINIMAL_SITECUSTOMIZE.replace(
-                    "= 10  #", "= {}  #".format(derived_minor + 1)).replace(
-                    ">= 3.10", ">= 3.{}".format(derived_minor + 1)),
-                encoding="utf-8")
-            mismatching = run(
-                [
-                    executable, _TOOL_PATH, "--check",
-                    "--vendor-dir", str(empty_vendor),
-                    "--sitecustomize", str(mismatching_sitecustomize),
-                ],
-                capture_output=True, text=True)
-            self.assertNotEqual(mismatching.returncode, 0)
+            write_sitecustomize_with_gate_minor(mismatching_sitecustomize, 12)
+            mismatching = run_sync_minimum_python_version(
+                "--check", payload_directory, vendor_directory,
+                mismatching_sitecustomize)
+
+        self.assertNotEqual(mismatching.returncode, 0)
 
     def test_write_rewrites_marker_and_comment_to_derived_floor(self):
-        # A temp vendor pyproject with a 3.13 floor forces the derived floor to
-        # at least 3.13. --write must rewrite the temp sitecustomize to that
-        # minor in both the constant and the human-readable comment.
+        # A vendored pyproject with a 3.13 floor above the payload's 3.10 puts
+        # the derived floor at 3.13. --write must rewrite the temp
+        # sitecustomize to that minor in both the constant and the
+        # human-readable comment.
         with TemporaryDirectory() as temporary_directory:
             temporary_path = Path(temporary_directory)
+            payload_directory = temporary_path / "payload"
+            write_dist_info_with_requires_python(
+                payload_directory, "shipped_thing", "1.0", ">=3.10")
             vendor_directory = temporary_path / "vendor" / "high-floor"
             vendor_directory.mkdir(parents=True)
             (vendor_directory / "pyproject.toml").write_text(
@@ -180,13 +284,9 @@ class TestCheckAndWriteEndToEnd(TestCase):
             sitecustomize_path.write_text(
                 _MINIMAL_SITECUSTOMIZE, encoding="utf-8")
 
-            completed = run(
-                [
-                    executable, _TOOL_PATH, "--write",
-                    "--vendor-dir", str(temporary_path / "vendor"),
-                    "--sitecustomize", str(sitecustomize_path),
-                ],
-                capture_output=True, text=True)
+            completed = run_sync_minimum_python_version(
+                "--write", payload_directory, temporary_path / "vendor",
+                sitecustomize_path)
             self.assertEqual(completed.returncode, 0, completed.stderr)
 
             rewritten = sitecustomize_path.read_text(encoding="utf-8")

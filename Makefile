@@ -400,13 +400,15 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 go-unit-tests:
 	go test -v ./cmd/...
 
-# Unit tests for sitecustomize.py. They need the `packaging` module (a runtime
-# dependency of sitecustomize.py itself); a throwaway virtualenv keeps the
-# host Python untouched.
+# Unit tests for sitecustomize.py and sync_minimum_python_version.py. They need
+# the `packaging` module (a runtime dependency of sitecustomize.py itself) and,
+# under Python 3.10, the `tomli` backport that sync_minimum_python_version.py
+# falls back to where the stdlib tomllib is absent; a throwaway virtualenv keeps
+# the host Python untouched.
 .PHONY: python-unit-tests
 python-unit-tests:
 	python3 -m venv build/python-unit-tests-venv
-	build/python-unit-tests-venv/bin/pip install --quiet packaging
+	build/python-unit-tests-venv/bin/pip install --quiet packaging tomli
 	build/python-unit-tests-venv/bin/python -m unittest discover \
 		--start-directory packaging/common/python --pattern 'test_*.py' --verbose
 
@@ -472,27 +474,39 @@ pyproto-unit-tests:
 	done
 
 # Check that the sitecustomize.py version gate stays in sync with the strictest
-# Requires-Python across the bundled distributions. The PyPI pins are installed
-# into a throwaway venv (excluding the vendored source lines) purely so the tool
-# can read their Requires-Python metadata; the vendored floor is read straight
-# from each vendor pyproject.toml via --vendor-dir, so the vendored source does
-# not need to be built for the check.
+# Requires-Python across the distributions that actually ship. The PyPI pins
+# (excluding the vendored source lines) are installed with pip install --target
+# into a throwaway payload directory, the same way packaging/builder/download.go
+# assembles the payload for the DEB and the RPM, and the tool enumerates only
+# that directory. A virtualenv would additionally contain pip and setuptools
+# from "python -m venv" plus the tool's own tomli, none of which ship; since the
+# floor is a maximum, a non-shipped distribution can only raise it, which would
+# mask a floor that should drop while the check still reported "in sync".
 #
-# The venv is built with the minimum supported interpreter (MINIMUM_PYTHON, the
-# current 3.x floor) on purpose: pip must resolve transitive dependencies the
-# way it would on that floor, so a newer release of a transitive dependency that
-# raised its own Requires-Python does not inflate the derived floor above what
-# actually runs on the minimum interpreter. tomli is the tomllib backport the
-# tool falls back to under Python 3.10 (tomllib is standard library from 3.11).
+# The vendored floor is read straight from each vendor pyproject.toml via
+# --vendor-dir, so the vendored source does not need to be built for the check.
+#
+# The venv that runs the tool is built with the minimum supported interpreter
+# (MINIMUM_PYTHON, the current 3.x floor) on purpose: its pip must resolve the
+# payload's transitive dependencies the way it would on that floor, so a newer
+# release of a transitive dependency that raised its own Requires-Python does
+# not inflate the derived floor above what actually runs on the minimum
+# interpreter. tomli is the tomllib backport the tool falls back to under
+# Python 3.10 (tomllib is standard library from 3.11).
 MINIMUM_PYTHON ?= python3.10
+MINIMUM_PYTHON_VENV = build/minimum-python-version-venv
+MINIMUM_PYTHON_PAYLOAD = build/minimum-python-version-payload
 .PHONY: check-minimum-python-version
 check-minimum-python-version:
-	$(MINIMUM_PYTHON) -m venv build/minimum-python-version-venv
-	build/minimum-python-version-venv/bin/pip install --quiet packaging tomli
+	$(MINIMUM_PYTHON) -m venv $(MINIMUM_PYTHON_VENV)
+	$(MINIMUM_PYTHON_VENV)/bin/pip install --quiet packaging tomli
+	rm -rf $(MINIMUM_PYTHON_PAYLOAD)
 	grep -v '^\./vendor/' packaging/common/python/requirements.txt | \
-		build/minimum-python-version-venv/bin/pip install --quiet -r /dev/stdin
-	build/minimum-python-version-venv/bin/python \
+		$(MINIMUM_PYTHON_VENV)/bin/pip install --quiet \
+			--target $(MINIMUM_PYTHON_PAYLOAD) -r /dev/stdin
+	$(MINIMUM_PYTHON_VENV)/bin/python \
 		packaging/common/python/sync_minimum_python_version.py --check \
+		--payload-dir $(MINIMUM_PYTHON_PAYLOAD) \
 		--vendor-dir packaging/common/python/vendor \
 		--sitecustomize packaging/common/python/sitecustomize.py
 

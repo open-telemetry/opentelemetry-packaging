@@ -4,10 +4,21 @@
 """Derive and enforce the sitecustomize.py minimum Python version.
 
 The minimum supported Python of the bundled agent is the strictest
-Requires-Python lower bound across every distribution installed in the running
-interpreter (the PyPI pins from requirements.txt) and every vendored package's
-pyproject.toml. This script derives that floor and either checks it against the
-sitecustomize.py version gate (--check) or rewrites the gate to match (--write).
+Requires-Python lower bound across every distribution that ships in the package
+and every vendored package's pyproject.toml. This script derives that floor and
+either checks it against the sitecustomize.py version gate (--check) or rewrites
+the gate to match (--write).
+
+The shipped distributions are enumerated from the payload directory named by
+--payload-dir: the directory that a "pip install --target" of requirements.txt
+produces, which is what packaging/builder/download.go writes into the DEB and
+the RPM. Scoping the enumeration to that directory keeps distributions that
+never ship out of the derivation: pip and setuptools, which "python -m venv"
+creates in any surrounding virtualenv, and tomli, which only this tool imports.
+Because the floor is a maximum over per-distribution lower bounds, a
+distribution that does not ship can only raise it and never lower it, so
+including one would mask a floor that should drop while --check still reported
+the gate as in sync.
 
 The gate is a plain integer comparison in sitecustomize.py so that the file
 still parses and runs on ancient interpreters. The comparison reads a named
@@ -119,6 +130,12 @@ def main():
         default=join(script_directory, "sitecustomize.py"),
         help="path to sitecustomize.py (default: next to this script)")
     argument_parser.add_argument(
+        "--payload-dir",
+        required=True,
+        help="directory holding the distributions that ship in the package, "
+             "as produced by pip install --target; only the distributions "
+             "found there contribute to the derived floor")
+    argument_parser.add_argument(
         "--vendor-dir",
         default=join(script_directory, "vendor"),
         help="directory tree searched for vendored pyproject.toml files "
@@ -134,13 +151,25 @@ def main():
         help="rewrite the gate constant to match the derived floor")
     arguments = argument_parser.parse_args()
 
-    # Collect Requires-Python from every installed distribution, then from
-    # every vendored pyproject.toml. The importlib.metadata enumeration and the
-    # pyproject reads are inlined here (each is used only in this one place);
-    # the derivation logic they feed is a reusable, separately tested function.
+    # Collect Requires-Python from every shipped distribution, then from every
+    # vendored pyproject.toml. The enumeration is scoped to the payload
+    # directory with path=; called with no arguments, distributions() would walk
+    # the running interpreter's sys.path and pick up pip, setuptools and tomli,
+    # which the DEB and the RPM never ship. The importlib.metadata enumeration
+    # and the pyproject reads are inlined here (each is used only in this one
+    # place); the derivation logic they feed is a reusable, separately tested
+    # function.
+    shipped_distributions = list(distributions(path=[arguments.payload_dir]))
+    if not shipped_distributions:
+        print(
+            "no distributions found in payload directory {}: it is missing or "
+            "empty, and must be populated with pip install --target before "
+            "running this check".format(arguments.payload_dir),
+            file=stderr)
+        return 1
     requires_python_strings = [
         distribution.metadata["Requires-Python"]
-        for distribution in distributions()]
+        for distribution in shipped_distributions]
     for pyproject_path in Path(arguments.vendor_dir).rglob("pyproject.toml"):
         with open(pyproject_path, "rb") as pyproject_file:
             pyproject_data = load(pyproject_file)
