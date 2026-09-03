@@ -8,9 +8,12 @@ import (
 	"bufio"
 	"context"
 	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
 	"os"
@@ -243,9 +246,85 @@ func downloadJavaAgent(cfg Config, dest string) error {
 	return verifyFileSHA256(dest, want)
 }
 
+// npmRegistryBaseURL is the base of the npm registry's package metadata API,
+// overridable in tests.
+var npmRegistryBaseURL = "https://registry.npmjs.org"
+
+// fetchNpmIntegrity fetches the Subresource Integrity string npm's registry
+// itself published for a package version's tarball (dist.integrity, e.g.
+// "sha512-<base64>") — the same trust model downloadDotnetAgent and
+// downloadPythonAgent use for their upstream registries: the expected digest
+// is fetched fresh from the registry for the resolved version, not stored in
+// this repo.
+func fetchNpmIntegrity(name, version string) (string, error) {
+	url := fmt.Sprintf("%s/%s/%s", npmRegistryBaseURL, name, version)
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("fetching npm metadata for %s@%s: %w", name, version, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("fetching npm metadata for %s@%s: HTTP %d", name, version, resp.StatusCode)
+	}
+
+	var meta struct {
+		Dist struct {
+			Integrity string `json:"integrity"`
+		} `json:"dist"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
+		return "", fmt.Errorf("decoding npm metadata for %s@%s: %w", name, version, err)
+	}
+	if meta.Dist.Integrity == "" {
+		return "", fmt.Errorf("npm metadata for %s@%s has no dist.integrity", name, version)
+	}
+	return meta.Dist.Integrity, nil
+}
+
+// verifyFileSRI hashes the file at path and returns an error if it does not
+// match the expected Subresource Integrity string (e.g. "sha512-<base64>"),
+// the format npm's registry publishes tarball digests in.
+func verifyFileSRI(path, integrity string) error {
+	algo, wantB64, ok := strings.Cut(integrity, "-")
+	if !ok {
+		return fmt.Errorf("malformed integrity string: %q", integrity)
+	}
+
+	var h hash.Hash
+	switch algo {
+	case "sha512":
+		h = sha512.New()
+	case "sha256":
+		h = sha256.New()
+	default:
+		return fmt.Errorf("unsupported integrity algorithm %q", algo)
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err := io.Copy(h, f); err != nil {
+		return fmt.Errorf("hashing %s: %w", path, err)
+	}
+
+	got := base64.StdEncoding.EncodeToString(h.Sum(nil))
+	if got != wantB64 {
+		return fmt.Errorf("integrity mismatch for %s: got %s-%s, want %s", path, algo, got, integrity)
+	}
+	return nil
+}
+
 // downloadNodejsAgent fetches the Node.js auto-instrumentation from npm.
 // This shells out to npm because the npm registry protocol and package
-// installation logic (with native dependencies) is non-trivial.
+// installation logic (with native dependencies) is non-trivial. npm's own
+// installer already verifies every tarball it downloads (including
+// transitive dependencies) against the registry-published integrity as part
+// of its normal operation, failing loudly on a mismatch; the explicit check
+// below covers the one file npm's installer doesn't verify itself — the
+// tarball "npm pack" writes to disk — against the same registry-published
+// integrity, before it is ever installed.
 func downloadNodejsAgent(cfg Config, destDir string) error {
 	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", "nodejs", "release.txt"))
 	if err != nil {
@@ -281,6 +360,15 @@ func downloadNodejsAgent(cfg Config, destDir string) error {
 		return fmt.Errorf("npm pack did not produce a .tgz in %s", nodejsDir)
 	}
 	tgz := tgzMatches[0]
+
+	const npmPkg = "@opentelemetry/auto-instrumentations-node"
+	want, err := fetchNpmIntegrity(npmPkg, ver)
+	if err != nil {
+		return fmt.Errorf("fetching npm integrity: %w", err)
+	}
+	if err := verifyFileSRI(tgz, want); err != nil {
+		return err
+	}
 
 	installCtx, installCancel := context.WithTimeout(context.Background(), npmTimeout)
 	defer installCancel()

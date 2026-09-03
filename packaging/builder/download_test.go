@@ -5,6 +5,8 @@ package builder
 
 import (
 	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -292,6 +294,113 @@ func TestVerifyPyPIDownloads(t *testing.T) {
 	if err := verifyPyPIDownloads(dir); err != nil {
 		t.Errorf("verifyPyPIDownloads: %v", err)
 	}
+}
+
+func TestFetchNpmIntegrity(t *testing.T) {
+	const integrity = "sha512-abc123=="
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/@opentelemetry/auto-instrumentations-node/0.79.0" {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprintf(w, `{"dist":{"integrity":%q}}`, integrity)
+	}))
+	defer srv.Close()
+
+	origBase := npmRegistryBaseURL
+	npmRegistryBaseURL = srv.URL
+	defer func() { npmRegistryBaseURL = origBase }()
+
+	got, err := fetchNpmIntegrity("@opentelemetry/auto-instrumentations-node", "0.79.0")
+	if err != nil {
+		t.Fatalf("fetchNpmIntegrity: %v", err)
+	}
+	if got != integrity {
+		t.Errorf("fetchNpmIntegrity = %q, want %q", got, integrity)
+	}
+}
+
+func TestFetchNpmIntegrityMissing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"dist":{}}`)
+	}))
+	defer srv.Close()
+
+	origBase := npmRegistryBaseURL
+	npmRegistryBaseURL = srv.URL
+	defer func() { npmRegistryBaseURL = origBase }()
+
+	if _, err := fetchNpmIntegrity("pkg", "1.0.0"); err == nil {
+		t.Error("fetchNpmIntegrity: expected error when dist.integrity is missing, got nil")
+	}
+}
+
+func TestFetchNpmIntegrityHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	origBase := npmRegistryBaseURL
+	npmRegistryBaseURL = srv.URL
+	defer func() { npmRegistryBaseURL = origBase }()
+
+	if _, err := fetchNpmIntegrity("pkg", "1.0.0"); err == nil {
+		t.Fatal("fetchNpmIntegrity: expected error on HTTP 404, got nil")
+	}
+}
+
+func TestVerifyFileSRI(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "package.tgz")
+	content := []byte("tarball contents")
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
+
+	t.Run("sha512 match", func(t *testing.T) {
+		sum := sha512.Sum512(content)
+		integrity := "sha512-" + base64.StdEncoding.EncodeToString(sum[:])
+		if err := verifyFileSRI(path, integrity); err != nil {
+			t.Errorf("verifyFileSRI: %v", err)
+		}
+	})
+
+	t.Run("sha256 match", func(t *testing.T) {
+		sum := sha256.Sum256(content)
+		integrity := "sha256-" + base64.StdEncoding.EncodeToString(sum[:])
+		if err := verifyFileSRI(path, integrity); err != nil {
+			t.Errorf("verifyFileSRI: %v", err)
+		}
+	})
+
+	t.Run("mismatch", func(t *testing.T) {
+		bogus := "sha512-" + base64.StdEncoding.EncodeToString(make([]byte, sha512.Size))
+		if err := verifyFileSRI(path, bogus); err == nil {
+			t.Error("verifyFileSRI: expected error on integrity mismatch, got nil")
+		}
+	})
+
+	t.Run("unsupported algorithm", func(t *testing.T) {
+		if err := verifyFileSRI(path, "md5-deadbeef"); err == nil {
+			t.Error("verifyFileSRI: expected error for unsupported algorithm, got nil")
+		}
+	})
+
+	t.Run("malformed integrity string", func(t *testing.T) {
+		if err := verifyFileSRI(path, "nodashhere"); err == nil {
+			t.Error("verifyFileSRI: expected error for malformed integrity string, got nil")
+		}
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		sum := sha512.Sum512(content)
+		integrity := "sha512-" + base64.StdEncoding.EncodeToString(sum[:])
+		if err := verifyFileSRI(filepath.Join(dir, "missing.tgz"), integrity); err == nil {
+			t.Error("verifyFileSRI: expected error for missing file, got nil")
+		}
+	})
 }
 
 func TestVerifyPyPIDownloadsMismatch(t *testing.T) {
