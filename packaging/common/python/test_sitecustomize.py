@@ -203,6 +203,7 @@ class ImportDistroTests(unittest.TestCase):
         installed_version="1.0.0",
         installed_distributions=None,
         sys_path_entry=None,
+        initialize_side_effect=None,
     ):
         """Execute sitecustomize.py end to end.
 
@@ -211,6 +212,9 @@ class ImportDistroTests(unittest.TestCase):
         auto-instrumentation entry point is replaced with a mock, and the host
         is hidden: no installed distributions, and every requirement resolves
         to installed_version.
+
+        initialize_side_effect makes the mocked initialize() raise, which is
+        how the SDK reports a failure it cannot recover from.
 
         Returns (stderr output, auto_instrumentation mock, environment
         observed right after the run).
@@ -225,6 +229,7 @@ class ImportDistroTests(unittest.TestCase):
             return real_dirname(p)
 
         auto_instrumentation = MagicMock()
+        auto_instrumentation.initialize.side_effect = initialize_side_effect
         instrumentation_pkg = MagicMock()
         instrumentation_pkg.auto_instrumentation = auto_instrumentation
 
@@ -265,10 +270,16 @@ class ImportDistroTests(unittest.TestCase):
         auto_instrumentation.initialize.assert_called_once_with()
         self.assertIn(self.site_dir, observed_env["PYTHONPATH"])
 
-    def _assert_deactivated(self, auto_instrumentation, observed_env):
-        auto_instrumentation.initialize.assert_not_called()
+    def _assert_deactivated_environment(self, observed_env):
+        # What a deactivation must leave behind, whichever guard performed it:
+        # the site gone from PYTHONPATH and the injector's agent path cleared,
+        # so no child process retries the activation.
         self.assertEqual(self.OTHER_PYTHONPATH_ENTRY, observed_env["PYTHONPATH"])
         self.assertEqual("", observed_env["PYTHON_AUTO_INSTRUMENTATION_AGENT_PATH_PREFIX"])
+
+    def _assert_deactivated(self, auto_instrumentation, observed_env):
+        auto_instrumentation.initialize.assert_not_called()
+        self._assert_deactivated_environment(observed_env)
 
     def test_initializes_when_all_dependencies_match(self):
         output, auto_instrumentation, observed_env = self._exec_sitecustomize(
@@ -389,6 +400,23 @@ class ImportDistroTests(unittest.TestCase):
         )
         self._assert_initialized(auto_instrumentation, observed_env)
         self.assertIn("cannot run otel-config-check", output)
+
+    def test_deactivates_when_initialize_raises(self):
+        # Initialization is the one stage this module does not perform itself,
+        # so the handler around initialize() is what turns a failure inside the
+        # SDK into a deactivation. A configuration file that otel-config-check
+        # accepts and the file configurator then rejects arrives here: the
+        # validator only checks the YAML and file_format, the SDK validates the
+        # whole document against its schema.
+        self._write_fake_validator(exit_code=0)
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_CONFIG_FILE": os.path.join(self.base_dir, "otel-config.yaml")},
+            all_dependencies="foo==1.0.0\n",
+            initialize_side_effect=ValueError("'file_format' is a required property"),
+        )
+        self._assert_deactivated_environment(observed_env)
+        self.assertIn("error when importing/initializing", output)
+        self.assertIn("ValueError: 'file_format' is a required property", output)
 
     def test_deactivates_on_double_instrumentation(self):
         dist = MagicMock()
