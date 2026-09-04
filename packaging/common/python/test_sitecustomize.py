@@ -209,6 +209,7 @@ class ImportDistroTests(unittest.TestCase):
         installed_distributions=None,
         sys_path_entry=None,
         initialize_side_effect=None,
+        distributions_side_effect=None,
     ):
         """Execute sitecustomize.py end to end.
 
@@ -220,6 +221,10 @@ class ImportDistroTests(unittest.TestCase):
 
         initialize_side_effect makes the mocked initialize() raise, which is
         how the SDK reports a failure it cannot recover from.
+
+        distributions_side_effect makes importlib.metadata.distributions raise,
+        which stands in for any failure inside import_distro() that has no
+        try block of its own.
 
         Returns (stderr output, auto_instrumentation mock, environment
         observed right after the run).
@@ -248,7 +253,8 @@ class ImportDistroTests(unittest.TestCase):
         with patch.dict(os.environ, env, clear=True), \
                 patch.object(sys, "path", list(sys.path) + [sys_path_entry or self.site_dir]), \
                 patch("os.path.dirname", side_effect=fake_dirname), \
-                patch("importlib.metadata.distributions", return_value=installed_distributions or []), \
+                patch("importlib.metadata.distributions", return_value=installed_distributions or [],
+                      side_effect=distributions_side_effect), \
                 patch("importlib.metadata.distribution", return_value=distribution), \
                 patch.dict(sys.modules, {
                     "opentelemetry": MagicMock(),
@@ -445,6 +451,21 @@ class ImportDistroTests(unittest.TestCase):
             installed_distributions=[dist],
         )
         self._assert_activated(auto_instrumentation, observed_env)
+
+    def test_unexpected_error_deactivates_with_a_warning(self):
+        # Only four steps inside import_distro() have a try block of their
+        # own. An exception from any other step escaped into
+        # site.execsitecustomize(), which reports one line that does not name
+        # this agent and leaves the site on PYTHONPATH for every child process
+        # to retry. The outer guard turns that into an ordinary deactivation.
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
+            all_dependencies="foo==1.0.0\n",
+            distributions_side_effect=RuntimeError("metadata backend exploded"),
+        )
+        self._assert_deactivated(auto_instrumentation, observed_env)
+        self.assertIn("unexpected error while deciding whether to auto-instrument", output)
+        self.assertIn("RuntimeError: metadata backend exploded", output)
 
     def test_trailing_slash_pythonpath_entry_does_not_crash(self):
         # The sys.path entry can differ textually from dirname(__file__)
