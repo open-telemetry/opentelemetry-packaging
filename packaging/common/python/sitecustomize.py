@@ -266,7 +266,15 @@ def import_distro():
     else:
         _log_debug("checking OTEL_EXPORTER_OTLP_PROTOCOL")
 
+        # A value that is empty or only whitespace counts as unset, and a
+        # usable value is stripped. opentelemetry.sdk._configuration resolves
+        # the protocol that way (`if not otlp_protocol` then `.strip()`), so a
+        # guard that did otherwise would deactivate the agent over a value the
+        # SDK is perfectly happy with. An empty OTEL_EXPORTER_OTLP_PROTOCOL is
+        # easy to produce from a Kubernetes manifest or a compose file.
         otlp_protocol = os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL")
+        if otlp_protocol is not None:
+            otlp_protocol = otlp_protocol.strip() or None
         default_exporter = _exporter_for_protocol(otlp_protocol)
         if default_exporter is None:
             _self_deactivate(current_site)

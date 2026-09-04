@@ -325,6 +325,30 @@ class ImportDistroTests(unittest.TestCase):
         )
         self.assertEqual("", output)
 
+    def test_activates_with_grpc_when_protocol_is_set_but_empty(self):
+        # `value: ""` in a Kubernetes manifest or a compose file used to
+        # deactivate the whole agent, reporting
+        # "OTEL_EXPORTER_OTLP_PROTOCOL= is not supported". The SDK treats an
+        # empty value as unset, so the guard has to agree.
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": ""},
+            all_dependencies="foo==1.0.0\n",
+        )
+        self._assert_activated(
+            auto_instrumentation, observed_env, exporter="otlp_proto_grpc"
+        )
+        self.assertEqual("", output)
+
+    def test_activates_when_protocol_carries_surrounding_whitespace(self):
+        # A protocol sourced from a file often arrives with a trailing
+        # newline, and the SDK strips it before comparing.
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": " http/protobuf\n"},
+            all_dependencies="foo==1.0.0\n",
+        )
+        self._assert_activated(auto_instrumentation, observed_env)
+        self.assertEqual("", output)
+
     def test_deactivates_when_protocol_is_http_json(self):
         # The bundled pyproto exporter emits protobuf only; http/json must be
         # rejected until the exporter chain supports JSON encoding.
