@@ -432,7 +432,8 @@ class ImportDistroTests(unittest.TestCase):
     def test_deactivates_on_double_instrumentation(self):
         dist = MagicMock()
         dist.metadata = {"Name": "opentelemetry-sdk"}
-        dist._path = "/app/site-packages/opentelemetry_sdk-1.20.0.dist-info"
+        dist.version = "1.20.0"
+        dist.locate_file.return_value = "/app/site-packages"
         output, auto_instrumentation, observed_env = self._exec_sitecustomize(
             extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
             all_dependencies="foo==1.0.0\n",
@@ -440,7 +441,29 @@ class ImportDistroTests(unittest.TestCase):
         )
         self._assert_deactivated(auto_instrumentation, observed_env)
         self.assertIn("already instrumented", output)
-        self.assertIn("opentelemetry_sdk-1.20.0.dist-info", output)
+        self.assertIn("opentelemetry-sdk 1.20.0 (/app/site-packages)", output)
+
+    def test_deactivates_on_a_distribution_from_a_non_path_finder(self):
+        # A distribution implementing only the public Distribution interface,
+        # as any finder other than the path-based one produces, must still be
+        # detected and named rather than raising. A real object is used here,
+        # not a MagicMock, because a MagicMock answers to every attribute and
+        # would hide exactly the bug this covers.
+        class DistributionFromNonPathFinder(object):
+            metadata = {"Name": "opentelemetry-sdk"}
+            version = "1.20.0"
+
+            def locate_file(self, path):
+                return "/app/site-packages"
+
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
+            all_dependencies="foo==1.0.0\n",
+            installed_distributions=[DistributionFromNonPathFinder()],
+        )
+        self._assert_deactivated(auto_instrumentation, observed_env)
+        self.assertIn("already instrumented", output)
+        self.assertIn("opentelemetry-sdk 1.20.0 (/app/site-packages)", output)
 
     def test_unrelated_installed_distribution_does_not_deactivate(self):
         dist = MagicMock()
