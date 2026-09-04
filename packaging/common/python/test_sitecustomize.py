@@ -468,20 +468,44 @@ class LoggingTests(unittest.TestCase):
         module._log_debug("a trace")
         self.assertEqual("", buf.getvalue())
 
-    def test_log_with_stderr_none_is_silent(self):
+    def test_suppressed_debug_record_does_not_build_the_logger(self):
+        # The guard in _log_debug is what keeps a process running with debug
+        # off from importing logging at all, which the injector cares about
+        # because it prepends this file to every Python process on the host.
         module, _ = _load_benign()
+        module._logger = None
+        module._log_debug("a trace")
+        self.assertIsNone(module._logger)
+
+    def test_log_with_stderr_none_is_silent(self):
+        # The daemon and pythonw case: sys.stderr is None at interpreter
+        # startup, so the module's own binding is None too. Nothing may be
+        # written and nothing may raise.
+        module, buf = _load_benign()
         module.stderr = None
-        module._log_warn("must not raise nor reach stdout")
+        # The load already emitted the protocol-guard warning, so the handler
+        # exists and holds the buffer. Drop it to rebuild it from the None.
+        module._logger = None
+        with patch.object(sys, "stderr", None):
+            module._log_warn("must not raise nor reach stdout")
+        self.assertEqual("", buf.getvalue())
 
     def test_log_with_broken_stderr_does_not_raise(self):
-        module, _ = _load_benign()
+        module, buf = _load_benign()
 
         class Broken(object):
             def write(self, *_args):
                 raise IOError("closed")
 
         module.stderr = Broken()
-        module._log_warn("must not raise")
+        module._logger = None
+        fallback = StringIO()
+        with patch.object(sys, "stderr", fallback):
+            module._log_warn("must not raise")
+        # A write that fails must be dropped without a word: the logging
+        # module's own error path would report it on sys.stderr instead.
+        self.assertEqual("", fallback.getvalue())
+        self.assertEqual("", buf.getvalue())
 
 
 class ApplicationLoggingTests(unittest.TestCase):
