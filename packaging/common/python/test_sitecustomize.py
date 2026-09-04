@@ -349,6 +349,45 @@ class ImportDistroTests(unittest.TestCase):
         self._assert_activated(auto_instrumentation, observed_env)
         self.assertEqual("", output)
 
+    def test_signal_specific_protocol_selects_that_signal_exporter(self):
+        # The signal-specific variable takes precedence over the generic one,
+        # per the OTLP specification and per the SDK's own resolution. Reading
+        # only the generic variable meant this request was silently discarded
+        # and traces went out over grpc.
+        _, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "http/protobuf"},
+            all_dependencies="foo==1.0.0\n",
+        )
+        auto_instrumentation.initialize.assert_called_once_with()
+        self.assertEqual("otlp_proto_http", observed_env["OTEL_TRACES_EXPORTER"])
+        self.assertEqual("otlp_proto_grpc", observed_env["OTEL_METRICS_EXPORTER"])
+        self.assertEqual("otlp_proto_grpc", observed_env["OTEL_LOGS_EXPORTER"])
+
+    def test_signal_specific_protocol_overrides_the_generic_one(self):
+        _, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={
+                "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
+                "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL": "http/protobuf",
+            },
+            all_dependencies="foo==1.0.0\n",
+        )
+        auto_instrumentation.initialize.assert_called_once_with()
+        self.assertEqual("otlp_proto_grpc", observed_env["OTEL_TRACES_EXPORTER"])
+        self.assertEqual("otlp_proto_grpc", observed_env["OTEL_METRICS_EXPORTER"])
+        self.assertEqual("otlp_proto_http", observed_env["OTEL_LOGS_EXPORTER"])
+
+    def test_deactivates_when_a_signal_specific_protocol_is_http_json(self):
+        # http/json in the signal-specific variable used to pass the guard
+        # untouched and activate over grpc, which is the one value the guard
+        # exists to reject.
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_METRICS_PROTOCOL": "http/json"},
+            all_dependencies="foo==1.0.0\n",
+        )
+        self._assert_deactivated(auto_instrumentation, observed_env)
+        self.assertIn("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL=http/json is not supported", output)
+        self.assertIn("supports grpc and http/protobuf", output)
+
     def test_deactivates_when_protocol_is_http_json(self):
         # The bundled pyproto exporter emits protobuf only; http/json must be
         # rejected until the exporter chain supports JSON encoding.

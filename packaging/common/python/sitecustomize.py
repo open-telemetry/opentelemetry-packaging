@@ -219,6 +219,29 @@ def _validate_config_file(current_site, config_file):
     return None
 
 
+otlp_signals = ["TRACES", "METRICS", "LOGS"]
+
+
+def _otlp_protocol_for_signal(signal):
+    # The signal-specific variable takes precedence over the generic one, per
+    # the OTLP specification, and opentelemetry.sdk._configuration implements
+    # exactly that precedence when it resolves an exporter. A guard that reads
+    # only the generic variable therefore validates a value the SDK may never
+    # read and misses the one it does.
+    #
+    # A value that is empty or only whitespace counts as unset, and a usable
+    # value is stripped, which is what the SDK does with `if not
+    # otlp_protocol` followed by `.strip()`.
+    #
+    # Returns (variable name, protocol), so a rejection can name the variable
+    # that actually carried the value. Both are None when no variable sets one.
+    for name in ("OTEL_EXPORTER_OTLP_{}_PROTOCOL".format(signal), "OTEL_EXPORTER_OTLP_PROTOCOL"):
+        value = os.environ.get(name)
+        if value is not None and value.strip():
+            return name, value.strip()
+    return None, None
+
+
 def _exporter_for_protocol(otlp_protocol):
     # This package bundles pure-Python OTLP exporters for both gRPC and
     # HTTP/protobuf (the gRPC one transports over the stdlib-only _pygrpc
@@ -245,10 +268,11 @@ def import_distro():
         return
     _log_debug("found eligible Python version: {}".format(version_info))
 
-    # Exporter selected from OTEL_EXPORTER_OTLP_PROTOCOL below (env-var mode).
-    # Under OTEL_CONFIG_FILE the configuration file drives exporter selection
-    # and OTEL_*_EXPORTER is ignored, so this default is inert in that mode.
-    default_exporter = "otlp_proto_grpc"
+    # Exporter selected per signal from the OTLP protocol variables below
+    # (env-var mode). Under OTEL_CONFIG_FILE the configuration file drives
+    # exporter selection and OTEL_*_EXPORTER is ignored, so this stays empty
+    # in that mode.
+    exporter_by_signal = {}
     config_file = os.environ.get("OTEL_CONFIG_FILE")
     if config_file:
         # With OTEL_CONFIG_FILE in effect the SDK ignores the OTEL_* exporter
@@ -264,26 +288,24 @@ def import_distro():
                     config_file, validation_error))
             return
     else:
-        _log_debug("checking OTEL_EXPORTER_OTLP_PROTOCOL")
+        _log_debug("checking the OTLP protocol of each signal")
 
-        # A value that is empty or only whitespace counts as unset, and a
-        # usable value is stripped. opentelemetry.sdk._configuration resolves
-        # the protocol that way (`if not otlp_protocol` then `.strip()`), so a
-        # guard that did otherwise would deactivate the agent over a value the
-        # SDK is perfectly happy with. An empty OTEL_EXPORTER_OTLP_PROTOCOL is
-        # easy to produce from a Kubernetes manifest or a compose file.
-        otlp_protocol = os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL")
-        if otlp_protocol is not None:
-            otlp_protocol = otlp_protocol.strip() or None
-        default_exporter = _exporter_for_protocol(otlp_protocol)
-        if default_exporter is None:
-            _self_deactivate(current_site)
-            _print_cannot_auto_instrument_message(
-                "OTEL_EXPORTER_OTLP_PROTOCOL={} is not supported. "
-                "This package supports grpc and http/protobuf.".format(otlp_protocol)
-            )
-            return
-        _log_debug("found eligible OTEL_EXPORTER_OTLP_PROTOCOL value: {}".format(otlp_protocol))
+        # Resolved per signal, because the SDK resolves it per signal: an
+        # exporter chosen from the generic variable alone would silently
+        # discard OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http/protobuf and export
+        # over grpc instead.
+        for signal in otlp_signals:
+            variable, otlp_protocol = _otlp_protocol_for_signal(signal)
+            exporter = _exporter_for_protocol(otlp_protocol)
+            if exporter is None:
+                _self_deactivate(current_site)
+                _print_cannot_auto_instrument_message(
+                    "{}={} is not supported. "
+                    "This package supports grpc and http/protobuf.".format(variable, otlp_protocol)
+                )
+                return
+            exporter_by_signal[signal] = exporter
+            _log_debug("{} resolves to the {} exporter".format(signal, exporter))
 
     _log_debug("checking for double instrumentation")
 
@@ -320,14 +342,16 @@ def import_distro():
 
     if not version_conflicts:
         if not config_file:
-            # Select the bundled pure-Python OTLP exporter matching the protocol
-            # (otlp_proto_grpc or otlp_proto_http), both registered as drop-in
-            # replacements under the standard entry points. No-ops if the user
-            # already set these. Skipped under OTEL_CONFIG_FILE, where the
-            # configuration file drives exporter selection and these are ignored.
-            os.environ.setdefault("OTEL_TRACES_EXPORTER", default_exporter)
-            os.environ.setdefault("OTEL_METRICS_EXPORTER", default_exporter)
-            os.environ.setdefault("OTEL_LOGS_EXPORTER", default_exporter)
+            # Select the bundled pure-Python OTLP exporter matching each
+            # signal's protocol (otlp_proto_grpc or otlp_proto_http), both
+            # registered as drop-in replacements under the standard entry
+            # points. Per signal, because the protocol is resolved per signal:
+            # a deployment can ask for http/protobuf traces and grpc metrics.
+            # No-ops if the user already set these. Skipped under
+            # OTEL_CONFIG_FILE, where the configuration file drives exporter
+            # selection and these are ignored.
+            for signal in otlp_signals:
+                os.environ.setdefault("OTEL_{}_EXPORTER".format(signal), exporter_by_signal[signal])
         try:
             _log_debug("importing and initializing the Python auto-instrumentation now")
             from opentelemetry.instrumentation import auto_instrumentation
