@@ -56,13 +56,19 @@ Set the OTLP exporter endpoint (e.g., http://localhost:4318).
 .B OTEL_EXPORTER_OTLP_PROTOCOL
 Set to
 .B grpc
-(the default when unset) or
+(the default when unset, empty, or whitespace) or
 .B http/protobuf
 (http/json is not supported by this package). Ignored when
 .B OTEL_CONFIG_FILE
 is set; the configuration file is then validated by the bundled
 .B otel-config-check
 utility instead.
+.TP
+.B OTEL_EXPORTER_OTLP_TRACES_PROTOCOL, OTEL_EXPORTER_OTLP_METRICS_PROTOCOL, OTEL_EXPORTER_OTLP_LOGS_PROTOCOL
+The same values, each taking precedence over
+.B OTEL_EXPORTER_OTLP_PROTOCOL
+for its own signal, so signals may use different protocols. An unsupported value in any of
+them self-deactivates and names the variable that carried it.
 .TP
 .B OTEL_TRACES_EXPORTER
 Set the traces exporter (default follows the protocol: otlp_proto_grpc or otlp_proto_http).
