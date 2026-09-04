@@ -257,7 +257,7 @@ class ImportDistroTests(unittest.TestCase):
     def _assert_activated(
         self, auto_instrumentation, observed_env, exporter="otlp_proto_http"
     ):
-        auto_instrumentation.initialize.assert_called_once_with()
+        auto_instrumentation.initialize.assert_called_once_with(swallow_exceptions=False)
         self.assertIn(self.site_dir, observed_env["PYTHONPATH"])
         self.assertEqual(exporter, observed_env["OTEL_TRACES_EXPORTER"])
         self.assertEqual(exporter, observed_env["OTEL_METRICS_EXPORTER"])
@@ -267,7 +267,7 @@ class ImportDistroTests(unittest.TestCase):
         # Activation without asserting exporter selection: under OTEL_CONFIG_FILE
         # the configuration file drives the exporter and sitecustomize leaves
         # OTEL_*_EXPORTER untouched.
-        auto_instrumentation.initialize.assert_called_once_with()
+        auto_instrumentation.initialize.assert_called_once_with(swallow_exceptions=False)
         self.assertIn(self.site_dir, observed_env["PYTHONPATH"])
 
     def _assert_deactivated_environment(self, observed_env):
