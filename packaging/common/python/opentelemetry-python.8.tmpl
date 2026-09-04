@@ -100,6 +100,15 @@ without crashing the instrumented process.
 If the application already carries OpenTelemetry SDK dependencies, the
 auto-instrumentation detects this (double-instrumentation check) and
 self-deactivates gracefully.
+.PP
+Diagnostics are written to standard error, prefixed with
+.B [opentelemetry-python-autoinstrumentation]
+and the severity of the record. A WARNING is always emitted; DEBUG records
+require
+.BR OTEL_INJECTOR_LOG_LEVEL=debug .
+They never enter the application's logging: the agent writes through a logger of
+its own and configures no handler, level, or filter that the application can
+observe.
 .SH SEE ALSO
 .BR opentelemetry-injector (8)
 .PP
