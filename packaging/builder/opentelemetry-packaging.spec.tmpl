@@ -131,6 +131,7 @@ export GOFLAGS="-mod=vendor"
 export GOTOOLCHAIN=auto
 go build -trimpath -o build/bin/build-spec ./cmd/build-spec/rpm
 go build -trimpath -o build/bin/otel-config-check ./cmd/otel-config-check
+go build -trimpath -o build/bin/otel-instrumentation-check ./cmd/otel-instrumentation-check
 
 %install
 # The payload is staged by the same builder that produces the nfpm packages, and
@@ -146,7 +147,8 @@ stage() {
         -component "$1" \
         -version %{version} \
         -arch %{otel_arch} \
-        -config-check-binary build/bin/otel-config-check
+        -config-check-binary build/bin/otel-config-check \
+        -sanity-check-binary build/bin/otel-instrumentation-check
 }
 
 for component in {{ .UnguardedComponents }}; do

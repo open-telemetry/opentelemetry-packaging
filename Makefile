@@ -71,24 +71,35 @@ TEST_LANGUAGES := java nodejs dotnet python
 otel-config-check:
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -trimpath -o build/bin/otel-config-check-$(ARCH) ./cmd/otel-config-check
 
+# Cross-compiles the otel-instrumentation-check post-install sanity check that
+# ships inside the injector package. Same pure-Go, CGO-disabled build as
+# otel-config-check.
+.PHONY: otel-instrumentation-check
+otel-instrumentation-check:
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -trimpath -o build/bin/otel-instrumentation-check-$(ARCH) ./cmd/otel-instrumentation-check
+
+# Both cross-compiled Go binaries the package builds embed.
+.PHONY: check-binaries
+check-binaries: otel-config-check otel-instrumentation-check
+
 .PHONY: deb-package-%
-deb-package-%: otel-config-check
+deb-package-%: check-binaries
 	go run ./cmd/build-packages -version $(VERSION) -arch $(ARCH) -format deb -component $* -output $(OUTPUT_DIR)
 
 .PHONY: deb-packages
-deb-packages: otel-config-check
+deb-packages: check-binaries
 	go run ./cmd/build-packages -version $(VERSION) -arch $(ARCH) -format deb -output $(OUTPUT_DIR)
 
 .PHONY: rpm-package-%
-rpm-package-%: otel-config-check
+rpm-package-%: check-binaries
 	go run ./cmd/build-packages -version $(VERSION) -arch $(ARCH) -format rpm -component $* -output $(OUTPUT_DIR)
 
 .PHONY: rpm-packages
-rpm-packages: otel-config-check
+rpm-packages: check-binaries
 	go run ./cmd/build-packages -version $(VERSION) -arch $(ARCH) -format rpm -output $(OUTPUT_DIR)
 
 .PHONY: packages
-packages: otel-config-check
+packages: check-binaries
 	go run ./cmd/build-packages -version $(VERSION) -arch $(ARCH) -format all -output $(OUTPUT_DIR)
 
 # ============================================================================
@@ -263,7 +274,7 @@ next-packaging-dir:
 		>> build/packaging-next/common/injector/default_env.conf
 
 .PHONY: local-apt-repo-next
-local-apt-repo-next: next-packaging-dir
+local-apt-repo-next: next-packaging-dir otel-instrumentation-check
 	@echo "Creating next-version APT repository in $(LOCAL_REPO_DIR)/apt-next"
 	go run ./cmd/build-packages -version $(NEXT_VERSION) -arch $(ARCH) -format deb \
 		-component injector -packaging-dir build/packaging-next -output build/packages-next/deb
@@ -275,7 +286,7 @@ local-apt-repo-next: next-packaging-dir
 		debian:12 /scripts/generate-apt-repo.sh /repo
 
 .PHONY: local-rpm-repo-next
-local-rpm-repo-next: next-packaging-dir
+local-rpm-repo-next: next-packaging-dir otel-instrumentation-check
 	@echo "Creating next-version RPM repository in $(LOCAL_REPO_DIR)/rpm-next"
 	go run ./cmd/build-packages -version $(NEXT_VERSION) -arch $(ARCH) -format rpm \
 		-component injector -packaging-dir build/packaging-next -output build/packages-next/rpm
