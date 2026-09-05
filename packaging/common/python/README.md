@@ -44,10 +44,14 @@ exporters (they emit protobuf only).
 
 - `OTEL_SERVICE_NAME`: Service name for telemetry (required)
 - `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP endpoint (default: http://localhost:4318 for http/protobuf, http://localhost:4317 for grpc)
-- `OTEL_EXPORTER_OTLP_PROTOCOL`: `grpc` or `http/protobuf` (unset defaults to `grpc`)
-- `OTEL_TRACES_EXPORTER`: Traces exporter (default follows the protocol: `otlp_proto_grpc` or `otlp_proto_http`)
-- `OTEL_METRICS_EXPORTER`: Metrics exporter (default follows the protocol)
-- `OTEL_LOGS_EXPORTER`: Logs exporter (default follows the protocol)
+- `OTEL_EXPORTER_OTLP_PROTOCOL`: `grpc` or `http/protobuf` (unset, empty, or whitespace defaults to `grpc`)
+- `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL`, `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL`,
+  `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL`: the same values. Each takes precedence over the generic
+  variable for its own signal, so signals may use different protocols. `http/json` in any of
+  them self-deactivates, naming the variable that carried it.
+- `OTEL_TRACES_EXPORTER`: Traces exporter (default follows that signal's protocol: `otlp_proto_grpc` or `otlp_proto_http`)
+- `OTEL_METRICS_EXPORTER`: Metrics exporter (default follows that signal's protocol)
+- `OTEL_LOGS_EXPORTER`: Logs exporter (default follows that signal's protocol)
 - `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS`: Comma-separated list of instrumentations to disable
 - `OTEL_INJECTOR_LOG_LEVEL`: Set to `debug` for verbose sitecustomize.py logging
 
@@ -87,9 +91,10 @@ export OTEL_CONFIG_FILE=/etc/opentelemetry/python/otel-config.yaml
 `sitecustomize.py` performs the following checks at startup before activating instrumentation:
 
 1. **Python version**: Requires Python ≥ 3.10. Older versions are skipped gracefully.
-2. **OTLP protocol / configuration file**: Without `OTEL_CONFIG_FILE`, accepts
-   `OTEL_EXPORTER_OTLP_PROTOCOL` of `grpc` (the default when unset) or `http/protobuf`;
-   `http/json` self-deactivates. With `OTEL_CONFIG_FILE` set,
+2. **OTLP protocol / configuration file**: Without `OTEL_CONFIG_FILE`, resolves the protocol
+   per signal (`OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_PROTOCOL` taking precedence over
+   `OTEL_EXPORTER_OTLP_PROTOCOL`, as the SDK does) and accepts `grpc` (the default when unset)
+   or `http/protobuf`; `http/json` self-deactivates. With `OTEL_CONFIG_FILE` set,
    the SDK ignores the `OTEL_*` exporter variables, so instead the bundled
    `otel-config-check` utility validates the configuration file (readable, valid YAML,
    `file_format: "1.0"`; both `otlp_http` and `otlp_grpc` exporters are accepted).
