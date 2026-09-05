@@ -179,6 +179,49 @@ class CheckDependencyVersionConflictTests(unittest.TestCase):
         )
 
 
+class RenderVersionConflictsTests(unittest.TestCase):
+    """How a set of conflicts reads on the one line an operator gets."""
+
+    def setUp(self):
+        self.module, self.stderr = _load_benign()
+
+    def test_a_version_mismatch_names_both_versions(self):
+        self.assertEqual(
+            "foo (requires ==2.0.0, found 1.0.0)",
+            self.module._render_version_conflicts(
+                {"foo": {"version_required": "==2.0.0", "version_found": "1.0.0"}}),
+        )
+
+    def test_a_missing_package_reports_its_error(self):
+        self.assertEqual(
+            "foo (required package not found)",
+            self.module._render_version_conflicts(
+                {"foo": {"error": "required package not found"}}),
+        )
+
+    def test_the_two_kinds_appear_together(self):
+        self.assertEqual(
+            "alpha (requires ==2.0.0, found 1.0.0); beta (required package not found)",
+            self.module._render_version_conflicts({
+                "alpha": {"version_required": "==2.0.0", "version_found": "1.0.0"},
+                "beta": {"error": "required package not found"},
+            }),
+        )
+
+    def test_the_order_does_not_depend_on_insertion(self):
+        # The same set of conflicts has to read the same way every run.
+        forwards = self.module._render_version_conflicts({
+            "alpha": {"error": "required package not found"},
+            "zulu": {"error": "required package not found"},
+        })
+        backwards = self.module._render_version_conflicts({
+            "zulu": {"error": "required package not found"},
+            "alpha": {"error": "required package not found"},
+        })
+        self.assertEqual(forwards, backwards)
+        self.assertTrue(forwards.startswith("alpha"))
+
+
 class ImportDistroTests(unittest.TestCase):
     """End-to-end tests: execute sitecustomize.py under controlled conditions."""
 
@@ -319,6 +362,44 @@ class ImportDistroTests(unittest.TestCase):
         )
         self._assert_deactivated(auto_instrumentation, observed_env)
         self.assertIn("dependency conflicts", output)
+
+    def test_every_conflict_is_reported_not_just_the_first(self):
+        # The warning is the only report an operator gets, so stopping at the
+        # first conflict charges them a process restart per conflict to find
+        # the rest, and the manifest is sorted, so which one they are shown is
+        # decided by alphabetical order rather than by the problem.
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
+            all_dependencies="alpha==2.0.0\nbeta==2.0.0\ngamma==2.0.0\n",
+            installed_version="1.0.0",
+        )
+        self._assert_deactivated(auto_instrumentation, observed_env)
+        for name in ("alpha", "beta", "gamma"):
+            self.assertIn(name, output)
+
+    def test_a_later_conflict_does_not_hide_an_earlier_one(self):
+        # Guards the accumulation: a conflict found later must add to what the
+        # loop already collected rather than replace it.
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
+            all_dependencies="zulu==2.0.0\nalpha==2.0.0\n",
+            installed_version="1.0.0",
+        )
+        self.assertIn("zulu", output)
+        self.assertIn("alpha", output)
+
+    def test_the_conflicts_read_as_a_list_of_problems(self):
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
+            all_dependencies="alpha==2.0.0\nbeta==2.0.0\n",
+            installed_version="1.0.0",
+        )
+        self.assertIn(
+            "dependency conflicts: alpha (requires ==2.0.0, found 1.0.0); "
+            "beta (requires ==2.0.0, found 1.0.0)",
+            output,
+        )
+        self.assertNotIn("{", output)
 
     def test_activates_with_grpc_when_protocol_unset(self):
         # An unset protocol follows the OTel default of grpc, which this
