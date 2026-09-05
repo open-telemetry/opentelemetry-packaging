@@ -64,6 +64,14 @@ A `WARNING` is always emitted, and it is the only report you get when a safety
 guard deactivates the agent. `DEBUG` records are emitted only when
 `OTEL_INJECTOR_LOG_LEVEL=debug`.
 
+One line per record holds whatever the record reports. Some values that appear
+in a diagnostic carry newlines of their own, such as a schema error from
+`otel-config-check` or an unparsable requirement reported by `packaging`, and
+their whitespace is collapsed so the whole record stays on the line carrying the
+prefix and the severity. A continuation line would otherwise reach standard
+error unprefixed, and a line-oriented log collector would file it as a separate
+record belonging to the application.
+
 The records are `logging` records at `logging.WARNING` and `logging.DEBUG`, but
 they never enter the application's logging. The agent runs during `site` import,
 before the application's first line, so it writes through a logger of its own
