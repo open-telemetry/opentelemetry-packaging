@@ -436,6 +436,35 @@ class ImportDistroTests(unittest.TestCase):
         self.assertIn("already instrumented", output)
         self.assertIn("opentelemetry_sdk-1.20.0.dist-info", output)
 
+    def test_deactivates_on_the_vendored_grpc_exporter(self):
+        # The bundle vendors this exporter, so an application carrying it means
+        # a second copy of the same distribution is about to enter the process.
+        dist = MagicMock()
+        dist.metadata = {"Name": "opentelemetry-exporter-otlp-pyproto-grpc"}
+        dist._path = "/app/site-packages/opentelemetry_exporter_otlp_pyproto_grpc-1.44.0.dist-info"
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
+            all_dependencies="foo==1.0.0\n",
+            installed_distributions=[dist],
+        )
+        self._assert_deactivated(auto_instrumentation, observed_env)
+        self.assertIn("already instrumented", output)
+
+    def test_deactivates_on_the_vendored_pyproto_encoder(self):
+        # opentelemetry-pyproto owns the public opentelemetry.proto module path,
+        # the same one opentelemetry-proto owns, so it is double instrumentation
+        # for the same reason its upstream counterpart is.
+        dist = MagicMock()
+        dist.metadata = {"Name": "opentelemetry-pyproto"}
+        dist._path = "/app/site-packages/opentelemetry_pyproto-1.44.0.dist-info"
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
+            all_dependencies="foo==1.0.0\n",
+            installed_distributions=[dist],
+        )
+        self._assert_deactivated(auto_instrumentation, observed_env)
+        self.assertIn("already instrumented", output)
+
     def test_unrelated_installed_distribution_does_not_deactivate(self):
         dist = MagicMock()
         dist.metadata = {"Name": "flask"}
@@ -456,6 +485,41 @@ class ImportDistroTests(unittest.TestCase):
             sys_path_entry=self.site_dir + "/",
         )
         self._assert_activated(auto_instrumentation, observed_env)
+
+
+class DoubleInstrumentationPackageListTests(unittest.TestCase):
+    """The double-instrumentation list against the bundle it has to describe.
+
+    The list is maintained by hand, so nothing but a test keeps it in step with
+    requirements.txt. It fell behind once already: the vendored gRPC exporter
+    and opentelemetry-pyproto were installed by the bundle without being added
+    here, and an application carrying either was not recognised as instrumented.
+    """
+
+    def setUp(self):
+        self.module, self.stderr = _load_benign()
+
+    def test_every_vendored_package_is_checked(self):
+        # A vendored package is one this bundle installs from source, so an
+        # application carrying it means a second copy of the same distribution.
+        with open(os.path.join(TEST_DIR, "requirements.txt")) as f:
+            vendored = [
+                os.path.basename(line.strip())
+                for line in f
+                if line.strip().startswith("./vendor/")
+            ]
+        self.assertTrue(vendored, "no vendored requirements found to check against")
+        for name in vendored:
+            self.assertIn(name, self.module.double_instrumentation_check_packages)
+
+    def test_the_list_is_sorted(self):
+        # Sorted so a new requirements.txt entry can be checked against it by eye.
+        packages = self.module.double_instrumentation_check_packages
+        self.assertEqual(sorted(packages), packages)
+
+    def test_the_list_has_no_duplicates(self):
+        packages = self.module.double_instrumentation_check_packages
+        self.assertEqual(len(set(packages)), len(packages))
 
 
 class LoggingTests(unittest.TestCase):

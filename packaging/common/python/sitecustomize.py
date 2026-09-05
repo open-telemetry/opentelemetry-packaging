@@ -16,6 +16,13 @@ from os.path import dirname
 import sys
 from sys import path, version, version_info, stderr
 
+# Distributions whose presence in the application means it is already
+# instrumented. Activating on top of one of them would put a second copy of the
+# same modules and entry points in the process, which the distributions cannot
+# survive: they ship conflicting files. Every distribution this bundle installs
+# that owns a public opentelemetry.* module path belongs here, which includes
+# the whole vendored pyproto chain in requirements.txt. Kept sorted so a new
+# requirements.txt entry is easy to check against this list.
 double_instrumentation_check_packages = [
     "opentelemetry-distro",
     "opentelemetry-exporter-otlp",
@@ -23,11 +30,13 @@ double_instrumentation_check_packages = [
     "opentelemetry-exporter-otlp-proto-grpc",
     "opentelemetry-exporter-otlp-proto-http",
     "opentelemetry-exporter-otlp-pyproto-common",
+    "opentelemetry-exporter-otlp-pyproto-grpc",
     "opentelemetry-exporter-otlp-pyproto-http",
     "opentelemetry-exporter-prometheus",
     "opentelemetry-instrumentation",
-    "opentelemetry-sdk",
     "opentelemetry-proto",
+    "opentelemetry-pyproto",
+    "opentelemetry-sdk",
 ]
 
 # Packages exempt from deactivation on version conflicts: general-purpose
