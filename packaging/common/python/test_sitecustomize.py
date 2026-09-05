@@ -111,6 +111,29 @@ class NormalizedPackageNameTests(unittest.TestCase):
             self.module._normalized_package_name("opentelemetry-sdk-extras"))
 
 
+class PackageListCanonicalFormTests(unittest.TestCase):
+    """Both hardcoded lists are searched with a normalized name.
+
+    Only the incoming name is normalized, which is the cheap direction: it
+    happens once per candidate instead of once per list entry per candidate.
+    That makes it an invariant that the lists themselves are written in
+    normalized form, because an entry that is not can never be matched.
+    """
+
+    def setUp(self):
+        self.module, self.stderr = _load_benign()
+
+    def test_double_instrumentation_list_is_written_normalized(self):
+        for name in self.module.double_instrumentation_check_packages:
+            with self.subTest(name=name):
+                self.assertEqual(name, self.module._normalized_package_name(name))
+
+    def test_version_conflict_exempt_list_is_written_normalized(self):
+        for name in self.module.version_conflict_exempt_packages:
+            with self.subTest(name=name):
+                self.assertEqual(name, self.module._normalized_package_name(name))
+
+
 class CheckDependencyVersionConflictTests(unittest.TestCase):
     """Fine-grained tests for _check_dependency_version_conflict."""
 
