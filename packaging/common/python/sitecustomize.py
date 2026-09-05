@@ -30,10 +30,12 @@ double_instrumentation_check_packages = [
     "opentelemetry-exporter-otlp-proto-grpc",
     "opentelemetry-exporter-otlp-proto-http",
     "opentelemetry-exporter-otlp-pyproto-common",
+    "opentelemetry-exporter-otlp-pyproto-grpc",
     "opentelemetry-exporter-otlp-pyproto-http",
     "opentelemetry-exporter-prometheus",
     "opentelemetry-instrumentation",
     "opentelemetry-proto",
+    "opentelemetry-pyproto",
     "opentelemetry-sdk",
 ]
 
