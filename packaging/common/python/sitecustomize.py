@@ -323,7 +323,14 @@ def import_distro():
         try:
             _log_debug("importing and initializing the Python auto-instrumentation now")
             from opentelemetry.instrumentation import auto_instrumentation
-            auto_instrumentation.initialize()
+            # swallow_exceptions=False is what makes the handler below reachable.
+            # initialize() defaults to logging any failure of the distro, the
+            # configurators, or the instrumentors and returning normally, which
+            # would leave this site activated around an SDK that never
+            # initialized: no telemetry, no message from us, and every child
+            # process repeating it. The parameter exists since
+            # opentelemetry-instrumentation 0.55b0.
+            auto_instrumentation.initialize(swallow_exceptions=False)
         except Exception as e:
             _self_deactivate(current_site)
             _print_cannot_auto_instrument_message(

@@ -80,6 +80,12 @@ export OTEL_CONFIG_FILE=/etc/opentelemetry/python/otel-config.yaml
    general-purpose libraries (PyYAML, jsonschema) where the application's version is
    expected to keep working: those log a warning instead.
 
+Once those pass, a failure during activation itself also self-deactivates, with the error
+reported on one line. This covers what the checks above cannot foresee, such as a
+configuration file that `otel-config-check` accepts and the SDK's file configurator then
+rejects: the validator checks the YAML and `file_format`, while the SDK validates the whole
+document against its schema.
+
 ## Supported libraries
 
 Instrumentation plug-ins are included for:
