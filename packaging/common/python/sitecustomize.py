@@ -143,12 +143,27 @@ def _self_deactivate(current_site):
     path[:] = [entry for entry in path if os.path.normpath(entry) != normalized_site]
 
 
+def _normalized_package_name(name):
+    # PEP 503: runs of "-", "_" and "." collapse to a single "-", lowercased.
+    # importlib.metadata normalizes the name a distribution is looked up by, but
+    # distributions() reports the Name each package declared, verbatim, and
+    # non-canonical ones are ordinary (PyYAML, typing_extensions, ruamel.yaml).
+    # So a comparison against one of the canonical lists above has to normalize.
+    #
+    # re is imported here rather than at module scope: the injector prepends this
+    # file to every Python process on the host, and re is not loaded at that
+    # point on any supported interpreter. Both callers import importlib.metadata,
+    # which pulls in re itself, so by the time this runs the import is free.
+    import re
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
 def _check_for_double_instrumentation(current_site):
     import importlib.metadata
     offending_packages = []
     for dist in importlib.metadata.distributions():
         name = dist.metadata["Name"]
-        if name is not None and name in double_instrumentation_check_packages:
+        if name is not None and _normalized_package_name(name) in double_instrumentation_check_packages:
             offending_packages.append(str(dist._path))
     if offending_packages:
         _self_deactivate(current_site)
@@ -223,7 +238,7 @@ def _check_dependency_version_conflict(req_string, version_conflicts):
 
     _log_debug("installed_version: {}".format(installed_version))
     if req.specifier and installed_version not in req.specifier:
-        if req.name.lower() in version_conflict_exempt_packages:
+        if _normalized_package_name(req.name) in version_conflict_exempt_packages:
             _log_warn(
                 'the installed version {} of package "{}" differs from the bundled requirement {}; '
                 "continuing anyway (the installed version takes precedence)".format(

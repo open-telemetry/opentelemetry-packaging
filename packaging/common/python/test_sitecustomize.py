@@ -68,6 +68,72 @@ def _load_benign(extra_env=None):
     return module, buf
 
 
+class NormalizedPackageNameTests(unittest.TestCase):
+    """The PEP 503 rule: runs of -, _ and . collapse to one -, then lowercase."""
+
+    def setUp(self):
+        self.module, self.stderr = _load_benign()
+
+    def test_canonical_name_is_unchanged(self):
+        self.assertEqual(
+            "opentelemetry-sdk", self.module._normalized_package_name("opentelemetry-sdk"))
+
+    def test_separators_become_hyphens(self):
+        for spelling in ("opentelemetry_sdk", "opentelemetry.sdk", "opentelemetry-sdk"):
+            with self.subTest(spelling=spelling):
+                self.assertEqual(
+                    "opentelemetry-sdk", self.module._normalized_package_name(spelling))
+
+    def test_runs_of_separators_collapse_to_one(self):
+        self.assertEqual(
+            "opentelemetry-sdk", self.module._normalized_package_name("opentelemetry_-.sdk"))
+
+    def test_case_is_folded(self):
+        self.assertEqual("pyyaml", self.module._normalized_package_name("PyYAML"))
+
+    def test_real_world_names_normalize_as_the_specification_says(self):
+        # Every one of these is a real PyPI distribution whose declared Name
+        # differs from its normalized form.
+        expected = {
+            "PyYAML": "pyyaml",
+            "typing_extensions": "typing-extensions",
+            "ruamel.yaml": "ruamel-yaml",
+            "zope.interface": "zope-interface",
+            "backports.tarfile": "backports-tarfile",
+        }
+        for declared, normalized in expected.items():
+            with self.subTest(declared=declared):
+                self.assertEqual(normalized, self.module._normalized_package_name(declared))
+
+    def test_distinct_names_stay_distinct(self):
+        self.assertNotEqual(
+            self.module._normalized_package_name("opentelemetry-sdk"),
+            self.module._normalized_package_name("opentelemetry-sdk-extras"))
+
+
+class PackageListCanonicalFormTests(unittest.TestCase):
+    """Both hardcoded lists are searched with a normalized name.
+
+    Only the incoming name is normalized, which is the cheap direction: it
+    happens once per candidate instead of once per list entry per candidate.
+    That makes it an invariant that the lists themselves are written in
+    normalized form, because an entry that is not can never be matched.
+    """
+
+    def setUp(self):
+        self.module, self.stderr = _load_benign()
+
+    def test_double_instrumentation_list_is_written_normalized(self):
+        for name in self.module.double_instrumentation_check_packages:
+            with self.subTest(name=name):
+                self.assertEqual(name, self.module._normalized_package_name(name))
+
+    def test_version_conflict_exempt_list_is_written_normalized(self):
+        for name in self.module.version_conflict_exempt_packages:
+            with self.subTest(name=name):
+                self.assertEqual(name, self.module._normalized_package_name(name))
+
+
 class CheckDependencyVersionConflictTests(unittest.TestCase):
     """Fine-grained tests for _check_dependency_version_conflict."""
 
@@ -170,6 +236,30 @@ class CheckDependencyVersionConflictTests(unittest.TestCase):
         self._check("jsonschema==4.25.0", installed_version="4.17.3")
         self.assertEqual({}, self.conflicts)
         self.assertIn("continuing anyway", self.stderr.getvalue())
+
+    def test_exemption_holds_whatever_case_the_requirement_uses(self):
+        # The exempt list is matched on the normalized name, so every casing of
+        # PyYAML is exempt. Neither exempt entry contains a separator, so the
+        # separator half of the rule has nothing to do at this call site; it is
+        # matched here the same way as in the double-instrumentation guard so
+        # the two cannot drift apart again.
+        for spelling in ("PyYAML", "pyyaml", "PYYAML", "PyYaml"):
+            with self.subTest(spelling=spelling):
+                self.conflicts = {}
+                self.stderr.truncate(0)
+                self.stderr.seek(0)
+                self._check(spelling + "==6.0.3", installed_version="6.0")
+                self.assertEqual({}, self.conflicts)
+                self.assertIn("continuing anyway", self.stderr.getvalue())
+
+    def test_a_separator_spelling_is_a_different_project_and_is_not_exempt(self):
+        # PEP 503 collapses a run of separators to one hyphen, it does not
+        # delete it, so py-yaml is not PyYAML and must not inherit its exemption.
+        self._check("py_yaml==6.0.3", installed_version="6.0")
+        self.assertEqual(
+            {"py_yaml": {"version_required": "==6.0.3", "version_found": "6.0"}},
+            self.conflicts,
+        )
 
     def test_non_exempt_package_conflict_still_recorded(self):
         self._check("opentelemetry-sdk==1.43.0", installed_version="1.20.0")
@@ -435,6 +525,41 @@ class ImportDistroTests(unittest.TestCase):
         self._assert_deactivated(auto_instrumentation, observed_env)
         self.assertIn("already instrumented", output)
         self.assertIn("opentelemetry_sdk-1.20.0.dist-info", output)
+
+    def test_deactivates_whatever_spelling_the_declared_name_uses(self):
+        # The Name a distribution declares is reported verbatim, and
+        # non-canonical spellings are ordinary on PyPI, so every spelling of a
+        # listed package has to be recognised.
+        for spelling in (
+            "opentelemetry_sdk",
+            "OpenTelemetry-SDK",
+            "OpenTelemetry_SDK",
+            "opentelemetry.sdk",
+            "OPENTELEMETRY-SDK",
+            "opentelemetry--sdk",
+        ):
+            with self.subTest(declared_name=spelling):
+                dist = MagicMock()
+                dist.metadata = {"Name": spelling}
+                dist._path = "/app/site-packages/opentelemetry_sdk-1.20.0.dist-info"
+                output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+                    extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
+                    all_dependencies="foo==1.0.0\n",
+                    installed_distributions=[dist],
+                )
+                self._assert_deactivated(auto_instrumentation, observed_env)
+                self.assertIn("already instrumented", output)
+
+    def test_a_name_that_merely_starts_the_same_does_not_deactivate(self):
+        # Normalizing must not turn the membership test into a prefix match.
+        dist = MagicMock()
+        dist.metadata = {"Name": "opentelemetry_sdk_extras"}
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
+            all_dependencies="foo==1.0.0\n",
+            installed_distributions=[dist],
+        )
+        self._assert_activated(auto_instrumentation, observed_env)
 
     def test_unrelated_installed_distribution_does_not_deactivate(self):
         dist = MagicMock()
