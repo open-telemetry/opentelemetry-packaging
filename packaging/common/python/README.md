@@ -107,6 +107,12 @@ configuration file that `otel-config-check` accepts and the SDK's file configura
 rejects: the validator checks the YAML and `file_format`, while the SDK validates the whole
 document against its schema.
 
+Any unexpected error in the checks themselves self-deactivates as well, and reports the
+exception type and message. Deactivating means the site directory is removed from
+`sys.path` and from `PYTHONPATH`, and the injector's agent path prefix is cleared, so child
+processes do not retry a failed activation. The application is never prevented from
+starting by any of this.
+
 ## Supported libraries
 
 Instrumentation plug-ins are included for:

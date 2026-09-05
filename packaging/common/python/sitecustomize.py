@@ -149,7 +149,11 @@ def _check_for_double_instrumentation(current_site):
     for dist in importlib.metadata.distributions():
         name = dist.metadata["Name"]
         if name is not None and name in double_instrumentation_check_packages:
-            offending_packages.append(str(dist._path))
+            # The operator reading the deactivation message has to find and
+            # remove this package, so name it with its version and its install
+            # directory. locate_file("") is abstract on Distribution, so that
+            # directory resolves for any finder, not just path-based installs.
+            offending_packages.append("{} {} ({})".format(name, dist.version, dist.locate_file("")))
     if offending_packages:
         _self_deactivate(current_site)
         _print_cannot_auto_instrument_message(
@@ -382,4 +386,21 @@ def import_distro():
         _print_cannot_auto_instrument_message("dependency conflicts: {}".format(version_conflicts))
 
 
-import_distro()
+# Every guard above exists to leave the process in a known state, and an
+# exception escaping import_distro() is the one path that leaves it in the
+# state they prevent: the site still on PYTHONPATH and the injector prefix
+# still set, so every child process that execs an interpreter retries the same
+# failure, while site.execsitecustomize() reports a single line that does not
+# name this agent and carries no traceback unless PYTHONVERBOSE is set.
+# The reporting is itself guarded, because the step that failed can be the one
+# that reports.
+try:
+    import_distro()
+except Exception as unexpected_error:
+    try:
+        _self_deactivate(dirname(__file__))
+        _print_cannot_auto_instrument_message(
+            "unexpected error while deciding whether to auto-instrument: {}: {}".format(
+                type(unexpected_error).__name__, unexpected_error))
+    except Exception:
+        pass
