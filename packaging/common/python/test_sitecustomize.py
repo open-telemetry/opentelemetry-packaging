@@ -320,6 +320,31 @@ class ImportDistroTests(unittest.TestCase):
         self._assert_deactivated(auto_instrumentation, observed_env)
         self.assertIn("dependency conflicts", output)
 
+    def test_every_conflict_is_reported_not_just_the_first(self):
+        # The warning is the only report an operator gets, so stopping at the
+        # first conflict charges them a process restart per conflict to find
+        # the rest, and the manifest is sorted, so which one they are shown is
+        # decided by alphabetical order rather than by the problem.
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
+            all_dependencies="alpha==2.0.0\nbeta==2.0.0\ngamma==2.0.0\n",
+            installed_version="1.0.0",
+        )
+        self._assert_deactivated(auto_instrumentation, observed_env)
+        for name in ("alpha", "beta", "gamma"):
+            self.assertIn(name, output)
+
+    def test_a_later_conflict_does_not_hide_an_earlier_one(self):
+        # Guards the accumulation: a conflict found later must add to what the
+        # loop already collected rather than replace it.
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf"},
+            all_dependencies="zulu==2.0.0\nalpha==2.0.0\n",
+            installed_version="1.0.0",
+        )
+        self.assertIn("zulu", output)
+        self.assertIn("alpha", output)
+
     def test_activates_with_grpc_when_protocol_unset(self):
         # An unset protocol follows the OTel default of grpc, which this
         # package now bundles (over the pure-Python transport).

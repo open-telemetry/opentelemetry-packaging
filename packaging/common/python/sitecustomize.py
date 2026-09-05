@@ -346,10 +346,16 @@ def import_distro():
         _print_cannot_auto_instrument_message("cannot read all-dependencies.txt for dependency conflict checking")
         return
 
+    # Every requirement is checked, not just up to the first conflict. The
+    # deactivation warning is the only report an operator gets, so stopping
+    # early charges them one process restart per conflict to discover the rest,
+    # and which one they see is decided by the sorted order of the manifest.
+    # This costs nothing on the path that matters: with no conflicts the loop
+    # ran every requirement anyway. It costs one full pass over the manifest in
+    # the case that is about to deactivate, which is skipping the whole SDK and
+    # every instrumentor regardless.
     for req_string in requirements_to_check:
         _check_dependency_version_conflict(req_string, version_conflicts)
-        if version_conflicts:
-            break
 
     if not version_conflicts:
         if not config_file:
