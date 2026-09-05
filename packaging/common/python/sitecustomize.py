@@ -68,6 +68,23 @@ def _get_logger():
         def handleError(self, record):
             pass
 
+    class _SingleLineFormatter(logging.Formatter):
+        # One record has to be one line. Several diagnostics interpolate a value
+        # that carries newlines of its own: sys.version splits before the
+        # compiler string, packaging draws a caret pointer under an unparsable
+        # requirement, otel-config-check reports a schema error across lines,
+        # and an exception out of initialize() can be arbitrarily long. Without
+        # this the continuation lines reach stderr with no prefix and no
+        # severity, so a line-oriented collector reads them as separate records
+        # belonging to the application, and the part of the warning saying what
+        # actually went wrong is the part that loses its attribution.
+        #
+        # Collapsed here rather than at each interpolation site, so a diagnostic
+        # added later cannot reintroduce it, including one that reaches for the
+        # logger directly instead of going through _log_warn or _log_debug.
+        def format(self, record):
+            return " ".join(logging.Formatter.format(self, record).split())
+
     # Built by instantiating logging.Logger directly instead of through
     # logging.getLogger(), so that nothing about the application's logging
     # changes: the logger never enters logging.Logger.manager.loggerDict, so
@@ -81,7 +98,7 @@ def _get_logger():
     # diagnostics, and a write to a None or closed stream is dropped instead
     # of raising or falling through to the application's stdout.
     handler = _SilentStreamHandler(stderr)
-    handler.setFormatter(logging.Formatter(
+    handler.setFormatter(_SingleLineFormatter(
         "[opentelemetry-python-autoinstrumentation] %(levelname)s: %(message)s"))
     logger.addHandler(handler)
     # Both filters logging applies by default sit at WARNING: the level

@@ -129,6 +129,15 @@ class CheckDependencyVersionConflictTests(unittest.TestCase):
         self.assertIn("WARN", output)
         self.assertIn('cannot parse requirement "===bogus==="', output)
 
+    def test_the_unparsable_requirement_warning_is_one_record(self):
+        # packaging renders InvalidRequirement across three lines, with a caret
+        # pointer under the offending text. This is the real message, not a
+        # stand-in, so it fails if packaging changes shape.
+        self._check("===bogus===", installed_version="1.0.0")
+        output = self.stderr.getvalue()
+        self.assertEqual(1, len(output.splitlines()))
+        self.assertIn("Expected package name at the start of dependency specifier", output)
+
     def test_unparsable_installed_version_is_skipped_with_a_warning(self):
         # Linux distros patch package versions into strings that are not
         # valid PEP 440 (e.g. Debian's dfsg suffixes).
@@ -383,6 +392,22 @@ class ImportDistroTests(unittest.TestCase):
         self.assertIn("is not usable", output)
         self.assertIn("file_format 1.0 is required", output)
 
+    def test_a_multiline_validator_error_is_one_record(self):
+        # otel-config-check reports a schema error across lines, and its whole
+        # output becomes the reason. Without collapsing, the reason and the
+        # trailing [argv] land on lines carrying neither prefix nor severity.
+        self._write_fake_validator(
+            exit_code=1,
+            message="Configuration does not match schema:\n  42 is not of type 'object'\n    at tracer_provider",
+        )
+        output, auto_instrumentation, observed_env = self._exec_sitecustomize(
+            extra_env={"OTEL_CONFIG_FILE": os.path.join(self.base_dir, "otel-config.yaml")},
+            all_dependencies="foo==1.0.0\n",
+        )
+        self._assert_deactivated(auto_instrumentation, observed_env)
+        self.assertEqual(1, len(output.splitlines()))
+        self.assertIn("at tracer_provider", output)
+
     def test_config_file_without_validator_binary_proceeds(self):
         # The validator is an aid; its absence must not block activation.
         output, auto_instrumentation, observed_env = self._exec_sitecustomize(
@@ -490,6 +515,41 @@ class LoggingTests(unittest.TestCase):
         self.assertIn(self.PREFIX, output)
         self.assertIn("DEBUG", output)
         self.assertIn("a trace", output)
+
+    def test_a_multiline_message_is_emitted_as_one_record(self):
+        # A continuation line reaches stderr with no prefix and no severity, so
+        # a line-oriented collector reads it as a separate record belonging to
+        # the application.
+        module, buf = _load_benign()
+        module._log_warn("first line\nsecond line\nthird line")
+        output = buf.getvalue()
+        self.assertEqual(1, len(output.splitlines()))
+        self.assertIn("first line second line third line", output)
+
+    def test_collapsing_keeps_every_word_of_the_message(self):
+        module, buf = _load_benign()
+        module._log_warn("schema error:\n  42 is not of type 'object'\n    at tracer_provider")
+        output = buf.getvalue()
+        for word in ("schema", "error:", "42", "not", "type", "'object'", "at", "tracer_provider"):
+            self.assertIn(word, output)
+
+    def test_a_debug_record_is_collapsed_too(self):
+        module, buf = _load_benign(extra_env={"OTEL_INJECTOR_LOG_LEVEL": "debug"})
+        module._log_debug("a trace\nsplit across lines")
+        self.assertEqual(1, len(buf.getvalue().splitlines()))
+
+    def test_a_record_logged_without_the_helpers_is_collapsed(self):
+        # The collapsing lives in the formatter, so it covers a diagnostic that
+        # reaches for the logger directly instead of _log_warn or _log_debug.
+        module, buf = _load_benign()
+        module._get_logger().warning("first line\nsecond line")
+        self.assertEqual(1, len(buf.getvalue().splitlines()))
+
+    def test_a_single_line_message_is_untouched(self):
+        module, buf = _load_benign()
+        module._log_warn("a diagnostic")
+        self.assertEqual(
+            self.PREFIX + " WARNING: a diagnostic", buf.getvalue().rstrip("\n"))
 
     def test_debug_is_suppressed_when_the_level_is_unset(self):
         module, buf = _load_benign()
