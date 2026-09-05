@@ -238,7 +238,7 @@ def _check_dependency_version_conflict(req_string, version_conflicts):
 
     _log_debug("installed_version: {}".format(installed_version))
     if req.specifier and installed_version not in req.specifier:
-        if req.name.lower() in version_conflict_exempt_packages:
+        if _normalized_package_name(req.name) in version_conflict_exempt_packages:
             _log_warn(
                 'the installed version {} of package "{}" differs from the bundled requirement {}; '
                 "continuing anyway (the installed version takes precedence)".format(

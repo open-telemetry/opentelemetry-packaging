@@ -214,6 +214,30 @@ class CheckDependencyVersionConflictTests(unittest.TestCase):
         self.assertEqual({}, self.conflicts)
         self.assertIn("continuing anyway", self.stderr.getvalue())
 
+    def test_exemption_holds_whatever_case_the_requirement_uses(self):
+        # The exempt list is matched on the normalized name, so every casing of
+        # PyYAML is exempt. Neither exempt entry contains a separator, so the
+        # separator half of the rule has nothing to do at this call site; it is
+        # matched here the same way as in the double-instrumentation guard so
+        # the two cannot drift apart again.
+        for spelling in ("PyYAML", "pyyaml", "PYYAML", "PyYaml"):
+            with self.subTest(spelling=spelling):
+                self.conflicts = {}
+                self.stderr.truncate(0)
+                self.stderr.seek(0)
+                self._check(spelling + "==6.0.3", installed_version="6.0")
+                self.assertEqual({}, self.conflicts)
+                self.assertIn("continuing anyway", self.stderr.getvalue())
+
+    def test_a_separator_spelling_is_a_different_project_and_is_not_exempt(self):
+        # PEP 503 collapses a run of separators to one hyphen, it does not
+        # delete it, so py-yaml is not PyYAML and must not inherit its exemption.
+        self._check("py_yaml==6.0.3", installed_version="6.0")
+        self.assertEqual(
+            {"py_yaml": {"version_required": "==6.0.3", "version_found": "6.0"}},
+            self.conflicts,
+        )
+
     def test_non_exempt_package_conflict_still_recorded(self):
         self._check("opentelemetry-sdk==1.43.0", installed_version="1.20.0")
         self.assertEqual(
