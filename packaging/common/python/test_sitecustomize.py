@@ -487,6 +487,41 @@ class ImportDistroTests(unittest.TestCase):
         self._assert_activated(auto_instrumentation, observed_env)
 
 
+class DoubleInstrumentationPackageListTests(unittest.TestCase):
+    """The double-instrumentation list against the bundle it has to describe.
+
+    The list is maintained by hand, so nothing but a test keeps it in step with
+    requirements.txt. It fell behind once already: the vendored gRPC exporter
+    and opentelemetry-pyproto were installed by the bundle without being added
+    here, and an application carrying either was not recognised as instrumented.
+    """
+
+    def setUp(self):
+        self.module, self.stderr = _load_benign()
+
+    def test_every_vendored_package_is_checked(self):
+        # A vendored package is one this bundle installs from source, so an
+        # application carrying it means a second copy of the same distribution.
+        with open(os.path.join(TEST_DIR, "requirements.txt")) as f:
+            vendored = [
+                os.path.basename(line.strip())
+                for line in f
+                if line.strip().startswith("./vendor/")
+            ]
+        self.assertTrue(vendored, "no vendored requirements found to check against")
+        for name in vendored:
+            self.assertIn(name, self.module.double_instrumentation_check_packages)
+
+    def test_the_list_is_sorted(self):
+        # Sorted so a new requirements.txt entry can be checked against it by eye.
+        packages = self.module.double_instrumentation_check_packages
+        self.assertEqual(sorted(packages), packages)
+
+    def test_the_list_has_no_duplicates(self):
+        packages = self.module.double_instrumentation_check_packages
+        self.assertEqual(len(set(packages)), len(packages))
+
+
 class LoggingTests(unittest.TestCase):
     """The contract of the diagnostics channel.
 
