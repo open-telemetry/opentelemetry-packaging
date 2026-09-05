@@ -87,6 +87,7 @@ export OTEL_CONFIG_FILE=/etc/opentelemetry/python/otel-config.yaml
 `sitecustomize.py` performs the following checks at startup before activating instrumentation:
 
 1. **Python version**: Requires Python ≥ 3.10. Older versions are skipped gracefully.
+   This floor is derived from the strictest Requires-Python across the bundled distributions, and it is kept in sync automatically by `sync_minimum_python_version.py`.
 2. **OTLP protocol / configuration file**: Without `OTEL_CONFIG_FILE`, accepts
    `OTEL_EXPORTER_OTLP_PROTOCOL` of `grpc` (the default when unset) or `http/protobuf`;
    `http/json` self-deactivates. With `OTEL_CONFIG_FILE` set,

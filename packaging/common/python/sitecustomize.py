@@ -278,9 +278,13 @@ def import_distro():
     _log_debug("checking Python version")
     current_site = dirname(__file__)
 
-    # Require Python >= 3.10 (opentelemetry-exporter-otlp-pyproto-http minimum).
+    # Require Python >= 3.10. This floor is the strictest Requires-Python lower
+    # bound across the bundled distributions. Keep it in sync with them by
+    # running sync_minimum_python_version.py (CI enforces this via the
+    # check-minimum-python-version make target); do not edit the constant by hand.
     # We cannot use named attributes (e.g. sys.version_info.major) as those were introduced in 3.1.
-    if version_info[0] != 3 or version_info[1] < 10:
+    _MINIMUM_PYTHON_MINOR = 10  # sync-minimum-python-version: 3.x minor floor
+    if version_info[0] != 3 or version_info[1] < _MINIMUM_PYTHON_MINOR:
         _self_deactivate(current_site)
         _print_cannot_auto_instrument_message("unsupported Python version: {}".format(version))
         return
