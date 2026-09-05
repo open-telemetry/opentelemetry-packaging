@@ -11,7 +11,6 @@
 # IMPORTANT: This file must be valid Python 2.7+ so that it can be parsed without crashing
 # older interpreters. The version gate below prevents execution on unsupported versions.
 
-from __future__ import print_function
 import os
 from os.path import dirname
 import sys
@@ -43,26 +42,68 @@ version_conflict_exempt_packages = [
 
 debug_enabled = os.environ.get("OTEL_INJECTOR_LOG_LEVEL") == "debug"
 
+_logger = None
 
-def _log(level, message):
-    # sys.stderr can be None (daemons, pythonw); print(file=None) would fall
-    # through to stdout and corrupt the application's output stream. Diagnostics
-    # must never do that, nor raise (e.g. on a closed fd 2).
-    if stderr is None:
-        return
-    try:
-        print("[opentelemetry-python-autoinstrumentation] {}: {}".format(level, message), file=stderr)
-    except Exception:
-        pass
+
+def _get_logger():
+    # logging is imported here rather than at module scope. The injector
+    # prepends this file to every Python process on the host, including the
+    # short-lived ones and the ones that deactivate at the version gate, and
+    # `import logging` costs 22 ms and 34 modules (threading, re, traceback)
+    # against 2.7 ms for site itself. A process that emits no diagnostic pays
+    # none of it.
+    global _logger
+    if _logger is not None:
+        return _logger
+    import logging
+
+    class _SilentStreamHandler(logging.StreamHandler):
+        # A diagnostic that cannot be written must fail silently, which is what
+        # `print(file=stderr)` wrapped in `except Exception: pass` did.
+        # Handler.handleError instead writes a "--- Logging error ---"
+        # traceback to sys.stderr, which is usually the stream that just
+        # failed, and it swallows only OSError while doing so. Subclassed
+        # rather than switching logging.raiseExceptions, which is global state
+        # the application owns.
+        def handleError(self, record):
+            pass
+
+    # Built by instantiating logging.Logger directly instead of through
+    # logging.getLogger(), so that nothing about the application's logging
+    # changes: the logger never enters logging.Logger.manager.loggerDict, so
+    # the application cannot reach it by name and dictConfig cannot disable it
+    # while disabling existing loggers, and its parent is None, so no record
+    # can reach the root handlers. getLogger() exists so that one name yields
+    # one shared logger; here not sharing is the point.
+    logger = logging.Logger("opentelemetry-python-autoinstrumentation")
+    # sys.stderr can be None (daemons, pythonw) or closed. The handler holds
+    # the stream from construction, so a later replacement cannot silence the
+    # diagnostics, and a write to a None or closed stream is dropped instead
+    # of raising or falling through to the application's stdout.
+    handler = _SilentStreamHandler(stderr)
+    handler.setFormatter(logging.Formatter(
+        "[opentelemetry-python-autoinstrumentation] %(levelname)s: %(message)s"))
+    logger.addHandler(handler)
+    # Both filters logging applies by default sit at WARNING: the level
+    # inherited from the root logger, and the level of the fallback handler
+    # (logging.lastResort, which does not exist before Python 3.2 and drops
+    # every record with a "No handlers could be found" line instead). Owning
+    # the level and the handler bypasses both, so a debug run is verbose on
+    # every interpreter this file can reach.
+    logger.setLevel(logging.DEBUG if debug_enabled else logging.WARNING)
+    _logger = logger
+    return _logger
 
 
 def _log_warn(message):
-    _log("WARN", message)
+    _get_logger().warning(message)
 
 
 def _log_debug(message):
+    # Not a level filter, the logger's own level is that. This keeps a process
+    # running with debug off from importing logging at all.
     if debug_enabled:
-        _log("DEBUG", message)
+        _get_logger().debug(message)
 
 
 _log_debug("running sitecustomize.py")

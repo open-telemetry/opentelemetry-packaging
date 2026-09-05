@@ -12,6 +12,7 @@ Run with `make python-unit-tests`.
 
 import importlib.metadata
 import importlib.util
+import logging
 import os
 import shutil
 import sys
@@ -39,21 +40,25 @@ def _load_sitecustomize(stderr_buffer):
     return module
 
 
-def _load_benign():
+def _load_benign(extra_env=None):
     """Load sitecustomize with import_distro() short-circuiting harmlessly.
 
     An unsupported OTEL_EXPORTER_OTLP_PROTOCOL makes import_distro()
     self-deactivate at the protocol guard, before reading files or package
     metadata. os.environ and sys.path are patched so the deactivation cannot
-    leak into the test process. Returns (module, stderr buffer).
+    leak into the test process. OTEL_INJECTOR_LOG_LEVEL is dropped from the
+    inherited environment, so the diagnostics level is decided by extra_env
+    alone and not by the shell running the suite. Returns (module, stderr
+    buffer).
     """
     buf = StringIO()
     env = {
         k: v for k, v in os.environ.items()
-        if k not in ("OTEL_EXPORTER_OTLP_PROTOCOL", "OTEL_CONFIG_FILE")
+        if k not in ("OTEL_EXPORTER_OTLP_PROTOCOL", "OTEL_CONFIG_FILE", "OTEL_INJECTOR_LOG_LEVEL")
     }
     # http/json is unsupported, so the guard deactivates without side effects.
     env["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/json"
+    env.update(extra_env or {})
     with patch.dict(os.environ, env, clear=True), patch.object(sys, "path", list(sys.path)):
         module = _load_sitecustomize(buf)
     # Discard the protocol-guard warning the short circuit itself produced, so
@@ -454,22 +459,124 @@ class ImportDistroTests(unittest.TestCase):
 
 
 class LoggingTests(unittest.TestCase):
-    """The diagnostics channel must never touch stdout or raise."""
+    """The contract of the diagnostics channel.
+
+    Every line names the agent and the severity of the record, the severity
+    decides whether the line is emitted at all, and the channel never touches
+    stdout nor raises.
+    """
+
+    PREFIX = "[opentelemetry-python-autoinstrumentation]"
+
+    def test_warning_names_the_agent_and_the_severity(self):
+        module, buf = _load_benign()
+        module._log_warn("a diagnostic")
+        output = buf.getvalue()
+        self.assertIn(self.PREFIX, output)
+        self.assertIn("WARN", output)
+        self.assertIn("a diagnostic", output)
+
+    def test_warning_is_emitted_whatever_the_level(self):
+        # No value of OTEL_INJECTOR_LOG_LEVEL silences a warning: it is the
+        # only report an operator gets when the agent deactivates.
+        module, buf = _load_benign(extra_env={"OTEL_INJECTOR_LOG_LEVEL": "debug"})
+        module._log_warn("a diagnostic")
+        self.assertIn("a diagnostic", buf.getvalue())
+
+    def test_debug_names_the_agent_and_the_severity(self):
+        module, buf = _load_benign(extra_env={"OTEL_INJECTOR_LOG_LEVEL": "debug"})
+        module._log_debug("a trace")
+        output = buf.getvalue()
+        self.assertIn(self.PREFIX, output)
+        self.assertIn("DEBUG", output)
+        self.assertIn("a trace", output)
+
+    def test_debug_is_suppressed_when_the_level_is_unset(self):
+        module, buf = _load_benign()
+        module._log_debug("a trace")
+        self.assertEqual("", buf.getvalue())
+
+    def test_suppressed_debug_record_does_not_build_the_logger(self):
+        # The guard in _log_debug is what keeps a process running with debug
+        # off from importing logging at all, which the injector cares about
+        # because it prepends this file to every Python process on the host.
+        module, _ = _load_benign()
+        module._logger = None
+        module._log_debug("a trace")
+        self.assertIsNone(module._logger)
 
     def test_log_with_stderr_none_is_silent(self):
-        module, _ = _load_benign()
+        # The daemon and pythonw case: sys.stderr is None at interpreter
+        # startup, so the module's own binding is None too. Nothing may be
+        # written and nothing may raise.
+        module, buf = _load_benign()
         module.stderr = None
-        module._log_warn("must not raise nor reach stdout")
+        # The load already emitted the protocol-guard warning, so the handler
+        # exists and holds the buffer. Drop it to rebuild it from the None.
+        module._logger = None
+        with patch.object(sys, "stderr", None):
+            module._log_warn("must not raise nor reach stdout")
+        self.assertEqual("", buf.getvalue())
 
     def test_log_with_broken_stderr_does_not_raise(self):
-        module, _ = _load_benign()
+        module, buf = _load_benign()
 
         class Broken(object):
             def write(self, *_args):
                 raise IOError("closed")
 
         module.stderr = Broken()
-        module._log_warn("must not raise")
+        module._logger = None
+        fallback = StringIO()
+        with patch.object(sys, "stderr", fallback):
+            module._log_warn("must not raise")
+        # A write that fails must be dropped without a word: the logging
+        # module's own error path would report it on sys.stderr instead.
+        self.assertEqual("", fallback.getvalue())
+        self.assertEqual("", buf.getvalue())
+
+
+class ApplicationLoggingTests(unittest.TestCase):
+    """sitecustomize.py must leave the application's logging untouched.
+
+    It runs during site import, before the application's first line, so any
+    logging state it changed would be inherited by the application: the root
+    logger's level and handlers, the registry that dictConfig walks when it
+    disables existing loggers, and the global disable threshold.
+    """
+
+    def setUp(self):
+        root = logging.getLogger()
+        self.before = (
+            set(logging.Logger.manager.loggerDict),
+            list(root.handlers),
+            root.level,
+            logging.Logger.manager.disable,
+        )
+
+    def _assert_logging_state_untouched(self):
+        root = logging.getLogger()
+        self.assertEqual(
+            self.before,
+            (
+                set(logging.Logger.manager.loggerDict),
+                list(root.handlers),
+                root.level,
+                logging.Logger.manager.disable,
+            ),
+        )
+
+    def test_running_the_module_touches_no_logging_state(self):
+        # The load emits at both severities: DEBUG for the entry trace and
+        # WARN from the protocol guard that short-circuits it.
+        _load_benign(extra_env={"OTEL_INJECTOR_LOG_LEVEL": "debug"})
+        self._assert_logging_state_untouched()
+
+    def test_emitting_after_the_load_touches_no_logging_state(self):
+        module, _ = _load_benign(extra_env={"OTEL_INJECTOR_LOG_LEVEL": "debug"})
+        module._log_debug("a trace")
+        module._log_warn("a diagnostic")
+        self._assert_logging_state_untouched()
 
 
 if __name__ == "__main__":
