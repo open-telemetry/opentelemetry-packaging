@@ -44,6 +44,7 @@ packaging/
 testutil/                    Shared Go test helpers
   otelsink/                  In-process OTLP sink + typed assertion API for E2E tests
 docs/design/                 Architecture and design documents
+.github/scripts/             Shell scripts invoked by Makefile targets and CI workflows
 ```
 
 ## How package builds work

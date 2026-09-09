@@ -400,13 +400,15 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 go-unit-tests:
 	go test -v ./cmd/...
 
-# Unit tests for sitecustomize.py. They need the `packaging` module (a runtime
-# dependency of sitecustomize.py itself); a throwaway virtualenv keeps the
-# host Python untouched.
+# Unit tests for sitecustomize.py and sync_minimum_python_version.py. They need
+# the `packaging` module (a runtime dependency of sitecustomize.py itself) and,
+# under Python 3.10, the `tomli` backport that sync_minimum_python_version.py
+# falls back to where the stdlib tomllib is absent; a throwaway virtualenv keeps
+# the host Python untouched.
 .PHONY: python-unit-tests
 python-unit-tests:
 	python3 -m venv build/python-unit-tests-venv
-	build/python-unit-tests-venv/bin/pip install --quiet packaging
+	build/python-unit-tests-venv/bin/pip install --quiet packaging tomli
 	build/python-unit-tests-venv/bin/python -m unittest discover \
 		--start-directory packaging/common/python --pattern 'test_*.py' --verbose
 
@@ -470,6 +472,16 @@ pyproto-unit-tests:
 			--rootdir $(PYPROTO_VENDOR_DIR)/$${suite%%/*} \
 			$(PYPROTO_VENDOR_DIR)/$$suite; \
 	done
+
+# Check that the sitecustomize.py version gate stays in sync with the strictest
+# Requires-Python across the distributions that actually ship. The script
+# documents how the floor is derived, why only the shipped payload contributes
+# to it, and why the minimum supported interpreter derives it; it also takes
+# --write to rewrite the gate, and reads MINIMUM_PYTHON and BUILD_DIR from the
+# environment.
+.PHONY: check-minimum-python-version
+check-minimum-python-version:
+	.github/scripts/check-minimum-python-version.sh --check
 
 # ============================================================================
 # Lint

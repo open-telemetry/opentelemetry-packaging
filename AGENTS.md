@@ -22,6 +22,7 @@ make rpm-rebuild-container     # Rebuild the SRPM into binary RPMs the way COPR 
 
 make go-unit-tests             # Go command unit tests (otel-config-check)
 make python-unit-tests         # sitecustomize.py unit tests (throwaway venv, no containers)
+make check-minimum-python-version # sitecustomize.py version gate matches the bundled distributions' Requires-Python
 make pyproto-unit-tests        # Vendored pyproto exporter test suites (throwaway venvs, no containers)
 make integration-test-metadata # Fast metadata tests (no containers)
 make integration-tests         # Full E2E tests (requires Podman/Docker)
