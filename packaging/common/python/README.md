@@ -51,6 +51,27 @@ exporters (they emit protobuf only).
 - `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS`: Comma-separated list of instrumentations to disable
 - `OTEL_INJECTOR_LOG_LEVEL`: Set to `debug` for verbose sitecustomize.py logging
 
+### Diagnostics
+
+`sitecustomize.py` reports on standard error, one line per record, prefixed with
+`[opentelemetry-python-autoinstrumentation]` and the severity of the record:
+
+```
+[opentelemetry-python-autoinstrumentation] WARNING: cannot auto-instrument Python process: ...
+```
+
+A `WARNING` is always emitted, and it is the only report you get when a safety
+guard deactivates the agent. `DEBUG` records are emitted only when
+`OTEL_INJECTOR_LOG_LEVEL=debug`.
+
+The records are `logging` records at `logging.WARNING` and `logging.DEBUG`, but
+they never enter the application's logging. The agent runs during `site` import,
+before the application's first line, so it writes through a logger of its own
+that is not registered in `logging.Logger.manager.loggerDict` and has no path to
+the root handlers. It configures no handler, level, or filter that the
+application can observe, and it does not import `logging` at all unless it has
+something to report.
+
 ### Declarative configuration
 
 A working declarative configuration file is installed at `/etc/opentelemetry/python/otel-config.yaml`.
@@ -79,6 +100,18 @@ export OTEL_CONFIG_FILE=/etc/opentelemetry/python/otel-config.yaml
    in the application. Self-deactivates if conflicts are detected, except for
    general-purpose libraries (PyYAML, jsonschema) where the application's version is
    expected to keep working: those log a warning instead.
+
+Once those pass, a failure during activation itself also self-deactivates, with the error
+reported on one line. This covers what the checks above cannot foresee, such as a
+configuration file that `otel-config-check` accepts and the SDK's file configurator then
+rejects: the validator checks the YAML and `file_format`, while the SDK validates the whole
+document against its schema.
+
+Any unexpected error in the checks themselves self-deactivates as well, and reports the
+exception type and message. Deactivating means the site directory is removed from
+`sys.path` and from `PYTHONPATH`, and the injector's agent path prefix is cleared, so child
+processes do not retry a failed activation. The application is never prevented from
+starting by any of this.
 
 ## Supported libraries
 

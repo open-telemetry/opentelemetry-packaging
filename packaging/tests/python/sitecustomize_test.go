@@ -8,6 +8,10 @@
 // ever breaking the application. The logic behind the guards is covered by
 // unit tests (test_sitecustomize.py next to the script); this suite covers
 // real interpreters.
+//
+// "Harmless" includes the application's logging. sitecustomize.py runs during
+// site import, before the application's first line, so anything it changed
+// about the logging module would be inherited by the application.
 package python_test
 
 import (
@@ -21,6 +25,16 @@ import (
 // appMarker is printed by the containerized application after sitecustomize.py
 // has run; its presence proves the application was not broken.
 const appMarker = "APP RAN TO COMPLETION"
+
+// appLogMarker is logged by the containerized application through its own
+// logging configuration, at its own level and in its own format. Its presence
+// proves that the diagnostics sitecustomize.py emitted first left that
+// configuration alone.
+const appLogMarker = "APP INFO myapp: application logging is intact"
+
+// appDebugMarker would only appear if something lowered the application's log
+// level below the INFO it asked for.
+const appDebugMarker = "APP DEBUG"
 
 func TestSitecustomizePythonVersionCompatibility(t *testing.T) {
 	cases := []struct {
@@ -67,6 +81,10 @@ func TestSitecustomizePythonVersionCompatibility(t *testing.T) {
 				"the application must run to completion under %s", tc.image)
 			assert.Contains(t, output, tc.expectedGuard,
 				"expected the guard message for this interpreter")
+			assert.Contains(t, output, appLogMarker,
+				"the application's own logging configuration must be the one in effect under %s", tc.image)
+			assert.NotContains(t, output, appDebugMarker,
+				"sitecustomize.py must not lower the application's log level under %s", tc.image)
 		})
 	}
 }

@@ -4,6 +4,11 @@
 # Runs an unmodified Python one-liner with the packaged sitecustomize.py on
 # PYTHONPATH, the way the injector activates it. The test asserts that the
 # process always runs to completion, whatever the interpreter version.
+#
+# The one-liner configures logging its own way, at its own level and with its
+# own format. sitecustomize.py runs before it and emits diagnostics of its own,
+# so the test also asserts that the application's configuration is the one in
+# effect afterwards.
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
@@ -17,4 +22,4 @@ ENV PYTHONPATH=/otel-site
 # them. (An unset protocol now defaults to grpc and would proceed to activate.)
 ENV OTEL_EXPORTER_OTLP_PROTOCOL=http/json
 
-CMD ["python", "-c", "print('APP RAN TO COMPLETION')"]
+CMD ["python", "-c", "import logging; logging.basicConfig(level=logging.INFO, format='APP %(levelname)s %(name)s: %(message)s'); log = logging.getLogger('myapp'); log.info('application logging is intact'); log.debug('application debug stays hidden'); print('APP RAN TO COMPLETION')"]
