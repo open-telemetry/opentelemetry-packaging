@@ -123,6 +123,17 @@ const (
 )
 
 func injectorContents(cfg Config) (files.Contents, func(), error) {
+	// otel-instrumentation-check ships in the injector package so the post-install
+	// sanity check is present whenever the injector is (the metapackage hard-depends
+	// on it). It is cross-compiled before the package build (Makefile target
+	// otel-instrumentation-check); fail fast before the injector download when it is
+	// missing.
+	if _, err := os.Stat(cfg.SanityCheckBinary); err != nil {
+		return nil, func() {}, fmt.Errorf(
+			"otel-instrumentation-check binary not found at %q: build it with `make otel-instrumentation-check` or pass -sanity-check-binary: %w",
+			cfg.SanityCheckBinary, err)
+	}
+
 	staging, err := os.MkdirTemp("", "otel-injector-*")
 	if err != nil {
 		return nil, nil, err
@@ -143,6 +154,7 @@ func injectorContents(cfg Config) (files.Contents, func(), error) {
 
 	return files.Contents{
 		regularFile(soPath, injectorInstallDir+"/libotelinject.so", 0o755),
+		regularFile(cfg.SanityCheckBinary, "/usr/bin/otel-instrumentation-check", 0o755),
 		configFile(filepath.Join(commonDir, "injector", "injector.conf"), injectorConfigDir+"/injector.conf"),
 		configFile(filepath.Join(commonDir, "injector", "default_env.conf"), injectorConfigDir+"/default_env.conf"),
 		directory(injectorConfigDir + "/conf.d"),

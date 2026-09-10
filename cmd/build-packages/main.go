@@ -40,6 +40,9 @@ func main() {
 	configCheckBinary := flag.String("config-check-binary", "",
 		"Path to a prebuilt otel-config-check binary for the target architecture "+
 			"(defaults to build/bin/otel-config-check-<arch>; build it with `make otel-config-check`)")
+	sanityCheckBinary := flag.String("sanity-check-binary", "",
+		"Path to a prebuilt otel-instrumentation-check binary for the target architecture "+
+			"(defaults to build/bin/otel-instrumentation-check-<arch>; build it with `make otel-instrumentation-check`)")
 
 	flag.Parse()
 
@@ -87,12 +90,22 @@ func main() {
 		log.Fatalf("error: %v", err)
 	}
 
+	sanityBinary := *sanityCheckBinary
+	if sanityBinary == "" {
+		sanityBinary = filepath.Join("build", "bin", "otel-instrumentation-check-"+*arch)
+	}
+	absSanityBinary, err := filepath.Abs(sanityBinary)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
+
 	cfg := builder.Config{
 		Version:           strings.TrimPrefix(*version, "v"),
 		Arch:              *arch,
 		PackagingDir:      pkgDir,
 		OutputDir:         absOutput,
 		ConfigCheckBinary: absCheckBinary,
+		SanityCheckBinary: absSanityBinary,
 	}
 
 	var formats []string

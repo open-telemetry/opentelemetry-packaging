@@ -26,6 +26,7 @@ import (
 const (
 	preloadPath      = "/etc/ld.so.preload"
 	injectorLib      = "/usr/lib/opentelemetry/injector/libotelinject.so"
+	sanityCheckBin   = "/usr/bin/otel-instrumentation-check"
 	javaAgentJar     = "/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar"
 	injectorConfDir  = "/etc/opentelemetry/injector"
 	injectorConfPath = injectorConfDir + "/injector.conf"
@@ -67,10 +68,12 @@ type scenario struct {
 func TestLifecycle(t *testing.T) {
 	ctx := context.Background()
 
-	scenarios := make([]scenario, 0, len(preloadScenarios)+len(configScenarios)+len(installScenarios))
+	scenarios := make([]scenario, 0,
+		len(preloadScenarios)+len(configScenarios)+len(installScenarios)+len(sanityCheckScenarios))
 	scenarios = append(scenarios, preloadScenarios...)
 	scenarios = append(scenarios, configScenarios...)
 	scenarios = append(scenarios, installScenarios...)
+	scenarios = append(scenarios, sanityCheckScenarios...)
 
 	byFormat := map[string][]target{}
 	for _, tg := range matrix {
