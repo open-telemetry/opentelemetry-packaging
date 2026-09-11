@@ -80,6 +80,10 @@ type specPackage struct {
 	Requires    []string
 	Recommends  []specRelation
 	Suggests    []string
+	Conflicts   []string
+	// Replaces carries Relations.Replaces. The template emits it as the RPM
+	// Obsoletes tag, which is that relationship's spelling in a spec file.
+	Replaces []string
 	// Guarded marks a package whose stanzas sit inside the Python conditional.
 	Guarded bool
 }
@@ -116,8 +120,8 @@ func WriteSpec(cfg Config, w io.Writer) error {
 		Version:       version,
 		Release:       release,
 		Summary:       metaDescription,
-		License:       pkgLicense,
-		URL:           pkgHomepage,
+		License:       cfg.license(),
+		URL:           cfg.homepage(),
 		ExclusiveArch: specExclusiveArch,
 		BuildRequires: specBuildRequires,
 		PythonGuard:   pythonGuard,
@@ -136,6 +140,8 @@ func WriteSpec(cfg Config, w io.Writer) error {
 			Provides:    comp.Relations.Provides,
 			Requires:    comp.Relations.Depends,
 			Suggests:    comp.Relations.Suggests,
+			Conflicts:   comp.Relations.Conflicts,
+			Replaces:    comp.Relations.Replaces,
 			Guarded:     guarded,
 		}
 		for _, r := range comp.Relations.Recommends {

@@ -39,6 +39,43 @@ type Config struct {
 	// builder only assembles packages; the binary is cross-compiled upfront
 	// (see the otel-config-check Makefile target).
 	ConfigCheckBinary string
+
+	// Vendor, Maintainer, License and Homepage set the package identity
+	// fields. Each falls back to the OpenTelemetry default when empty, so a
+	// vendor building its own components (see the vendor package recipe in
+	// docs/design/packages-meta-architecture.md) can brand them without
+	// reimplementing the packaging rules.
+	Vendor     string
+	Maintainer string
+	License    string
+	Homepage   string
+
+	// NoticeFile is the NOTICE shipped in the documentation directory of the
+	// components that bundle third-party code. Empty resolves to the NOTICE
+	// next to PackagingDir, which is this repository's layout.
+	NoticeFile string
+}
+
+// Package identity, with the repository's own values as the defaults.
+func (c Config) vendor() string     { return orDefault(c.Vendor, pkgVendor) }
+func (c Config) maintainer() string { return orDefault(c.Maintainer, pkgMaintainer) }
+func (c Config) license() string    { return orDefault(c.License, pkgLicense) }
+func (c Config) homepage() string   { return orDefault(c.Homepage, pkgHomepage) }
+
+// noticeFile resolves the NOTICE path, defaulting to the file next to
+// PackagingDir.
+func (c Config) noticeFile() string {
+	if c.NoticeFile != "" {
+		return c.NoticeFile
+	}
+	return filepath.Join(filepath.Dir(c.PackagingDir), "NOTICE")
+}
+
+func orDefault(v, fallback string) string {
+	if v == "" {
+		return fallback
+	}
+	return v
 }
 
 // Relations declares a package's relationships to other packages.
@@ -49,6 +86,17 @@ type Relations struct {
 	Depends    []string
 	Recommends []string
 	Suggests   []string
+	// Conflicts and Replaces let a package displace another one. A vendor
+	// replacement declares the virtual name in Provides and the concrete
+	// upstream name in both of these, which is what makes the package manager
+	// swap the two in a single transaction.
+	//
+	// Replaces maps to DEB Replaces and RPM Obsoletes. The RPM side has a
+	// visible consequence: with both repositories enabled, installing the
+	// obsoleted name redirects to the replacement unless the client passes
+	// --setopt=obsoletes=0.
+	Conflicts []string
+	Replaces  []string
 }
 
 // Component describes a single package to build.
@@ -71,8 +119,14 @@ type Component struct {
 	// ContentsFunc stages the component's payload and returns its contents. It
 	// also returns a cleanup function that removes any staging directories,
 	// which must be called once packaging completes.
-	ContentsFunc func(cfg Config) (contents files.Contents, cleanup func(), err error)
+	ContentsFunc ContentsFunc
 }
+
+// ContentsFunc stages a component's payload. It returns the staged contents
+// and a cleanup function that removes any staging directories, which the
+// caller must invoke once packaging completes. Naming the type lets code
+// outside this package declare and compose payload builders.
+type ContentsFunc func(cfg Config) (contents files.Contents, cleanup func(), err error)
 
 // Arch returns the package architecture for the given format.
 func (c Component) Arch(cfg Config, format string) string {
@@ -99,16 +153,18 @@ func (c Component) Info(cfg Config, format string) (*nfpm.Info, func(), error) {
 		Arch:        c.Arch(cfg, format),
 		Platform:    "linux",
 		Description: c.Description,
-		Vendor:      pkgVendor,
-		Maintainer:  pkgMaintainer,
-		License:     pkgLicense,
-		Homepage:    pkgHomepage,
+		Vendor:      cfg.vendor(),
+		Maintainer:  cfg.maintainer(),
+		License:     cfg.license(),
+		Homepage:    cfg.homepage(),
 		Overridables: nfpm.Overridables{
 			Contents:   contents,
 			Provides:   c.Relations.Provides,
 			Depends:    c.Relations.Depends,
 			Recommends: c.Relations.Recommends,
 			Suggests:   c.Relations.Suggests,
+			Conflicts:  c.Relations.Conflicts,
+			Replaces:   c.Relations.Replaces,
 			RPM: nfpm.RPM{
 				Summary: c.Description,
 			},
@@ -146,43 +202,44 @@ var AllComponents = []Component{
 	Meta,
 }
 
-// Build creates a single package file.
-func Build(cfg Config, format string, comp Component) error {
+// Build creates a single package file and returns its path.
+//
+// It writes nothing to stdout: progress reporting is the caller's business, and
+// the returned path is what a caller needs to report or to hand to a signing or
+// publishing step.
+func Build(cfg Config, format string, comp Component) (string, error) {
 	info, cleanup, err := comp.Info(cfg, format)
 	if cleanup != nil {
 		defer cleanup()
 	}
 	if err != nil {
-		return fmt.Errorf("building info for %s: %w", comp.Name, err)
+		return "", fmt.Errorf("building info for %s: %w", comp.Name, err)
 	}
 
 	packager, err := nfpm.Get(format)
 	if err != nil {
-		return fmt.Errorf("getting %s packager: %w", format, err)
+		return "", fmt.Errorf("getting %s packager: %w", format, err)
 	}
 
-	fileName := packager.ConventionalFileName(info)
-	outPath := filepath.Join(cfg.OutputDir, fileName)
-	fmt.Printf("Building %s: %s\n", format, fileName)
+	outPath := filepath.Join(cfg.OutputDir, packager.ConventionalFileName(info))
 
 	f, err := os.Create(outPath)
 	if err != nil {
-		return fmt.Errorf("creating %s: %w", outPath, err)
+		return "", fmt.Errorf("creating %s: %w", outPath, err)
 	}
 
 	if err := packager.Package(info, f); err != nil {
 		f.Close()
 		os.Remove(outPath)
-		return fmt.Errorf("packaging %s: %w", comp.Name, err)
+		return "", fmt.Errorf("packaging %s: %w", comp.Name, err)
 	}
 
 	if err := f.Close(); err != nil {
 		os.Remove(outPath)
-		return fmt.Errorf("closing %s: %w", outPath, err)
+		return "", fmt.Errorf("closing %s: %w", outPath, err)
 	}
 
-	fmt.Printf("  -> %s\n", outPath)
-	return nil
+	return outPath, nil
 }
 
 // Common package metadata.
@@ -193,8 +250,18 @@ const (
 	pkgHomepage   = "https://github.com/open-telemetry/opentelemetry-packaging"
 )
 
-// configFile creates a Content entry for a config file (noreplace for RPM).
-func configFile(src, dst string) *files.Content {
+// The exported helpers below are the vocabulary for writing a ContentsFunc
+// outside this package. The unexported aliases keep the in-repo components
+// reading as before.
+var (
+	configFile  = ConfigFile
+	regularFile = RegularFile
+	directory   = Directory
+	tree        = Tree
+)
+
+// ConfigFile creates a Content entry for a config file (noreplace for RPM).
+func ConfigFile(src, dst string) *files.Content {
 	return &files.Content{
 		Source:      src,
 		Destination: dst,
@@ -205,8 +272,8 @@ func configFile(src, dst string) *files.Content {
 	}
 }
 
-// regularFile creates a Content entry for a regular file.
-func regularFile(src, dst string, mode os.FileMode) *files.Content {
+// RegularFile creates a Content entry for a regular file.
+func RegularFile(src, dst string, mode os.FileMode) *files.Content {
 	return &files.Content{
 		Source:      src,
 		Destination: dst,
@@ -216,8 +283,8 @@ func regularFile(src, dst string, mode os.FileMode) *files.Content {
 	}
 }
 
-// directory creates a Content entry for an empty directory.
-func directory(dst string) *files.Content {
+// Directory creates a Content entry for an empty directory.
+func Directory(dst string) *files.Content {
 	return &files.Content{
 		Destination: dst,
 		Type:        "dir",
@@ -227,8 +294,8 @@ func directory(dst string) *files.Content {
 	}
 }
 
-// tree creates a Content entry that includes an entire directory tree.
-func tree(src, dst string) *files.Content {
+// Tree creates a Content entry that includes an entire directory tree.
+func Tree(src, dst string) *files.Content {
 	return &files.Content{
 		Source:      src,
 		Destination: dst,
