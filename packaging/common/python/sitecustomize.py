@@ -53,7 +53,45 @@ version_conflict_exempt_packages = [
     "jsonschema",
 ]
 
-debug_enabled = environ.get("OTEL_INJECTOR_LOG_LEVEL") == "debug"
+# The levels OTEL_INJECTOR_LOG_LEVEL accepts, mapped to the numbers logging
+# uses. Spelled out rather than read from logging, because this is resolved at
+# module scope and importing logging here would cost every Python process on
+# the host, which is the whole point of _get_logger. These are logging's
+# documented constants, fixed by its own API.
+log_level_by_name = {
+    "critical": 50,
+    "error": 40,
+    "warn": 30,
+    "warning": 30,
+    "info": 20,
+    "debug": 10,
+}
+
+# A warning is the only report an operator gets when a guard deactivates the
+# agent, so no configured level may silence one. A level above WARNING is
+# accepted and clamped to it rather than honoured literally.
+default_log_level = log_level_by_name["warning"]
+
+
+def _resolve_log_level(value):
+    # Returns (level, unrecognized value). An unrecognized value is handed back
+    # to be reported rather than quietly meaning "off", which is what made this
+    # variable read as a boolean: only the exact string "debug" did anything, so
+    # DEBUG, info and warning all produced silence with nothing to explain it.
+    if value is None or not value.strip():
+        return default_log_level, None
+    level = log_level_by_name.get(value.strip().lower())
+    if level is None:
+        return default_log_level, value
+    return min(level, default_log_level), None
+
+
+injector_log_level, unrecognized_log_level = _resolve_log_level(
+    environ.get("OTEL_INJECTOR_LOG_LEVEL"))
+
+# Kept as its own name because it guards more than the logger's level: it is
+# what stops a process that is not in debug from importing logging at all.
+debug_enabled = injector_log_level <= log_level_by_name["debug"]
 
 _logger = None
 
@@ -68,7 +106,7 @@ def _get_logger():
     global _logger
     if _logger is not None:
         return _logger
-    from logging import DEBUG, WARNING, Formatter, Logger, StreamHandler
+    from logging import Formatter, Logger, StreamHandler
 
     class _SilentStreamHandler(StreamHandler):
         # A diagnostic that cannot be written must fail silently, which is what
@@ -107,7 +145,7 @@ def _get_logger():
     # every record with a "No handlers could be found" line instead). Owning
     # the level and the handler bypasses both, so a debug run is verbose on
     # every interpreter this file can reach.
-    logger.setLevel(DEBUG if debug_enabled else WARNING)
+    logger.setLevel(injector_log_level)
     _logger = logger
     return _logger
 
@@ -122,6 +160,18 @@ def _log_debug(message):
     if debug_enabled:
         _get_logger().debug(message)
 
+
+if unrecognized_log_level is not None:
+    # Reported rather than silently treated as "off". This is the variable an
+    # operator reaches for to make the agent explain itself, so answering a
+    # typo with silence leaves them unable to tell a rejected value from a
+    # working one that had nothing to say. It does mean a process with a
+    # mistyped value pays the import logging this file otherwise avoids, which
+    # stops as soon as the value is corrected.
+    _log_warn(
+        'OTEL_INJECTOR_LOG_LEVEL="{}" is not a level; using warning. '
+        "Supported levels: {}.".format(
+            unrecognized_log_level, ", ".join(sorted(log_level_by_name))))
 
 _log_debug("running sitecustomize.py")
 _log_debug("PYTHONPATH: {}".format(environ.get("PYTHONPATH")))

@@ -83,9 +83,23 @@ Set the logs exporter (default follows the protocol).
 Comma-separated list of instrumentation packages to disable.
 .TP
 .B OTEL_INJECTOR_LOG_LEVEL
-Set to
+Severity threshold for sitecustomize.py's own diagnostics. Accepts
+.BR critical ,
+.BR error ,
+.BR warning ,
+.BR warn ,
+.B info
+and
+.BR debug ,
+in any case, and defaults to
+.BR warning ;
+set
 .B debug
-to enable verbose logging from sitecustomize.py.
+for a verbose run. A level above
+.B warning
+is accepted but clamped to it, because a warning is the only report emitted when
+a guard deactivates the agent. A value that is not a level is reported and
+ignored.
 .TP
 .B OTEL_CONFIG_FILE
 Path to a declarative configuration file.

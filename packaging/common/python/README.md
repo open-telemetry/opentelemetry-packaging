@@ -53,7 +53,11 @@ exporters (they emit protobuf only).
 - `OTEL_METRICS_EXPORTER`: Metrics exporter (default follows that signal's protocol)
 - `OTEL_LOGS_EXPORTER`: Logs exporter (default follows that signal's protocol)
 - `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS`: Comma-separated list of instrumentations to disable
-- `OTEL_INJECTOR_LOG_LEVEL`: Set to `debug` for verbose sitecustomize.py logging
+- `OTEL_INJECTOR_LOG_LEVEL`: Severity threshold for `sitecustomize.py`'s own diagnostics.
+  Accepts `critical`, `error`, `warning`, `warn`, `info` and `debug`, in any case.
+  Defaults to `warning`; set `debug` for a verbose run. A level above `warning` is
+  accepted but clamped to it, because a warning is the only report you get when a
+  guard deactivates the agent. A value that is not a level is reported and ignored.
 
 ### Diagnostics
 
@@ -65,8 +69,8 @@ exporters (they emit protobuf only).
 ```
 
 A `WARNING` is always emitted, and it is the only report you get when a safety
-guard deactivates the agent. `DEBUG` records are emitted only when
-`OTEL_INJECTOR_LOG_LEVEL=debug`.
+guard deactivates the agent, so no value of `OTEL_INJECTOR_LOG_LEVEL` can silence
+one. `DEBUG` records are emitted only when `OTEL_INJECTOR_LOG_LEVEL=debug`.
 
 The records are `logging` records at `logging.WARNING` and `logging.DEBUG`, but
 they never enter the application's logging. The agent runs during `site` import,

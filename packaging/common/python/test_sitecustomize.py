@@ -991,6 +991,106 @@ class DoubleInstrumentationPackageListTests(unittest.TestCase):
         self.assertEqual(len(set(packages)), len(packages))
 
 
+class LogLevelTests(unittest.TestCase):
+    """What OTEL_INJECTOR_LOG_LEVEL accepts.
+
+    It is named for a level, so it has to take one. It is also the documented
+    way to make the agent explain itself, so a value it does not understand
+    must say so rather than quietly mean "off".
+    """
+
+    def _resolve(self, value):
+        module, _ = _load_benign()
+        return module._resolve_log_level(value)
+
+    def test_every_level_name_is_accepted_in_any_case(self):
+        for spelling, expected in (
+            ("debug", 10), ("DEBUG", 10), ("Debug", 10), ("  debug  ", 10),
+            ("info", 20), ("INFO", 20),
+            ("warning", 30), ("warn", 30), ("WARNING", 30),
+        ):
+            with self.subTest(spelling=spelling):
+                level, unrecognized = self._resolve(spelling)
+                self.assertEqual(expected, level)
+                self.assertIsNone(unrecognized)
+
+    def test_a_level_above_warning_is_clamped_not_honoured(self):
+        # A warning is the only report an operator gets when a guard
+        # deactivates the agent, so no level may turn it off.
+        for spelling in ("error", "critical", "ERROR"):
+            with self.subTest(spelling=spelling):
+                level, unrecognized = self._resolve(spelling)
+                self.assertEqual(30, level)
+                self.assertIsNone(unrecognized)
+
+    def test_unset_or_empty_means_warning(self):
+        for value in (None, "", "   "):
+            with self.subTest(value=value):
+                level, unrecognized = self._resolve(value)
+                self.assertEqual(30, level)
+                self.assertIsNone(unrecognized)
+
+    def test_an_unrecognized_value_is_handed_back_verbatim(self):
+        for value in ("trace", "verbose", "1", "true"):
+            with self.subTest(value=value):
+                level, unrecognized = self._resolve(value)
+                self.assertEqual(30, level)
+                self.assertEqual(value, unrecognized)
+
+    def test_debug_is_the_only_level_that_emits_debug_records(self):
+        for value, enabled in (
+            ("debug", True), ("DEBUG", True),
+            ("info", False), ("warning", False), ("error", False),
+            ("trace", False), (None, False),
+        ):
+            with self.subTest(value=value):
+                module, buf = _load_benign(
+                    extra_env={} if value is None else {"OTEL_INJECTOR_LOG_LEVEL": value})
+                module._log_debug("a trace")
+                self.assertEqual(enabled, "a trace" in buf.getvalue())
+
+    def test_no_level_silences_a_warning(self):
+        for value in ("debug", "info", "warning", "error", "critical", "trace"):
+            with self.subTest(value=value):
+                module, buf = _load_benign(extra_env={"OTEL_INJECTOR_LOG_LEVEL": value})
+                module._log_warn("a diagnostic")
+                self.assertIn("a diagnostic", buf.getvalue())
+
+    def test_an_unrecognized_value_is_reported_at_load(self):
+        # The whole point of the variable is to make the agent explain itself,
+        # so answering a typo with silence is the one thing it must not do.
+        buf = StringIO()
+        env = {
+            k: v for k, v in os.environ.items()
+            if k not in ("OTEL_EXPORTER_OTLP_PROTOCOL", "OTEL_CONFIG_FILE")
+        }
+        env["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/json"
+        env["OTEL_INJECTOR_LOG_LEVEL"] = "verbose"
+        with patch.dict(os.environ, env, clear=True), patch.object(sys, "path", list(sys.path)):
+            _load_sitecustomize(buf)
+        output = buf.getvalue()
+        self.assertIn('OTEL_INJECTOR_LOG_LEVEL="verbose" is not a level', output)
+        self.assertIn("debug", output)
+        self.assertIn("WARNING", output)
+
+    def test_a_recognized_value_reports_nothing_about_the_level(self):
+        for value in ("debug", "info", "warning", "error"):
+            with self.subTest(value=value):
+                module, buf = _load_benign(extra_env={"OTEL_INJECTOR_LOG_LEVEL": value})
+                self.assertNotIn("is not a level", buf.getvalue())
+
+    def test_a_non_debug_level_still_never_builds_the_logger(self):
+        # The short circuit in _log_debug is what keeps a process that is not in
+        # debug from importing logging at all; making the variable level-aware
+        # must not trade that away.
+        for value in ("info", "warning", "error"):
+            with self.subTest(value=value):
+                module, _ = _load_benign(extra_env={"OTEL_INJECTOR_LOG_LEVEL": value})
+                module._logger = None
+                module._log_debug("a trace")
+                self.assertIsNone(module._logger)
+
+
 class LoggingTests(unittest.TestCase):
     """The contract of the diagnostics channel.
 
