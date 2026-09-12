@@ -102,6 +102,10 @@ Summary:        {{ .Summary }}
 {{ end -}}
 {{ range .Requires }}Requires:       {{ . }}
 {{ end -}}
+{{ range .Conflicts }}Conflicts:      {{ . }}
+{{ end -}}
+{{ range .Replaces }}Obsoletes:      {{ . }}
+{{ end -}}
 {{ range .Recommends }}
 {{- if .Guarded }}{{ $.PythonGuard }}
 Recommends:     {{ .Name }}

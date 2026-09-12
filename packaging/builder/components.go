@@ -134,7 +134,7 @@ func injectorContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("downloading injector: %w", err)
 	}
 
-	manPath, err := generateManPage(cfg, staging, "injector")
+	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "injector"))
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -163,7 +163,7 @@ func javaContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("downloading Java agent: %w", err)
 	}
 
-	manPath, err := generateManPage(cfg, staging, "java")
+	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "java"))
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -190,7 +190,7 @@ func nodejsContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("downloading Node.js agent: %w", err)
 	}
 
-	manPath, err := generateManPage(cfg, staging, "nodejs")
+	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "nodejs"))
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -222,7 +222,7 @@ func dotnetContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("downloading .NET agent: %w", err)
 	}
 
-	manPath, err := generateManPage(cfg, staging, "dotnet")
+	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "dotnet"))
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -281,7 +281,7 @@ func pythonContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("generating all-dependencies.txt: %w", err)
 	}
 
-	manPath, err := generateManPage(cfg, staging, "python")
+	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "python"))
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -300,7 +300,7 @@ func pythonContents(cfg Config) (files.Contents, func(), error) {
 		// The bundle redistributes files derived from the Dash0 operator; the
 		// NOTICE at the repository root carries the attribution required by
 		// Apache-2.0 and ships alongside the package documentation.
-		regularFile(filepath.Join(filepath.Dir(cfg.PackagingDir), "NOTICE"), "/usr/share/doc/opentelemetry-python-autoinstrumentation/NOTICE", 0o644),
+		regularFile(cfg.noticeFile(), "/usr/share/doc/opentelemetry-python-autoinstrumentation/NOTICE", 0o644),
 	}, cleanup, nil
 }
 
@@ -321,13 +321,26 @@ func metaContents(cfg Config) (files.Contents, func(), error) {
 	}, cleanup, nil
 }
 
-// generateManPage expands @VERSION@ and @DATE@ placeholders in a man page
-// template, compresses with gzip, and writes the result into stagingDir.
-// Returns the path to the gzipped file.
-func generateManPage(cfg Config, stagingDir, component string) (string, error) {
-	templateName := fmt.Sprintf("opentelemetry-%s.8.tmpl", component)
+// manPageTemplate locates a component's man page template in this
+// repository's layout: packaging/common/<component>/opentelemetry-<component>.8.tmpl.
+func manPageTemplate(cfg Config, component string) string {
+	return filepath.Join(cfg.PackagingDir, "common", component,
+		fmt.Sprintf("opentelemetry-%s.8.tmpl", component))
+}
 
-	templatePath := filepath.Join(cfg.PackagingDir, "common", component, templateName)
+// GenerateManPage expands @VERSION@ and @DATE@ placeholders in the man page
+// template at templatePath, compresses it with gzip, and writes the result
+// into stagingDir. It returns the path to the gzipped file.
+//
+// The template is addressed by path rather than derived from a component name,
+// so a caller is free to name its templates whatever its packages are called.
+// The output file keeps the template's own name minus the .tmpl suffix.
+func GenerateManPage(cfg Config, stagingDir, templatePath string) (string, error) {
+	templateName := filepath.Base(templatePath)
+	if !strings.HasSuffix(templateName, ".tmpl") {
+		return "", fmt.Errorf("man page template %q must end in .tmpl", templateName)
+	}
+
 	tmplData, err := os.ReadFile(templatePath)
 	if err != nil {
 		return "", fmt.Errorf("reading man page template: %w", err)
@@ -337,7 +350,7 @@ func generateManPage(cfg Config, stagingDir, component string) (string, error) {
 	content = strings.ReplaceAll(content, "@VERSION@", cfg.Version)
 	content = strings.ReplaceAll(content, "@DATE@", time.Now().Format("January 2006"))
 
-	outPath := filepath.Join(stagingDir, templateName[:len(templateName)-5]+".gz")
+	outPath := filepath.Join(stagingDir, strings.TrimSuffix(templateName, ".tmpl")+".gz")
 	f, err := os.Create(outPath)
 	if err != nil {
 		return "", err

@@ -116,9 +116,12 @@ func main() {
 
 	for _, pkgFormat := range formats {
 		for _, comp := range components {
-			if err := builder.Build(cfg, pkgFormat, comp); err != nil {
+			outPath, err := builder.Build(cfg, pkgFormat, comp)
+			if err != nil {
 				log.Fatalf("error building %s %s: %v", pkgFormat, comp.Name, err)
 			}
+			fmt.Printf("Building %s: %s\n", pkgFormat, filepath.Base(outPath))
+			fmt.Printf("  -> %s\n", outPath)
 		}
 	}
 
