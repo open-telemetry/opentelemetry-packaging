@@ -9,6 +9,12 @@
 // its own conf.d drop-in so the tests can tell vendor and upstream files
 // apart.
 //
+// The package is assembled with packaging/builder, exactly as a real vendor
+// would: the component declares its relations and brands itself through
+// builder.Config, and builder.Build produces the package. That keeps this mock
+// honest — it exercises the same API surface a vendor depends on, so a change
+// that breaks vendor packages breaks these tests too.
+//
 // This is a test-only tool; the mock vendor component deliberately does not
 // live in packaging/builder, where it would show up in the production
 // component list used by cmd/build-packages.
@@ -21,12 +27,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/goreleaser/nfpm/v2"
 	"github.com/goreleaser/nfpm/v2/files"
 
-	// Register packagers via init().
-	_ "github.com/goreleaser/nfpm/v2/deb"
-	_ "github.com/goreleaser/nfpm/v2/rpm"
+	"github.com/open-telemetry/opentelemetry-packaging/packaging/builder"
 )
 
 // AgentContent is the payload of the dummy vendor agent JAR. The vendor tests
@@ -43,6 +46,49 @@ const dropInContent = `# ACME vendor drop-in
 jvm_auto_instrumentation_agent_path=/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar
 `
 
+const description = "Mock ACME vendor replacement for the OpenTelemetry Java auto-instrumentation (test only)"
+
+// vendorComponent is the mock vendor package. Provides carries the virtual
+// name it satisfies, while Conflicts and Replaces name the concrete upstream
+// package it displaces; nfpm renders Replaces as DEB Replaces and RPM
+// Obsoletes.
+var vendorComponent = builder.Component{
+	Name:        "acme-java",
+	PackageName: "acme-java-autoinstrumentation",
+	Description: description,
+	Noarch:      true,
+	Relations: builder.Relations{
+		Provides:  []string{"opentelemetry-java-autoinstrumentation1"},
+		Conflicts: []string{"opentelemetry-java-autoinstrumentation"},
+		Replaces:  []string{"opentelemetry-java-autoinstrumentation"},
+		Suggests:  []string{"opentelemetry-injector1"},
+	},
+	ContentsFunc: vendorContents,
+}
+
+// vendorContents stages the two files the package ships.
+func vendorContents(builder.Config) (files.Contents, func(), error) {
+	staging, err := os.MkdirTemp("", "acme-java-*")
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating staging directory: %w", err)
+	}
+	cleanup := func() { os.RemoveAll(staging) }
+
+	agentPath := filepath.Join(staging, "opentelemetry-javaagent.jar")
+	if err := os.WriteFile(agentPath, []byte(AgentContent), 0o644); err != nil {
+		return nil, cleanup, fmt.Errorf("writing dummy agent: %w", err)
+	}
+	dropInPath := filepath.Join(staging, "java.conf")
+	if err := os.WriteFile(dropInPath, []byte(dropInContent), 0o644); err != nil {
+		return nil, cleanup, fmt.Errorf("writing drop-in: %w", err)
+	}
+
+	return files.Contents{
+		builder.RegularFile(agentPath, "/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar", 0o644),
+		builder.RegularFile(dropInPath, "/etc/opentelemetry/injector/conf.d/java.conf", 0o644),
+	}, cleanup, nil
+}
+
 func main() {
 	version := flag.String("version", "1.0.0", "package version")
 	arch := flag.String("arch", "amd64", "target architecture: amd64 or arm64")
@@ -54,19 +100,17 @@ func main() {
 		log.Fatalf("error: creating output directory: %v", err)
 	}
 
-	staging, err := os.MkdirTemp("", "acme-java-*")
-	if err != nil {
-		log.Fatalf("error: creating staging directory: %v", err)
-	}
-	defer os.RemoveAll(staging)
-
-	agentPath := filepath.Join(staging, "opentelemetry-javaagent.jar")
-	if err := os.WriteFile(agentPath, []byte(AgentContent), 0o644); err != nil {
-		log.Fatalf("error: writing dummy agent: %v", err)
-	}
-	dropInPath := filepath.Join(staging, "java.conf")
-	if err := os.WriteFile(dropInPath, []byte(dropInContent), 0o644); err != nil {
-		log.Fatalf("error: writing drop-in: %v", err)
+	// The mock ships no lifecycle scripts and stages its payload from a temp
+	// directory, so it needs no PackagingDir: a vendor writing its own
+	// component brings its own layout.
+	cfg := builder.Config{
+		Version:    *version,
+		Arch:       *arch,
+		OutputDir:  *output,
+		Vendor:     "ACME",
+		Maintainer: "The ACME Company",
+		License:    "Apache-2.0",
+		Homepage:   "https://github.com/open-telemetry/opentelemetry-packaging",
 	}
 
 	formats := []string{*format}
@@ -74,74 +118,10 @@ func main() {
 		formats = []string{"deb", "rpm"}
 	}
 	for _, f := range formats {
-		if err := build(f, *version, *arch, *output, agentPath, dropInPath); err != nil {
+		outPath, err := builder.Build(cfg, f, vendorComponent)
+		if err != nil {
 			log.Fatalf("error: %v", err)
 		}
+		fmt.Printf("Building %s: %s\n", f, filepath.Base(outPath))
 	}
-}
-
-func build(format, version, arch, output, agentPath, dropInPath string) error {
-	pkgArch := "all"
-	if format == "rpm" {
-		pkgArch = "noarch"
-	}
-	_ = arch // The mock package is arch-independent; the flag mirrors cmd/build-packages.
-
-	description := "Mock ACME vendor replacement for the OpenTelemetry Java auto-instrumentation (test only)"
-	info := &nfpm.Info{
-		Name:        "acme-java-autoinstrumentation",
-		Version:     version,
-		Arch:        pkgArch,
-		Platform:    "linux",
-		Description: description,
-		Vendor:      "ACME",
-		Maintainer:  "The ACME Company",
-		License:     "Apache-2.0",
-		Homepage:    "https://github.com/open-telemetry/opentelemetry-packaging",
-		Overridables: nfpm.Overridables{
-			Provides:  []string{"opentelemetry-java-autoinstrumentation1"},
-			Conflicts: []string{"opentelemetry-java-autoinstrumentation"},
-			// nfpm maps Replaces to DEB Replaces and RPM Obsoletes.
-			Replaces: []string{"opentelemetry-java-autoinstrumentation"},
-			Suggests: []string{"opentelemetry-injector1"},
-			RPM: nfpm.RPM{
-				Summary: description,
-			},
-			Contents: files.Contents{
-				{
-					Source:      agentPath,
-					Destination: "/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar",
-					FileInfo:    &files.ContentFileInfo{Mode: 0o644},
-				},
-				{
-					Source:      dropInPath,
-					Destination: "/etc/opentelemetry/injector/conf.d/java.conf",
-					FileInfo:    &files.ContentFileInfo{Mode: 0o644},
-				},
-			},
-		},
-	}
-
-	packager, err := nfpm.Get(format)
-	if err != nil {
-		return fmt.Errorf("getting %s packager: %w", format, err)
-	}
-
-	outPath := filepath.Join(output, packager.ConventionalFileName(info))
-	fmt.Printf("Building %s: %s\n", format, filepath.Base(outPath))
-
-	f, err := os.Create(outPath)
-	if err != nil {
-		return fmt.Errorf("creating %s: %w", outPath, err)
-	}
-	if err := packager.Package(info, f); err != nil {
-		f.Close()
-		os.Remove(outPath)
-		return fmt.Errorf("packaging: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(outPath)
-		return fmt.Errorf("closing %s: %w", outPath, err)
-	}
-	return nil
 }
