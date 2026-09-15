@@ -30,7 +30,16 @@ import (
 
 // Config holds build-wide settings.
 type Config struct {
-	Version      string // Package version (without leading "v")
+	Version string // Package version (without leading "v")
+	// Release is the packaging revision: what distinguishes two packages built
+	// from the same upstream Version. It becomes the DEB version's "-N"
+	// revision and the RPM Release field, which is where each format expects
+	// it. Writing a revision into Version instead puts an illegal hyphen in the
+	// RPM Version field, and makes the rpmbuild path sort it as a pre-release —
+	// below the unrevised version rather than above it.
+	//
+	// Empty leaves nfpm's defaults in place: no DEB revision, RPM Release 1.
+	Release      string
 	Arch         string // Target architecture: amd64 or arm64
 	PackagingDir string // Absolute path to the packaging/ directory
 	OutputDir    string // Absolute path to the output directory
@@ -150,6 +159,7 @@ func (c Component) Info(cfg Config, format string) (*nfpm.Info, func(), error) {
 	info := &nfpm.Info{
 		Name:        c.PackageName,
 		Version:     cfg.Version,
+		Release:     cfg.Release,
 		Arch:        c.Arch(cfg, format),
 		Platform:    "linux",
 		Description: c.Description,

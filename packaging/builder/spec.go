@@ -114,6 +114,11 @@ func WriteSpec(cfg Config, w io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// An explicit packaging revision wins over the one derived from a version
+	// suffix, so this path produces the same Release nfpm does.
+	if cfg.Release != "" {
+		release = cfg.Release + "%{?dist}"
+	}
 
 	data := &specData{
 		Name:          SpecName,

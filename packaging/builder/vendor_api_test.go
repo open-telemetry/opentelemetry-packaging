@@ -228,3 +228,51 @@ func TestWriteSpecIdentityOverride(t *testing.T) {
 	assert.Contains(t, spec, "License:        MIT")
 	assert.Contains(t, spec, "URL:            https://acme.example")
 }
+
+// TestReleaseDefaultsToEmpty pins that adding the field changes nothing for
+// callers that do not set it: nfpm keeps its own defaults.
+func TestReleaseDefaultsToEmpty(t *testing.T) {
+	info, cleanup, err := fixtureComponent(t, Relations{}).Info(Config{Version: "1.2.3", Arch: "amd64"}, "deb")
+	if cleanup != nil {
+		defer cleanup()
+	}
+	require.NoError(t, err)
+	assert.Empty(t, info.Release)
+}
+
+// TestReleaseIsThePackagingRevision checks the reason the field exists: the
+// revision has to reach Release, because each format puts it somewhere
+// different and neither place is the Version field.
+func TestReleaseIsThePackagingRevision(t *testing.T) {
+	cfg := Config{Version: "4.2.13", Release: "2", Arch: "amd64"}
+
+	for _, format := range []string{"deb", "rpm"} {
+		t.Run(format, func(t *testing.T) {
+			info, cleanup, err := fixtureComponent(t, Relations{}).Info(cfg, format)
+			if cleanup != nil {
+				defer cleanup()
+			}
+			require.NoError(t, err)
+
+			// Version stays clean: a hyphen here is illegal in an RPM Version.
+			assert.Equal(t, "4.2.13", info.Version)
+			assert.Equal(t, "2", info.Release)
+		})
+	}
+}
+
+// TestWriteSpecUsesExplicitRelease guards the producer parity the rebuild drift
+// check depends on: an explicit revision must not be re-derived from the
+// version suffix, which would make rpmbuild emit a pre-release Release.
+func TestWriteSpecUsesExplicitRelease(t *testing.T) {
+	cfg := testConfig(t, "4.2.13")
+	cfg.Release = "2"
+
+	var b strings.Builder
+	require.NoError(t, WriteSpec(cfg, &b))
+	spec := b.String()
+
+	assert.Contains(t, spec, "Version:        4.2.13")
+	assert.Contains(t, spec, "Release:        2%{?dist}")
+	assert.NotContains(t, spec, "Release:        0.")
+}
