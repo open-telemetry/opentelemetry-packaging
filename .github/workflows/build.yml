@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   lint:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Check out the codebase.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -27,7 +27,7 @@ jobs:
         run: make lint
 
   unit-tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Check out the codebase.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,7 +44,7 @@ jobs:
         run: make pyproto-unit-tests
 
   sitecustomize-compatibility-tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Check out the codebase.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -124,7 +124,7 @@ jobs:
         run: make integration-test-${{ matrix.SYS_PACKAGE }}-${{ matrix.lang }} ARCH=${{ matrix.arch }}
 
   publish-release:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'open-telemetry/opentelemetry-packaging'
     needs: integration-tests
     permissions:
