@@ -8,6 +8,7 @@
 package metadata_test
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -138,6 +139,43 @@ func debExtractFile(t *testing.T, path, target string) string {
 	}
 	t.Fatalf("file %s not found in %s", target, path)
 	return ""
+}
+
+// pathsContain checks if any path in the list contains the given substring.
+type packageBOM struct {
+	BOMFormat   string `json:"bomFormat"`
+	SpecVersion string `json:"specVersion"`
+	Metadata    struct {
+		Component struct {
+			Name string `json:"name"`
+		} `json:"component"`
+	} `json:"metadata"`
+	Components []struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	} `json:"components"`
+}
+
+func debBOM(t *testing.T, pkg, target string) packageBOM {
+	t.Helper()
+	content := debExtractFile(t, pkg, target)
+
+	var bom packageBOM
+	require.NoError(t, json.Unmarshal([]byte(content), &bom))
+	require.Equal(t, "CycloneDX", bom.BOMFormat)
+	require.Equal(t, "1.7", bom.SpecVersion)
+	return bom
+}
+
+func requireBOMComponent(t *testing.T, bom packageBOM, name string) {
+	t.Helper()
+	for _, component := range bom.Components {
+		if component.Name == name {
+			require.NotEmpty(t, component.Version, "BOM component %s should have a version", name)
+			return
+		}
+	}
+	t.Fatalf("BOM does not contain component %q", name)
 }
 
 // pathsContain checks if any path in the list contains the given substring.
@@ -284,8 +322,13 @@ func TestDebJavaContents(t *testing.T) {
 		"should contain Java agent JAR")
 	assert.True(t, pathsContain(paths, "/etc/opentelemetry/injector/conf.d/java.conf"),
 		"should contain Java conf.d drop-in")
-	assert.True(t, pathsContain(paths, "/usr/share/doc/opentelemetry-java-autoinstrumentation/bom.cdx.json"),
+	const bomPath = "/usr/share/doc/opentelemetry-java-autoinstrumentation/bom.cdx.json"
+	assert.True(t, pathsContain(paths, bomPath),
 		"should contain Java CycloneDX BOM")
+
+	bom := debBOM(t, pkg, bomPath)
+	assert.Equal(t, "opentelemetry-java-autoinstrumentation", bom.Metadata.Component.Name)
+	requireBOMComponent(t, bom, "opentelemetry-javaagent")
 }
 
 func TestDebNodejsMetadata(t *testing.T) {
@@ -310,8 +353,13 @@ func TestDebNodejsContents(t *testing.T) {
 		"should contain Node.js register.js")
 	assert.True(t, pathsContain(paths, "/etc/opentelemetry/injector/conf.d/nodejs.conf"),
 		"should contain Node.js conf.d drop-in")
-	assert.True(t, pathsContain(paths, "/usr/share/doc/opentelemetry-nodejs-autoinstrumentation/bom.cdx.json"),
+	const bomPath = "/usr/share/doc/opentelemetry-nodejs-autoinstrumentation/bom.cdx.json"
+	assert.True(t, pathsContain(paths, bomPath),
 		"should contain Node.js CycloneDX BOM")
+
+	bom := debBOM(t, pkg, bomPath)
+	assert.Equal(t, "opentelemetry-nodejs-autoinstrumentation", bom.Metadata.Component.Name)
+	requireBOMComponent(t, bom, "@opentelemetry/auto-instrumentations-node")
 }
 
 func TestDebDotnetMetadata(t *testing.T) {
@@ -334,8 +382,13 @@ func TestDebDotnetContents(t *testing.T) {
 
 	assert.True(t, pathsContain(paths, "/etc/opentelemetry/injector/conf.d/dotnet.conf"),
 		"should contain .NET conf.d drop-in")
-	assert.True(t, pathsContain(paths, "/usr/share/doc/opentelemetry-dotnet-autoinstrumentation/bom.cdx.json"),
+	const bomPath = "/usr/share/doc/opentelemetry-dotnet-autoinstrumentation/bom.cdx.json"
+	assert.True(t, pathsContain(paths, bomPath),
 		"should contain .NET CycloneDX BOM")
+
+	bom := debBOM(t, pkg, bomPath)
+	assert.Equal(t, "opentelemetry-dotnet-autoinstrumentation", bom.Metadata.Component.Name)
+	requireBOMComponent(t, bom, "opentelemetry-dotnet-instrumentation")
 }
 
 func TestDebPythonMetadata(t *testing.T) {
@@ -364,8 +417,15 @@ func TestDebPythonContents(t *testing.T) {
 		"should contain the otel-config-check validator")
 	assert.True(t, pathsContain(paths, "/etc/opentelemetry/injector/conf.d/python.conf"),
 		"should contain Python conf.d drop-in")
-	assert.True(t, pathsContain(paths, "/usr/share/doc/opentelemetry-python-autoinstrumentation/bom.cdx.json"),
+	const bomPath = "/usr/share/doc/opentelemetry-python-autoinstrumentation/bom.cdx.json"
+	assert.True(t, pathsContain(paths, bomPath),
 		"should contain Python CycloneDX BOM")
+
+	bom := debBOM(t, pkg, bomPath)
+	assert.Equal(t, "opentelemetry-python-autoinstrumentation", bom.Metadata.Component.Name)
+	requireBOMComponent(t, bom, "opentelemetry-distro")
+	requireBOMComponent(t, bom, "opentelemetry-pyproto")
+	requireBOMComponent(t, bom, "opentelemetry-exporter-otlp-pyproto-http")
 }
 
 func TestDebMetapackageMetadata(t *testing.T) {
