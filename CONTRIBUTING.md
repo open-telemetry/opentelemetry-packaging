@@ -18,6 +18,7 @@ cmd/build-spec/rpm/          CLI entry point for generating and staging the sour
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
 packaging/
   builder/                   Go library that drives nfpm to create packages
+    bom.go                   Bundled-component inventory and deterministic CycloneDX BOM generation
     builder.go               Build orchestration, common metadata
     components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
     download.go              Upstream artifact download helpers
@@ -67,13 +68,22 @@ The `cmd/build-packages` program:
    from source in a second pass and merged in. This keeps the produced package
    correct regardless of the build host's OS, architecture, or Python version.
 
-2. **Constructs an `nfpm.Info`** for each component with the correct metadata:
+2. **Stages the package payload and its bundled-component inventory**:
+   - Java and .NET use the same upstream release pins that select their monolithic distributions.
+   - Node.js inventories the package roots that npm actually installed, including scoped and nested dependencies.
+   - Python inventories the installed `.dist-info/METADATA` records, the same source used by its runtime dependency-conflict manifest.
+   - Each language package ships the resulting CycloneDX JSON as `/usr/share/doc/<package>/bom.cdx.json`.
+
+   BOM generation is deterministic: components are deduplicated and sorted, and volatile fields such as timestamps and random serial numbers are intentionally omitted.
+   Rebuilding the same staged payload therefore produces the same BOM bytes.
+
+3. **Constructs an `nfpm.Info`** for each component with the correct metadata:
    - `Provides` virtual package names (e.g., `opentelemetry-injector1`)
    - `Suggests` for soft dependencies between language packages and the injector
    - `Recommends` for the metapackage's language package references
    - Lifecycle scripts, config files, man pages, and documentation
 
-3. **Writes the package file** via nfpm's `Packager.Package()` — produces valid `.deb` or `.rpm` without requiring `dpkg-deb`, `rpmbuild`, or any platform-specific tools.
+4. **Writes the package file** via nfpm's `Packager.Package()` — produces valid `.deb` or `.rpm` without requiring `dpkg-deb`, `rpmbuild`, or any platform-specific tools.
 
 ### Where package metadata lives
 
@@ -202,9 +212,9 @@ When invoking `build-packages` directly for the Python component, build that bin
 
 ## Testing
 
-### Go command unit tests (fast, no containers)
+### Go unit tests (fast, no containers)
 
-Unit tests for the Go commands, currently the `otel-config-check` declarative-configuration validator that ships inside the Python package.
+Unit tests for the Go commands and package-builder logic, including the `otel-config-check` declarative-configuration validator and bundled-component/BOM generation.
 
 ```sh
 make go-unit-tests

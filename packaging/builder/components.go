@@ -163,6 +163,15 @@ func javaContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("downloading Java agent: %w", err)
 	}
 
+	bundled, err := releaseBundledComponent(cfg, "java", "opentelemetry-javaagent")
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("reading Java agent version: %w", err)
+	}
+	bomPath := filepath.Join(staging, "bom.cdx.json")
+	if err := writeCycloneDXBOM(bomPath, Java.PackageName, cfg.Version, bundled); err != nil {
+		return nil, cleanup, err
+	}
+
 	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "java"))
 	if err != nil {
 		return nil, cleanup, err
@@ -176,6 +185,7 @@ func javaContents(cfg Config) (files.Contents, func(), error) {
 		regularFile(filepath.Join(commonDir, "java", "injector.conf"), injectorConfigDir+"/conf.d/java.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-java.8.gz", 0o644),
 		regularFile(filepath.Join(commonDir, "java", "README.md"), "/usr/share/doc/opentelemetry-java-autoinstrumentation/README.md", 0o644),
+		regularFile(bomPath, "/usr/share/doc/opentelemetry-java-autoinstrumentation/bom.cdx.json", 0o644),
 	}, cleanup, nil
 }
 
@@ -188,6 +198,15 @@ func nodejsContents(cfg Config) (files.Contents, func(), error) {
 
 	if err := downloadNodejsAgent(cfg, staging); err != nil {
 		return nil, cleanup, fmt.Errorf("downloading Node.js agent: %w", err)
+	}
+
+	bundled, err := nodeModulesComponents(filepath.Join(staging, "nodejs"))
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("inventorying Node.js packages: %w", err)
+	}
+	bomPath := filepath.Join(staging, "bom.cdx.json")
+	if err := writeCycloneDXBOM(bomPath, Nodejs.PackageName, cfg.Version, bundled); err != nil {
+		return nil, cleanup, err
 	}
 
 	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "nodejs"))
@@ -204,6 +223,7 @@ func nodejsContents(cfg Config) (files.Contents, func(), error) {
 		regularFile(filepath.Join(commonDir, "nodejs", "injector.conf"), injectorConfigDir+"/conf.d/nodejs.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-nodejs.8.gz", 0o644),
 		regularFile(filepath.Join(commonDir, "nodejs", "README.md"), "/usr/share/doc/opentelemetry-nodejs-autoinstrumentation/README.md", 0o644),
+		regularFile(bomPath, "/usr/share/doc/opentelemetry-nodejs-autoinstrumentation/bom.cdx.json", 0o644),
 	}, cleanup, nil
 }
 
@@ -222,6 +242,15 @@ func dotnetContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("downloading .NET agent: %w", err)
 	}
 
+	bundled, err := releaseBundledComponent(cfg, "dotnet", "opentelemetry-dotnet-instrumentation")
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("reading .NET agent version: %w", err)
+	}
+	bomPath := filepath.Join(staging, "bom.cdx.json")
+	if err := writeCycloneDXBOM(bomPath, Dotnet.PackageName, cfg.Version, bundled); err != nil {
+		return nil, cleanup, err
+	}
+
 	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "dotnet"))
 	if err != nil {
 		return nil, cleanup, err
@@ -235,6 +264,7 @@ func dotnetContents(cfg Config) (files.Contents, func(), error) {
 		regularFile(filepath.Join(commonDir, "dotnet", "injector.conf"), injectorConfigDir+"/conf.d/dotnet.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-dotnet.8.gz", 0o644),
 		regularFile(filepath.Join(commonDir, "dotnet", "README.md"), "/usr/share/doc/opentelemetry-dotnet-autoinstrumentation/README.md", 0o644),
+		regularFile(bomPath, "/usr/share/doc/opentelemetry-dotnet-autoinstrumentation/bom.cdx.json", 0o644),
 	}, cleanup, nil
 }
 
@@ -281,6 +311,15 @@ func pythonContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("generating all-dependencies.txt: %w", err)
 	}
 
+	bundled, err := pythonDistInfoComponents(pythonDir)
+	if err != nil {
+		return nil, cleanup, fmt.Errorf("inventorying Python distributions: %w", err)
+	}
+	bomPath := filepath.Join(staging, "bom.cdx.json")
+	if err := writeCycloneDXBOM(bomPath, Python.PackageName, cfg.Version, bundled); err != nil {
+		return nil, cleanup, err
+	}
+
 	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "python"))
 	if err != nil {
 		return nil, cleanup, err
@@ -297,6 +336,7 @@ func pythonContents(cfg Config) (files.Contents, func(), error) {
 		regularFile(filepath.Join(commonDir, "python", "injector.conf"), injectorConfigDir+"/conf.d/python.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-python.8.gz", 0o644),
 		regularFile(filepath.Join(commonDir, "python", "README.md"), "/usr/share/doc/opentelemetry-python-autoinstrumentation/README.md", 0o644),
+		regularFile(bomPath, "/usr/share/doc/opentelemetry-python-autoinstrumentation/bom.cdx.json", 0o644),
 		// The bundle redistributes files derived from the Dash0 operator; the
 		// NOTICE at the repository root carries the attribution required by
 		// Apache-2.0 and ships alongside the package documentation.

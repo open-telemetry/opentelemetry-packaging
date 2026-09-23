@@ -284,6 +284,8 @@ func TestDebJavaContents(t *testing.T) {
 		"should contain Java agent JAR")
 	assert.True(t, pathsContain(paths, "/etc/opentelemetry/injector/conf.d/java.conf"),
 		"should contain Java conf.d drop-in")
+	assert.True(t, pathsContain(paths, "/usr/share/doc/opentelemetry-java-autoinstrumentation/bom.cdx.json"),
+		"should contain Java CycloneDX BOM")
 }
 
 func TestDebNodejsMetadata(t *testing.T) {
@@ -308,6 +310,8 @@ func TestDebNodejsContents(t *testing.T) {
 		"should contain Node.js register.js")
 	assert.True(t, pathsContain(paths, "/etc/opentelemetry/injector/conf.d/nodejs.conf"),
 		"should contain Node.js conf.d drop-in")
+	assert.True(t, pathsContain(paths, "/usr/share/doc/opentelemetry-nodejs-autoinstrumentation/bom.cdx.json"),
+		"should contain Node.js CycloneDX BOM")
 }
 
 func TestDebDotnetMetadata(t *testing.T) {
@@ -330,6 +334,8 @@ func TestDebDotnetContents(t *testing.T) {
 
 	assert.True(t, pathsContain(paths, "/etc/opentelemetry/injector/conf.d/dotnet.conf"),
 		"should contain .NET conf.d drop-in")
+	assert.True(t, pathsContain(paths, "/usr/share/doc/opentelemetry-dotnet-autoinstrumentation/bom.cdx.json"),
+		"should contain .NET CycloneDX BOM")
 }
 
 func TestDebPythonMetadata(t *testing.T) {
@@ -358,6 +364,8 @@ func TestDebPythonContents(t *testing.T) {
 		"should contain the otel-config-check validator")
 	assert.True(t, pathsContain(paths, "/etc/opentelemetry/injector/conf.d/python.conf"),
 		"should contain Python conf.d drop-in")
+	assert.True(t, pathsContain(paths, "/usr/share/doc/opentelemetry-python-autoinstrumentation/bom.cdx.json"),
+		"should contain Python CycloneDX BOM")
 }
 
 func TestDebMetapackageMetadata(t *testing.T) {
@@ -562,6 +570,7 @@ func TestRpmJavaContents(t *testing.T) {
 
 	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/java/opentelemetry-javaagent.jar"))
 	assert.True(t, pathsContain(names, "/etc/opentelemetry/injector/conf.d/java.conf"))
+	assert.True(t, pathsContain(names, "/usr/share/doc/opentelemetry-java-autoinstrumentation/bom.cdx.json"))
 }
 
 func TestRpmNodejsMetadata(t *testing.T) {
@@ -586,6 +595,7 @@ func TestRpmNodejsContents(t *testing.T) {
 
 	assert.True(t, pathsContain(names, "register.js"))
 	assert.True(t, pathsContain(names, "/etc/opentelemetry/injector/conf.d/nodejs.conf"))
+	assert.True(t, pathsContain(names, "/usr/share/doc/opentelemetry-nodejs-autoinstrumentation/bom.cdx.json"))
 }
 
 func TestRpmDotnetMetadata(t *testing.T) {
@@ -609,6 +619,7 @@ func TestRpmDotnetContents(t *testing.T) {
 	names := rpmFileNames(p)
 
 	assert.True(t, pathsContain(names, "/etc/opentelemetry/injector/conf.d/dotnet.conf"))
+	assert.True(t, pathsContain(names, "/usr/share/doc/opentelemetry-dotnet-autoinstrumentation/bom.cdx.json"))
 }
 
 func TestRpmPythonMetadata(t *testing.T) {
@@ -635,6 +646,7 @@ func TestRpmPythonContents(t *testing.T) {
 	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/python/glibc/all-dependencies.txt"))
 	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/python/otel-config-check"))
 	assert.True(t, pathsContain(names, "/etc/opentelemetry/injector/conf.d/python.conf"))
+	assert.True(t, pathsContain(names, "/usr/share/doc/opentelemetry-python-autoinstrumentation/bom.cdx.json"))
 }
 
 func TestRpmMetapackageMetadata(t *testing.T) {

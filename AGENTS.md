@@ -20,7 +20,7 @@ make srpm-sources              # Generated spec + vendored source tarball only
 make rpm-rebuild-container     # Rebuild the SRPM into binary RPMs the way COPR does
                                #   REBUILD_IMAGE=almalinux:9 to exercise the EL rpm
 
-make go-unit-tests             # Go command unit tests (otel-config-check)
+make go-unit-tests             # Go unit tests (commands + package builder)
 make python-unit-tests         # sitecustomize.py unit tests (throwaway venv, no containers)
 make pyproto-unit-tests        # Vendored pyproto exporter test suites (throwaway venvs, no containers)
 make integration-test-metadata # Fast metadata tests (no containers)
@@ -39,7 +39,7 @@ make clean                     # Remove build/
 - `cmd/build-packages/` — CLI entry point; calls `packaging/builder/`
 - `cmd/build-spec/rpm/` — source RPM spec generation and rpmbuild payload staging
 - `cmd/otel-config-check/` — declarative-config validator, cross-compiled into the Python package and invoked by sitecustomize.py
-- `packaging/builder/` — Go package that constructs nfpm.Info per component and writes .deb/.rpm
+- `packaging/builder/` — Go package that constructs nfpm.Info per component, inventories bundled components, generates CycloneDX BOMs, and writes .deb/.rpm
 - `packaging/common/` — Config files, POSIX lifecycle scripts, man page templates (referenced by builder)
 - `packaging/repo/` — APT/YUM repo generation scripts (run in containers)
 - `packaging/tests/metadata/` — Host-side tests using native Go parsers (no CLI tools)
