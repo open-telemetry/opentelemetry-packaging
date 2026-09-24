@@ -41,6 +41,9 @@ func writeCycloneDXBOM(stagingDir string, components []cycloneDXComponent) (stri
 		return "", fmt.Errorf("cannot write an empty CycloneDX BOM")
 	}
 
+	// CycloneDX permits serialNumber and metadata.timestamp, but neither is
+	// useful for this installed component inventory. Leaving them out keeps the
+	// generated file byte-for-byte reproducible for identical staged contents.
 	bom := cycloneDXBOM{
 		BOMFormat:   "CycloneDX",
 		SpecVersion: "1.6",
