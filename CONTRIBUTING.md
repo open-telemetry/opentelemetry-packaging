@@ -19,7 +19,7 @@ cmd/otel-config-check/       Declarative-config validator shipped inside the Pyt
 packaging/
   builder/                   Go library that drives nfpm to create packages
     builder.go               Build orchestration, common metadata
-    components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
+    components.go            Per-component definitions (injector, java, nodejs, dotnet, python, ruby, meta)
     download.go              Upstream artifact download helpers
     spec.go                  RPM spec generation for the COPR build (projection of components.go)
     stage.go                 Payload staging into an rpmbuild buildroot, with generated %files lists
@@ -31,12 +31,13 @@ packaging/
     nodejs/                  " (plus register.js, the --require entry point with declarative-config support)
     dotnet/                  "
     python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py (plus its unit tests)
+    ruby/                    Injector config, man page template, README, Gemfile, and pinned Gemfile.lock
       vendor/                The pyproto exporter chain, developed here with its test suites (unpublished pure-Python packages; see its README)
   repo/                      APT and YUM repository generation scripts
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
     pyprotogrpc/                    Pure-Python gRPC transport tests against the otel-sink (host-side)
-    {python,java,nodejs,dotnet}/    Matrix E2E tests (deb+rpm × base images) asserting via the otel-sink
+    {python,java,nodejs,dotnet,ruby}/ Matrix E2E tests (deb+rpm × base images) asserting via the otel-sink
                                     (python/ also hosts the sitecustomize.py interpreter compatibility tests)
     lifecycle/                      Package lifecycle tests (preload scripts, config handling, install/remove scenarios)
     vendor/                         Vendor replacement tests (plus mkvendor/, the mock acme package builder)
@@ -57,6 +58,7 @@ The `cmd/build-packages` program:
    - Node.js agent from npm (`@opentelemetry/auto-instrumentations-node`)
    - .NET agent from [opentelemetry-dotnet-instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation) GitHub Releases (glibc only; musl-based distributions use apk, which this project does not build)
    - Python packages via `pip`, as defined by `packaging/common/python/requirements.txt`
+   - Ruby auto-instrumentation gems from RubyGems, using the exact closure in `packaging/common/ruby/Gemfile.lock`; the builder verifies each downloaded gem against the digest published by RubyGems and selects the native `google-protobuf` artifact for the target architecture
 
    The Python package bundles compiled C extensions, so its wheels are fetched
    for a fixed target architecture and Python version (`targetPythonVersion` in
@@ -148,7 +150,7 @@ PACKAGES_DIR=build/rebuild/fedora go test -run TestRpm ./packaging/tests/metadat
 
 ### Upstream version pins
 
-Each upstream artifact version is pinned in a `packaging/common/<component>/release.txt` file (Python instead pins its packages in `packaging/common/python/requirements.txt`):
+Most upstream artifact versions are pinned in a `packaging/common/<component>/release.txt` file. Python pins packages in `packaging/common/python/requirements.txt`, and Ruby uses `Gemfile` plus `Gemfile.lock` so the complete gem closure, including platform-specific native gems, is reproducible:
 
 ```
 # renovate: datasource=github-releases depName=open-telemetry/opentelemetry-java-instrumentation
@@ -204,7 +206,7 @@ When invoking `build-packages` directly for the Python component, build that bin
 
 ### Go command unit tests (fast, no containers)
 
-Unit tests for the Go commands, currently the `otel-config-check` declarative-configuration validator that ships inside the Python package.
+Unit tests for the Go commands and the packaging builder, including the Ruby lockfile parser, target-platform gem selection, and safe gem extraction.
 
 ```sh
 make go-unit-tests
@@ -280,7 +282,11 @@ make integration-test-rpm-nodejs
 make integration-test-deb-python
 ```
 
-The DEB targets also run the per-language declarative-configuration scenarios (`Test<Lang>DeclarativeConfiguration`), which point `OTEL_CONFIG_FILE` at the shipped `otel-config.yaml` and assert telemetry end to end.
+```sh
+make integration-test-deb-ruby
+```
+
+The DEB targets run per-language declarative-configuration scenarios where the SDK supports the file-based configuration path. Ruby currently has no such scenario because the upstream Ruby distribution does not consume `OTEL_CONFIG_FILE`.
 
 ### Lifecycle and vendor tests (containers required)
 
@@ -320,7 +326,7 @@ This runs `shellcheck` on all shell scripts and `go vet` on all Go code.
 
 See [docs/design/packages-meta-architecture.md](docs/design/packages-meta-architecture.md) for the full design, including:
 
-- The five-package structure and virtual package dependency model
+- The package structure and virtual package dependency model
 - `Provides`/`Suggests`/`Recommends` relationships
 - Filesystem layout (`/usr/lib/opentelemetry/`, `/etc/opentelemetry/`)
 - Interface versioning for vendor package compatibility
@@ -331,15 +337,16 @@ See [docs/design/packages-meta-architecture.md](docs/design/packages-meta-archit
 To add a new language auto-instrumentation package:
 
 1. Create config files in `packaging/common/<lang>/` (injector.conf, man page template, and README).
-   Add a language-specific declarative configuration file `packaging/common/<lang>/otel-config.yaml`, shipped at `/etc/opentelemetry/<lang>/otel-config.yaml`.
-2. Add a version pin file `packaging/common/<lang>/release.txt`.
+   Add a language-specific declarative configuration file when the language distribution supports file-based configuration.
+2. Add a reproducible upstream version source. Most components use `release.txt`; ecosystems that need a fully resolved dependency closure may use their native lockfile, as Ruby does with `Gemfile.lock`.
 3. Add a download function in `packaging/builder/download.go`.
-4. Add a component definition in `packaging/builder/components.go` (follow the pattern of `javaInfo`).
+4. Add a component definition in `packaging/builder/components.go` following the existing language components.
 5. Register the component in the `AllComponents` slice.
 6. Add metadata tests in `packaging/tests/metadata/metadata_test.go`.
 7. Add a matrix integration test in `packaging/tests/<lang>/`: one `<lang>_test.go` with a `{deb, rpm} × base image` matrix, plus `Dockerfile.deb` and `Dockerfile.rpm` parameterized by `BASE_IMAGE`. Assert on the exported telemetry via `testutil/otelsink`.
 8. Add the language to the `languages` list in `packaging/tests/lifecycle/lifecycle_test.go`, so the install scenarios cover it.
-9. Add the language to the `lang` matrix in `.github/workflows/build.yml`.
+9. Add per-format Makefile integration-test targets for the language and add it to the `lang` matrix in `.github/workflows/build.yml`.
+10. Update the package architecture, integration-test plan, repository package index, and this contributor guide.
 
 ## Releasing
 

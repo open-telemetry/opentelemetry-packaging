@@ -1,0 +1,29 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+ARG BASE_IMAGE=fedora:41
+FROM ${BASE_IMAGE}
+
+ENV LANG=C.UTF-8
+
+RUN dnf -y update && dnf -y install ruby rubygem-bundler && dnf clean all
+
+COPY build/local-repo/rpm /local-repo
+RUN printf '[opentelemetry-local]\nname=OpenTelemetry Local\nbaseurl=file:///local-repo/packages\nenabled=1\ngpgcheck=0\n' \
+    > /etc/yum.repos.d/opentelemetry-local.repo \
+    && dnf install -y opentelemetry-injector opentelemetry-ruby-autoinstrumentation
+
+RUN { \
+      echo 'OTEL_TRACES_EXPORTER=otlp'; \
+      echo 'OTEL_METRICS_EXPORTER=none'; \
+      echo 'OTEL_LOGS_EXPORTER=none'; \
+      echo 'OTEL_SERVICE_NAME=ruby-testapp'; \
+      echo 'OTEL_BSP_SCHEDULE_DELAY=500'; \
+      echo 'OTEL_RUBY_REQUIRE_BUNDLER=true'; \
+      echo 'BUNDLE_GEMFILE=/app/Gemfile'; \
+    } >> /etc/opentelemetry/injector/default_env.conf
+
+COPY packaging/tests/shared/ruby/Gemfile /app/Gemfile
+COPY packaging/tests/shared/ruby/server.rb /app/server.rb
+EXPOSE 3000
+CMD ["ruby", "/app/server.rb"]

@@ -1,0 +1,20 @@
+.\" Copyright The OpenTelemetry Authors
+.\" SPDX-License-Identifier: Apache-2.0
+.TH OPENTELEMETRY-RUBY 8 "@DATE@" "opentelemetry-ruby-autoinstrumentation @VERSION@" "System Administration"
+.SH NAME
+opentelemetry-ruby \- OpenTelemetry Ruby automatic instrumentation
+.SH DESCRIPTION
+Installs a pinned OpenTelemetry Ruby gem closure below
+.B /usr/lib/opentelemetry/ruby/glibc
+and registers that prefix with the OpenTelemetry injector.
+.SH REQUIREMENTS
+Ruby 3.3 or newer on a glibc-based system.
+.SH FILES
+.TP
+.B /usr/lib/opentelemetry/ruby/glibc/opentelemetry-auto-instrumentation.rb
+Injector entry point.
+.TP
+.B /etc/opentelemetry/injector/conf.d/ruby.conf
+Injector path-prefix registration.
+.SH SEE ALSO
+.BR opentelemetry-injector (8)
