@@ -398,7 +398,7 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 # in the Python package).
 .PHONY: go-unit-tests
 go-unit-tests:
-	go test -v ./cmd/...
+	go test -v ./cmd/... ./packaging/builder/...
 
 # Unit tests for sitecustomize.py. They need the `packaging` module (a runtime
 # dependency of sitecustomize.py itself); a throwaway virtualenv keeps the

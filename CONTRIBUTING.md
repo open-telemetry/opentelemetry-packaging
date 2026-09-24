@@ -19,6 +19,7 @@ cmd/otel-config-check/       Declarative-config validator shipped inside the Pyt
 packaging/
   builder/                   Go library that drives nfpm to create packages
     builder.go               Build orchestration, common metadata
+    bom.go                    Deterministic CycloneDX inventory generation for bundled components
     components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
     download.go              Upstream artifact download helpers
     spec.go                  RPM spec generation for the COPR build (projection of components.go)
@@ -202,9 +203,10 @@ When invoking `build-packages` directly for the Python component, build that bin
 
 ## Testing
 
-### Go command unit tests (fast, no containers)
+### Go unit tests (fast, no containers)
 
-Unit tests for the Go commands, currently the `otel-config-check` declarative-configuration validator that ships inside the Python package.
+Unit tests for the Go commands and packaging builder helpers.
+This covers the `otel-config-check` declarative-configuration validator and deterministic CycloneDX inventory generation.
 
 ```sh
 make go-unit-tests
