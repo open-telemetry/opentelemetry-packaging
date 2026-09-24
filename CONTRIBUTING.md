@@ -19,7 +19,7 @@ cmd/otel-config-check/       Declarative-config validator shipped inside the Pyt
 packaging/
   builder/                   Go library that drives nfpm to create packages
     builder.go               Build orchestration, common metadata
-    bom.go                   Deterministic CycloneDX inventory generation for bundled components
+    bom.go                    Deterministic CycloneDX inventory generation for bundled components
     components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
     download.go              Upstream artifact download helpers
     spec.go                  RPM spec generation for the COPR build (projection of components.go)
