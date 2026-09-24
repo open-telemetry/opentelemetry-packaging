@@ -4,8 +4,11 @@
 package builder
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"crypto/sha512"
@@ -382,6 +385,369 @@ func downloadNodejsAgent(cfg Config, destDir string) error {
 	}
 
 	os.Remove(tgz)
+	return nil
+}
+
+// RubyGems registry endpoints are variables so tests can replace them.
+var (
+	rubygemsAPIBaseURL       = "https://rubygems.org/api/v1"
+	rubygemsDownloadsBaseURL = "https://rubygems.org/downloads"
+)
+
+type rubyGemPin struct {
+	Name     string
+	Version  string
+	Platform string
+}
+
+var rubyPlatforms = []string{
+	"x86_64-linux-gnu",
+	"aarch64-linux-gnu",
+	"x86-linux-gnu",
+	"x86_64-linux-musl",
+	"aarch64-linux-musl",
+	"x86-linux-musl",
+	"arm64-darwin",
+	"x86_64-darwin",
+}
+
+func splitRubyResolvedVersion(resolved string) (string, string) {
+	for _, platform := range rubyPlatforms {
+		suffix := "-" + platform
+		if strings.HasSuffix(resolved, suffix) {
+			return strings.TrimSuffix(resolved, suffix), platform
+		}
+	}
+	return resolved, "ruby"
+}
+
+// parseRubyGemLock reads the resolved artifacts from the GEM/specs section of
+// a Bundler lockfile. Dependency edges are indented more deeply than the
+// resolved specs, so they are deliberately ignored here.
+func parseRubyGemLock(path string) ([]rubyGemPin, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var pins []rubyGemPin
+	inSpecs := false
+	for _, line := range strings.Split(string(data), "\n") {
+		if line == "  specs:" {
+			inSpecs = true
+			continue
+		}
+		if !inSpecs {
+			continue
+		}
+		if line != "" && !strings.HasPrefix(line, " ") {
+			break
+		}
+		if !strings.HasPrefix(line, "    ") || strings.HasPrefix(line, "      ") {
+			continue
+		}
+
+		entry := strings.TrimSpace(line)
+		open := strings.LastIndex(entry, " (")
+		if open <= 0 || !strings.HasSuffix(entry, ")") {
+			continue
+		}
+
+		version, platform := splitRubyResolvedVersion(strings.TrimSuffix(entry[open+2:], ")"))
+		pins = append(pins, rubyGemPin{
+			Name:     entry[:open],
+			Version:  version,
+			Platform: platform,
+		})
+	}
+
+	if len(pins) == 0 {
+		return nil, fmt.Errorf("no gems found in %s", path)
+	}
+	return pins, nil
+}
+
+// rubyBundlePins selects one artifact per resolved gem for the requested
+// target architecture. When Bundler records both a generic source gem and a
+// target-native variant, prefer the native artifact instead of installing both.
+func rubyBundlePins(pins []rubyGemPin, arch string) ([]rubyGemPin, error) {
+	var targetPlatform string
+	switch arch {
+	case "amd64":
+		targetPlatform = "x86_64-linux-gnu"
+	case "arm64":
+		targetPlatform = "aarch64-linux-gnu"
+	default:
+		return nil, fmt.Errorf("unsupported architecture for Ruby: %s", arch)
+	}
+
+	nativeNames := make(map[string]struct{})
+	for _, pin := range pins {
+		if pin.Platform == targetPlatform {
+			nativeNames[pin.Name] = struct{}{}
+		}
+	}
+
+	var selected []rubyGemPin
+	for _, pin := range pins {
+		switch pin.Platform {
+		case targetPlatform:
+			selected = append(selected, pin)
+		case "ruby":
+			if _, hasNative := nativeNames[pin.Name]; !hasNative {
+				selected = append(selected, pin)
+			}
+		}
+	}
+	if len(selected) == 0 {
+		return nil, fmt.Errorf("Ruby bundle selection is empty for %s", arch)
+	}
+	return selected, nil
+}
+
+func rubyGemFullName(pin rubyGemPin) string {
+	name := pin.Name + "-" + pin.Version
+	if pin.Platform != "" && pin.Platform != "ruby" {
+		name += "-" + pin.Platform
+	}
+	return name
+}
+
+func fetchRubyGemSHA(pin rubyGemPin) (string, error) {
+	url := fmt.Sprintf("%s/versions/%s.json", rubygemsAPIBaseURL, pin.Name)
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("fetching RubyGems metadata for %s: %w", pin.Name, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("fetching RubyGems metadata for %s: HTTP %d", pin.Name, resp.StatusCode)
+	}
+
+	var versions []struct {
+		Number   string `json:"number"`
+		Platform string `json:"platform"`
+		SHA      string `json:"sha"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&versions); err != nil {
+		return "", fmt.Errorf("decoding RubyGems metadata for %s: %w", pin.Name, err)
+	}
+
+	for _, version := range versions {
+		platform := version.Platform
+		if platform == "" {
+			platform = "ruby"
+		}
+		if version.Number != pin.Version || platform != pin.Platform {
+			continue
+		}
+		if version.SHA == "" {
+			return "", fmt.Errorf("RubyGems metadata for %s has no sha256 digest", rubyGemFullName(pin))
+		}
+		return version.SHA, nil
+	}
+
+	return "", fmt.Errorf(
+		"RubyGems has no %s %s for platform %s",
+		pin.Name,
+		pin.Version,
+		pin.Platform,
+	)
+}
+
+func safeArchivePath(root, name string) (string, error) {
+	if filepath.IsAbs(name) {
+		return "", fmt.Errorf("archive entry has absolute path: %s", name)
+	}
+
+	clean := filepath.Clean(name)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("archive entry escapes destination: %s", name)
+	}
+	return filepath.Join(root, clean), nil
+}
+
+func extractRubyGem(gemPath, destDir string) error {
+	f, err := os.Open(gemPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	outer := tar.NewReader(f)
+	var payload []byte
+	for {
+		hdr, err := outer.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("reading gem archive: %w", err)
+		}
+		if hdr.Name != "data.tar.gz" {
+			continue
+		}
+
+		payload, err = io.ReadAll(outer)
+		if err != nil {
+			return fmt.Errorf("reading gem payload: %w", err)
+		}
+		break
+	}
+	if len(payload) == 0 {
+		return fmt.Errorf("%s has no data.tar.gz payload", gemPath)
+	}
+
+	gz, err := gzip.NewReader(bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("opening gem payload: %w", err)
+	}
+	defer gz.Close()
+
+	inner := tar.NewReader(gz)
+	for {
+		hdr, err := inner.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("reading gem payload: %w", err)
+		}
+
+		target, err := safeArchivePath(destDir, hdr.Name)
+		if err != nil {
+			return err
+		}
+
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.FileMode(hdr.Mode)&os.ModePerm); err != nil {
+				return err
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			out, err := os.OpenFile(
+				target,
+				os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+				os.FileMode(hdr.Mode)&os.ModePerm,
+			)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(out, inner); err != nil {
+				out.Close()
+				os.Remove(target)
+				return err
+			}
+			if err := out.Close(); err != nil {
+				os.Remove(target)
+				return err
+			}
+		case tar.TypeSymlink:
+			if filepath.IsAbs(hdr.Linkname) {
+				return fmt.Errorf("gem symlink has absolute target: %s", hdr.Linkname)
+			}
+			resolved := filepath.Join(filepath.Dir(target), hdr.Linkname)
+			rel, err := filepath.Rel(destDir, resolved)
+			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+				return fmt.Errorf("gem symlink escapes destination: %s -> %s", hdr.Name, hdr.Linkname)
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			if err := os.Symlink(hdr.Linkname, target); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported gem archive entry %s (type %d)", hdr.Name, hdr.Typeflag)
+		}
+	}
+
+	return nil
+}
+
+// downloadRubyAgent materializes the Bundler-locked dependency closure without
+// requiring Ruby on the build host. Every .gem is verified against the SHA-256
+// digest published by RubyGems before its payload is extracted.
+func downloadRubyAgent(cfg Config, destDir string) error {
+	lockFile := filepath.Join(cfg.PackagingDir, "common", "ruby", "Gemfile.lock")
+	pins, err := parseRubyGemLock(lockFile)
+	if err != nil {
+		return fmt.Errorf("reading Ruby lockfile: %w", err)
+	}
+
+	pins, err = rubyBundlePins(pins, cfg.Arch)
+	if err != nil {
+		return err
+	}
+
+	gemsDir := filepath.Join(destDir, "gems")
+	if err := os.MkdirAll(gemsDir, 0o755); err != nil {
+		return err
+	}
+
+	var root rubyGemPin
+	for _, pin := range pins {
+		fullName := rubyGemFullName(pin)
+		fmt.Printf("  Fetching Ruby gem %s\n", fullName)
+
+		want, err := fetchRubyGemSHA(pin)
+		if err != nil {
+			return err
+		}
+
+		tmp, err := os.CreateTemp("", "otel-ruby-*.gem")
+		if err != nil {
+			return err
+		}
+		tmpPath := tmp.Name()
+		if err := tmp.Close(); err != nil {
+			os.Remove(tmpPath)
+			return err
+		}
+
+		url := fmt.Sprintf("%s/%s.gem", rubygemsDownloadsBaseURL, fullName)
+		if err := downloadFile(url, tmpPath); err != nil {
+			os.Remove(tmpPath)
+			return err
+		}
+		if err := verifyFileSHA256(tmpPath, want); err != nil {
+			os.Remove(tmpPath)
+			return err
+		}
+
+		gemDest := filepath.Join(gemsDir, fullName)
+		if err := os.MkdirAll(gemDest, 0o755); err != nil {
+			os.Remove(tmpPath)
+			return err
+		}
+		if err := extractRubyGem(tmpPath, gemDest); err != nil {
+			os.Remove(tmpPath)
+			return fmt.Errorf("extracting %s: %w", fullName, err)
+		}
+		os.Remove(tmpPath)
+
+		if pin.Name == "opentelemetry-auto-instrumentation" {
+			root = pin
+		}
+	}
+
+	if root.Name == "" {
+		return fmt.Errorf("Ruby lockfile does not contain opentelemetry-auto-instrumentation")
+	}
+
+	entry := filepath.Join(
+		gemsDir,
+		rubyGemFullName(root),
+		"lib",
+		"opentelemetry-auto-instrumentation.rb",
+	)
+	if err := copyFile(entry, filepath.Join(destDir, "opentelemetry-auto-instrumentation.rb")); err != nil {
+		return fmt.Errorf("installing Ruby injector entry point: %w", err)
+	}
 	return nil
 }
 

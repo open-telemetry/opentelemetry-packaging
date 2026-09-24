@@ -40,7 +40,7 @@ const (
 )
 
 // languages lists the language auto-instrumentation package name stems.
-var languages = []string{"java", "nodejs", "dotnet", "python"}
+var languages = []string{"java", "nodejs", "dotnet", "python", "ruby"}
 
 // target is one (package format, base image) combination in the test matrix.
 type target struct {

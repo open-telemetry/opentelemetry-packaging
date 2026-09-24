@@ -28,7 +28,7 @@ This document describes all packages in the first version of the system packages
 
 ## Packages overview
 
-The first version ships six packages, each available as both DEB and RPM.
+The suite ships seven packages, each available as both DEB and RPM.
 
 | Package | Description | Architecture |
 |---------|-------------|-------------|
@@ -37,6 +37,7 @@ The first version ships six packages, each available as both DEB and RPM.
 | `opentelemetry-nodejs-autoinstrumentation` | OpenTelemetry Node.js auto-instrumentation | `all` / `noarch` |
 | `opentelemetry-dotnet-autoinstrumentation` | OpenTelemetry .NET Automatic Instrumentation (glibc only) | Per-arch (`amd64`, `arm64`) |
 | `opentelemetry-python-autoinstrumentation` | OpenTelemetry Python auto-instrumentation | Per-arch (`amd64`, `arm64`) |
+| `opentelemetry-ruby-autoinstrumentation` | OpenTelemetry Ruby auto-instrumentation | Per-arch (`amd64`, `arm64`) |
 | `opentelemetry` | Metapackage that pulls in the injector and all language packages | `all` / `noarch` |
 
 ### Dependency graph
@@ -47,7 +48,8 @@ opentelemetry  (metapackage)
 ├── Recommends: opentelemetry-java-autoinstrumentation1   (virtual)
 ├── Recommends: opentelemetry-nodejs-autoinstrumentation1 (virtual)
 ├── Recommends: opentelemetry-dotnet-autoinstrumentation1 (virtual)
-└── Recommends: opentelemetry-python-autoinstrumentation1 (virtual)
+├── Recommends: opentelemetry-python-autoinstrumentation1 (virtual)
+└── Recommends: opentelemetry-ruby-autoinstrumentation1   (virtual)
 
 opentelemetry-injector
 └── Provides: opentelemetry-injector1
@@ -62,6 +64,10 @@ opentelemetry-nodejs-autoinstrumentation
 
 opentelemetry-dotnet-autoinstrumentation
 ├── Provides: opentelemetry-dotnet-autoinstrumentation1
+└── Suggests: opentelemetry-injector1
+
+opentelemetry-ruby-autoinstrumentation
+├── Provides: opentelemetry-ruby-autoinstrumentation1
 └── Suggests: opentelemetry-injector1
 ```
 
@@ -102,9 +108,11 @@ All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfound
 │   └── node_modules/@opentelemetry/auto-instrumentations-node/…
 ├── dotnet/
 │   └── glibc/                (managed assemblies and native profiler; see .NET layout note)
-└── python/
-    ├── glibc/                (bundled wheels, sitecustomize.py, all-dependencies.txt)
-    └── otel-config-check     (declarative configuration validator)
+├── python/
+│   ├── glibc/                (bundled wheels, sitecustomize.py, all-dependencies.txt)
+│   └── otel-config-check     (declarative configuration validator)
+└── ruby/
+    └── glibc/                (pinned gem closure and injector entry point)
 
 /etc/opentelemetry/
 ├── injector/
@@ -114,7 +122,8 @@ All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfound
 │       ├── java.conf
 │       ├── nodejs.conf
 │       ├── dotnet.conf
-│       └── python.conf
+│       ├── python.conf
+│       └── ruby.conf
 ├── java/
 │   └── otel-config.yaml
 ├── nodejs/
@@ -130,7 +139,8 @@ All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfound
     ├── opentelemetry-java.8.gz
     ├── opentelemetry-nodejs.8.gz
     ├── opentelemetry-dotnet.8.gz
-    └── opentelemetry-python.8.gz
+    ├── opentelemetry-python.8.gz
+    └── opentelemetry-ruby.8.gz
 
 /usr/share/doc/
 ├── opentelemetry-injector/
@@ -138,6 +148,7 @@ All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfound
 ├── opentelemetry-nodejs-autoinstrumentation/
 ├── opentelemetry-dotnet-autoinstrumentation/
 ├── opentelemetry-python-autoinstrumentation/
+├── opentelemetry-ruby-autoinstrumentation/
 └── opentelemetry/
 ```
 
@@ -147,7 +158,7 @@ All paths follow the [Filesystem Hierarchy Standard](https://refspecs.linuxfound
 
 The core package.
 Installs `libotelinject.so`, a shared library loaded into every process via `/etc/ld.so.preload`.
-At runtime, the library inspects each process to determine if it is a Java, Node.js, .NET, or Python application and, if so, activates the corresponding auto-instrumentation agent whose path is configured in the `conf.d/` drop-in files.
+At runtime, the library inspects each process to determine if it is a Java, Node.js, .NET, Python, or Ruby application and, if so, activates the corresponding auto-instrumentation agent whose path is configured in the `conf.d/` drop-in files.
 
 #### Contents
 
@@ -296,6 +307,31 @@ The packages are part of the system package; no files are downloaded at package 
 | Suggests | `opentelemetry-injector1` | `opentelemetry-injector1` |
 | Config files | `/etc/opentelemetry/python` | `/etc/opentelemetry/python` |
 
+### `opentelemetry-ruby-autoinstrumentation`
+
+The package build reads the exact dependency closure pinned in `packaging/common/ruby/Gemfile.lock`, downloads the corresponding gems from RubyGems, verifies each artifact against the SHA-256 digest published by the registry, and extracts the bundle without requiring Ruby on the build host.
+The native `google-protobuf` gem is selected for the target Linux architecture, so an amd64 build never packages an arm64 binary, and vice versa.
+The bundle installs under a `glibc/` subdirectory because the injector resolves Ruby agent paths using the same `<prefix>/<libc>` contract as .NET and Python.
+
+#### Contents
+
+| Path | Description |
+|------|-------------|
+| `/usr/lib/opentelemetry/ruby/glibc/opentelemetry-auto-instrumentation.rb` | Fixed entry point required through `RUBYOPT` |
+| `/usr/lib/opentelemetry/ruby/glibc/gems/…` | Pinned OpenTelemetry Ruby dependency closure and target-architecture protobuf runtime |
+| `/etc/opentelemetry/injector/conf.d/ruby.conf` | Drop-in: `ruby_auto_instrumentation_agent_path_prefix=/usr/lib/opentelemetry/ruby` |
+| `/usr/share/man/man8/opentelemetry-ruby.8.gz` | Man page |
+| `/usr/share/doc/opentelemetry-ruby-autoinstrumentation/Gemfile.lock` | Exact shipped dependency closure |
+
+#### Package metadata
+
+| Field | DEB | RPM |
+|-------|-----|-----|
+| Architecture | `amd64` or `arm64` | `x86_64` or `aarch64` |
+| Provides | `opentelemetry-ruby-autoinstrumentation1` | `opentelemetry-ruby-autoinstrumentation1` |
+| Suggests | `opentelemetry-injector1` | `opentelemetry-injector1` |
+| Config files | `/etc/opentelemetry/injector/conf.d/ruby.conf` | `/etc/opentelemetry/injector/conf.d/ruby.conf` |
+
 ### `opentelemetry`
 
 A metapackage with no files of its own (besides a README under `/usr/share/doc/`).
@@ -311,6 +347,7 @@ It exists so that `apt install opentelemetry` or `yum install opentelemetry` pul
 | Recommends | `opentelemetry-nodejs-autoinstrumentation1` | `opentelemetry-nodejs-autoinstrumentation1` |
 | Recommends | `opentelemetry-dotnet-autoinstrumentation1` | `opentelemetry-dotnet-autoinstrumentation1` |
 | Recommends | `opentelemetry-python-autoinstrumentation1` | `opentelemetry-python-autoinstrumentation1` |
+| Recommends | `opentelemetry-ruby-autoinstrumentation1` | `opentelemetry-ruby-autoinstrumentation1` |
 
 Every dependency uses a virtual name rather than a concrete package name.
 
@@ -344,11 +381,13 @@ See [Injector interface versioning](#injector-interface-versioning) for the upgr
 | `nodejs_auto_instrumentation_agent_path` | `conf.d/nodejs.conf` | Absolute path to the Node.js agent entry point |
 | `dotnet_auto_instrumentation_agent_path_prefix` | `conf.d/dotnet.conf` | Directory prefix for the .NET agent (injector appends `glibc/` or `musl/`) |
 | `python_auto_instrumentation_agent_path_prefix` | `conf.d/python.conf` | Path prefix for the Python agent (the injector resolves the `glibc/` subdirectory and prepends it to `PYTHONPATH`) |
+| `ruby_auto_instrumentation_agent_path_prefix` | `conf.d/ruby.conf` | Path prefix for the Ruby bundle (the injector resolves `glibc/`, sets `RUBYOPT` to the fixed entry point, and sets `OTEL_RUBY_ADDITIONAL_GEM_PATH`) |
 | `all_auto_instrumentation_agents_env_path` | `injector.conf` | Path to the default environment variables file |
 
 ### Declarative configuration
 
-Each language package ships its own declarative configuration file: the package installs its language-specific source `packaging/common/<language>/otel-config.yaml` as `/etc/opentelemetry/<language>/otel-config.yaml`.
+Language packages that support OpenTelemetry file-based configuration ship their own declarative configuration file: the package installs its language-specific source `packaging/common/<language>/otel-config.yaml` as `/etc/opentelemetry/<language>/otel-config.yaml`.
+Ruby is currently the exception because the upstream Ruby auto-instrumentation distribution does not consume `OTEL_CONFIG_FILE`.
 The [declarative configuration](https://opentelemetry.io/docs/languages/sdk-configuration/declarative-configuration/) schema is portable across languages, but each file carries only the sections and language-specific guidance relevant to its SDK — the `.NET` file, for example, lists the `instrumentation/development` section that `.NET` requires and the others omit.
 The per-language install paths keep each file owned by its package, preserving the [file ownership boundaries](#file-ownership-boundaries) that vendor overrides rely on.
 
@@ -367,7 +406,7 @@ The shipped file deliberately interpolates the variables the injector injects (e
 
 ## Component versioning
 
-Each language package bundles pre-built upstream artifacts (a JAR, a `node_modules` tree, .NET binaries).
+Each language package bundles upstream instrumentation artifacts or a pinned dependency closure (for example, a JAR, a `node_modules` tree, .NET binaries, Python wheels, or Ruby gems).
 Users and security teams need to know which versions are inside a given package without extracting and inspecting the files.
 See [#13](https://github.com/open-telemetry/opentelemetry-packaging/issues/13) for the full discussion.
 
@@ -401,6 +440,7 @@ This is critical for `Conflicts`/`Replaces` to work correctly.
 | `opentelemetry-nodejs-autoinstrumentation` | `/usr/lib/opentelemetry/nodejs/`, `/etc/opentelemetry/injector/conf.d/nodejs.conf`, `/etc/opentelemetry/nodejs/` |
 | `opentelemetry-dotnet-autoinstrumentation` | `/usr/lib/opentelemetry/dotnet/`, `/etc/opentelemetry/injector/conf.d/dotnet.conf`, `/etc/opentelemetry/dotnet/` |
 | `opentelemetry-python-autoinstrumentation` | `/usr/lib/opentelemetry/python/`, `/etc/opentelemetry/injector/conf.d/python.conf`, `/etc/opentelemetry/python/` |
+| `opentelemetry-ruby-autoinstrumentation` | `/usr/lib/opentelemetry/ruby/`, `/etc/opentelemetry/injector/conf.d/ruby.conf` |
 | `opentelemetry` | `/usr/share/doc/opentelemetry/` |
 
 A vendor replacement package *must* own the same set of paths as the upstream package it replaces.
@@ -418,6 +458,7 @@ Each upstream language package declares a virtual package via `--provides` that 
 | `opentelemetry-nodejs-autoinstrumentation` | `opentelemetry-nodejs-autoinstrumentation1` |
 | `opentelemetry-dotnet-autoinstrumentation` | `opentelemetry-dotnet-autoinstrumentation1` |
 | `opentelemetry-python-autoinstrumentation` | `opentelemetry-python-autoinstrumentation1` |
+| `opentelemetry-ruby-autoinstrumentation` | `opentelemetry-ruby-autoinstrumentation1` |
 
 ### Vendor package naming
 

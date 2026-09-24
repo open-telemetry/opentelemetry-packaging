@@ -54,10 +54,10 @@ VENDOR_VERSION ?= 1.0.0
 NEXT_CONFIG_MARKER := OTEL_TEST_NEXT_CONFIG_MARKER=1
 
 # Components that have packages.
-COMPONENTS := injector java nodejs dotnet python meta
+COMPONENTS := injector java nodejs dotnet python ruby meta
 
 # Languages that have integration tests (meta is excluded).
-TEST_LANGUAGES := java nodejs dotnet python
+TEST_LANGUAGES := java nodejs dotnet python ruby
 
 # ============================================================================
 # Package Build Targets (nfpm, pure Go)
@@ -345,6 +345,10 @@ integration-test-deb-dotnet: local-apt-repo
 integration-test-deb-python: local-apt-repo
 	go test -v -timeout 30m -run '/deb' ./packaging/tests/python/
 
+.PHONY: integration-test-deb-ruby
+integration-test-deb-ruby: local-apt-repo
+	go test -v -timeout 30m -run '/deb' ./packaging/tests/ruby/
+
 # Pure-Python gRPC transport (_pygrpc) against otelsink (host-side, no
 # containers). Runs against the vendored pyproto-grpc package by default;
 # PYGRPC_SRC_DIR overrides the source tree (e.g. a fork checkout).
@@ -367,6 +371,10 @@ integration-test-rpm-dotnet: local-rpm-repo
 .PHONY: integration-test-rpm-python
 integration-test-rpm-python: local-rpm-repo
 	go test -v -timeout 30m -run '/rpm' ./packaging/tests/python/
+
+.PHONY: integration-test-rpm-ruby
+integration-test-rpm-ruby: local-rpm-repo
+	go test -v -timeout 30m -run '/rpm' ./packaging/tests/ruby/
 
 # Runs sitecustomize.py under every Python interpreter generation the injector
 # may hit. Needs a container engine but no built packages or local repos.
@@ -398,7 +406,7 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 # in the Python package).
 .PHONY: go-unit-tests
 go-unit-tests:
-	go test -v ./cmd/...
+	go test -v ./cmd/... ./packaging/builder/...
 
 # Unit tests for sitecustomize.py. They need the `packaging` module (a runtime
 # dependency of sitecustomize.py itself); a throwaway virtualenv keeps the
