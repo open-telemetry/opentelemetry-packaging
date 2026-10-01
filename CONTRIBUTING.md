@@ -320,11 +320,12 @@ This runs `shellcheck` on all shell scripts and `go vet` on all Go code.
 
 See [docs/design/packages-meta-architecture.md](docs/design/packages-meta-architecture.md) for the full design, including:
 
-- The five-package structure and virtual package dependency model
+- The package structure and virtual package dependency model
 - `Provides`/`Suggests`/`Recommends` relationships
 - Filesystem layout (`/usr/lib/opentelemetry/`, `/etc/opentelemetry/`)
 - Interface versioning for vendor package compatibility
 - Lifecycle scripts for `/etc/ld.so.preload` management
+- `opentelemetry-jmx-scraper`, a standalone package outside the dependency graph (its own filesystem prefix, no injector/metapackage relationship)
 
 ## Adding a new component
 
