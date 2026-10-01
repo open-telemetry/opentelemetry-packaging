@@ -360,6 +360,30 @@ func TestDebPythonContents(t *testing.T) {
 		"should contain Python conf.d drop-in")
 }
 
+func TestDebRubyMetadata(t *testing.T) {
+	skipIfNoDebPackages(t)
+
+	pkg := findPackage(t, "opentelemetry-ruby-autoinstrumentation_", ".deb")
+	d := openDeb(t, pkg)
+
+	assert.Contains(t, debProvides(t, d), "opentelemetry-ruby-autoinstrumentation1",
+		"Ruby package should Provide opentelemetry-ruby-autoinstrumentation1")
+	assert.NotContains(t, d.Control.Depends.String(), "opentelemetry-injector",
+		"Ruby package should not hard-depend on injector")
+}
+
+func TestDebRubyContents(t *testing.T) {
+	skipIfNoDebPackages(t)
+
+	pkg := findPackage(t, "opentelemetry-ruby-autoinstrumentation_", ".deb")
+	paths := debDataFiles(t, pkg)
+
+	assert.True(t, pathsContain(paths, "/usr/lib/opentelemetry/ruby/glibc/opentelemetry-auto-instrumentation.rb"))
+	assert.True(t, pathsContain(paths, "/usr/lib/opentelemetry/ruby/glibc/gems/opentelemetry-auto-instrumentation-"))
+	assert.True(t, pathsContain(paths, "/usr/lib/opentelemetry/ruby/glibc/gems/google-protobuf-"))
+	assert.True(t, pathsContain(paths, "/etc/opentelemetry/injector/conf.d/ruby.conf"))
+}
+
 func TestDebMetapackageMetadata(t *testing.T) {
 	skipIfNoDebPackages(t)
 
@@ -379,6 +403,8 @@ func TestDebMetapackageMetadata(t *testing.T) {
 		"metapackage should not hard-depend on .NET — should be in Recommends")
 	assert.NotContains(t, depends, "opentelemetry-python-autoinstrumentation1",
 		"metapackage should not hard-depend on Python — should be in Recommends")
+	assert.NotContains(t, depends, "opentelemetry-ruby-autoinstrumentation1",
+		"metapackage should not hard-depend on Ruby — should be in Recommends")
 
 	// Should NOT depend on concrete package names.
 	assert.NotContains(t, depends, "opentelemetry-injector ",
@@ -488,6 +514,16 @@ func TestDebPythonSuggestsInjector(t *testing.T) {
 		"Python package should Suggest opentelemetry-injector1")
 }
 
+func TestDebRubySuggestsInjector(t *testing.T) {
+	skipIfNoDebPackages(t)
+
+	pkg := findPackage(t, "opentelemetry-ruby-autoinstrumentation_", ".deb")
+	d := openDeb(t, pkg)
+
+	assert.Contains(t, d.Control.Suggests.String(), "opentelemetry-injector1",
+		"Ruby package should Suggest opentelemetry-injector1")
+}
+
 // --------------------------------------------------------------------------
 // DEB Recommends validation
 // --------------------------------------------------------------------------
@@ -507,6 +543,8 @@ func TestDebMetapackageRecommendsLanguagePackages(t *testing.T) {
 		"metapackage should Recommend opentelemetry-dotnet-autoinstrumentation1")
 	assert.Contains(t, recommends, "opentelemetry-python-autoinstrumentation1",
 		"metapackage should Recommend opentelemetry-python-autoinstrumentation1")
+	assert.Contains(t, recommends, "opentelemetry-ruby-autoinstrumentation1",
+		"metapackage should Recommend opentelemetry-ruby-autoinstrumentation1")
 }
 
 // --------------------------------------------------------------------------
@@ -637,6 +675,29 @@ func TestRpmPythonContents(t *testing.T) {
 	assert.True(t, pathsContain(names, "/etc/opentelemetry/injector/conf.d/python.conf"))
 }
 
+func TestRpmRubyMetadata(t *testing.T) {
+	skipIfNoRpmPackages(t)
+
+	pkg := findPackage(t, "opentelemetry-ruby-autoinstrumentation-", ".rpm")
+	p := openRpm(t, pkg)
+
+	assert.True(t, rpmDepsContain(p.Provides(), "opentelemetry-ruby-autoinstrumentation1"))
+	assert.False(t, rpmDepsContain(p.Requires(), "opentelemetry-injector"))
+}
+
+func TestRpmRubyContents(t *testing.T) {
+	skipIfNoRpmPackages(t)
+
+	pkg := findPackage(t, "opentelemetry-ruby-autoinstrumentation-", ".rpm")
+	p := openRpm(t, pkg)
+	names := rpmFileNames(p)
+
+	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/ruby/glibc/opentelemetry-auto-instrumentation.rb"))
+	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/ruby/glibc/gems/opentelemetry-auto-instrumentation-"))
+	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/ruby/glibc/gems/google-protobuf-"))
+	assert.True(t, pathsContain(names, "/etc/opentelemetry/injector/conf.d/ruby.conf"))
+}
+
 func TestRpmMetapackageMetadata(t *testing.T) {
 	skipIfNoRpmPackages(t)
 
@@ -653,6 +714,10 @@ func TestRpmMetapackageMetadata(t *testing.T) {
 		"metapackage should not hard-require Node.js — should be in Recommends")
 	assert.False(t, rpmDepsContain(p.Requires(), "opentelemetry-dotnet-autoinstrumentation1"),
 		"metapackage should not hard-require .NET — should be in Recommends")
+	assert.False(t, rpmDepsContain(p.Requires(), "opentelemetry-python-autoinstrumentation1"),
+		"metapackage should not hard-require Python — should be in Recommends")
+	assert.False(t, rpmDepsContain(p.Requires(), "opentelemetry-ruby-autoinstrumentation1"),
+		"metapackage should not hard-require Ruby — should be in Recommends")
 }
 
 // --------------------------------------------------------------------------
@@ -699,6 +764,16 @@ func TestRpmPythonSuggestsInjector(t *testing.T) {
 		"Python RPM should Suggest opentelemetry-injector1")
 }
 
+func TestRpmRubySuggestsInjector(t *testing.T) {
+	skipIfNoRpmPackages(t)
+
+	pkg := findPackage(t, "opentelemetry-ruby-autoinstrumentation-", ".rpm")
+	p := openRpm(t, pkg)
+
+	assert.True(t, rpmDepsContain(p.Suggests(), "opentelemetry-injector1"),
+		"Ruby RPM should Suggest opentelemetry-injector1")
+}
+
 // --------------------------------------------------------------------------
 // RPM Recommends validation
 // --------------------------------------------------------------------------
@@ -713,6 +788,7 @@ func TestRpmMetapackageRecommendsLanguagePackages(t *testing.T) {
 	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-nodejs-autoinstrumentation1"))
 	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-dotnet-autoinstrumentation1"))
 	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-python-autoinstrumentation1"))
+	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-ruby-autoinstrumentation1"))
 }
 
 // --------------------------------------------------------------------------

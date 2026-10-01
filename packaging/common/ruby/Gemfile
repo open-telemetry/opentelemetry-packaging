@@ -1,0 +1,4 @@
+source 'https://rubygems.org'
+
+# Gemfile.lock is the architecture-aware dependency closure consumed by the builder.
+gem 'opentelemetry-auto-instrumentation', '0.1.0'

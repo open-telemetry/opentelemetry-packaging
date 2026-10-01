@@ -126,6 +126,7 @@ func TestIsOwnedDir(t *testing.T) {
 		configDir + "/injector/conf.d/",
 		"/usr/share/doc/opentelemetry",
 		"/usr/share/doc/opentelemetry-python-autoinstrumentation/",
+		"/usr/share/doc/opentelemetry-ruby-autoinstrumentation/",
 	}
 	for _, dir := range owned {
 		assert.True(t, isOwnedDir(dir), "%s should be owned", dir)

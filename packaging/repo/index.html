@@ -58,7 +58,7 @@
 <body>
   <h1>OpenTelemetry System Packages</h1>
   <p class="version">Current version: <strong>@VERSION@</strong></p>
-  <p>Linux packages for automatic instrumentation of Java, Node.js, .NET, and Python applications using OpenTelemetry.</p>
+  <p>Linux packages for automatic instrumentation of Java, Node.js, .NET, Python, and Ruby applications using OpenTelemetry.</p>
 
   <h2>Quick Install (Debian/Ubuntu)</h2>
   <pre><code># Add the repository
@@ -89,6 +89,7 @@ sudo dnf install opentelemetry</code></pre>
     <li><code>opentelemetry-nodejs-autoinstrumentation</code> - Node.js agent for automatic instrumentation</li>
     <li><code>opentelemetry-dotnet-autoinstrumentation</code> - .NET agent for automatic instrumentation</li>
     <li><code>opentelemetry-python-autoinstrumentation</code> - Python agent for automatic instrumentation</li>
+    <li><code>opentelemetry-ruby-autoinstrumentation</code> - Ruby agent for automatic instrumentation</li>
   </ul>
 
   <h2>Individual Package Installation</h2>
@@ -103,7 +104,10 @@ sudo apt install opentelemetry-injector opentelemetry-nodejs-autoinstrumentation
 sudo apt install opentelemetry-injector opentelemetry-dotnet-autoinstrumentation
 
 # Install only Python instrumentation
-sudo apt install opentelemetry-injector opentelemetry-python-autoinstrumentation</code></pre>
+sudo apt install opentelemetry-injector opentelemetry-python-autoinstrumentation
+
+# Install only Ruby instrumentation
+sudo apt install opentelemetry-injector opentelemetry-ruby-autoinstrumentation</code></pre>
 
   <h2>Links</h2>
   <ul>
