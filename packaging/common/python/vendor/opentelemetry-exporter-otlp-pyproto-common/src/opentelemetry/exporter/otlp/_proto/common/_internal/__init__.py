@@ -17,7 +17,7 @@ from opentelemetry._proto.common.v1.common_pb2 import (
 from opentelemetry._proto.resource.v1.resource_pb2 import Resource as PB2Resource
 from opentelemetry.sdk.trace import Resource
 from opentelemetry.sdk.util.instrumentation import InstrumentationScope
-from opentelemetry.util.types import _ExtendedAttributes
+from opentelemetry.util.types import Attributes
 
 _logger = getLogger(__name__)
 
@@ -79,9 +79,7 @@ def _encode_trace_id(trace_id: int) -> bytes:
     return trace_id.to_bytes(length=16, byteorder="big", signed=False)
 
 
-def _encode_attributes(
-    attributes: _ExtendedAttributes | None,
-) -> list[KeyValue]:
+def _encode_attributes(attributes: Attributes) -> list[KeyValue]:
     if not attributes:
         return []
     pb2_attributes = []
