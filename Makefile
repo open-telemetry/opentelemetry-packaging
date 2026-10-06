@@ -430,11 +430,24 @@ python-unit-tests:
 PYPROTO_VENDOR_DIR = packaging/common/python/vendor
 PYPROTO_DROPIN_VENV = build/python-vendor-dropin-venv
 PYPROTO_EQUIV_VENV = build/python-vendor-equivalence-venv
+# The drop-in venv installs the SDK version requirements.txt pins rather than a
+# pin maintained here, because the vendored exporters import private SDK and API
+# names that only the shipped SDK is guaranteed to carry. A pin of its own goes
+# stale silently: the suites keep passing against an SDK the bundle does not
+# ship, and an incompatible release reaches the integration tests instead, where
+# it surfaces as "0 spans seen" with the ImportError buried in a container log.
+# The extras are stripped because the file-configuration extra is the shipped
+# bundle's concern, not the exporter test suites'.
+PYPROTO_SDK_VERSION = $(shell sed -n \
+	's/^opentelemetry-sdk\(\[[^]]*\]\)\{0,1\}==\([^[:space:]]*\)[[:space:]]*$$/\2/p' \
+	packaging/common/python/requirements.txt)
 .PHONY: pyproto-unit-tests
 pyproto-unit-tests:
+	@test -n "$(PYPROTO_SDK_VERSION)" || \
+		{ echo "cannot read the opentelemetry-sdk pin from packaging/common/python/requirements.txt"; exit 1; }
 	python3 -m venv $(PYPROTO_DROPIN_VENV)
 	$(PYPROTO_DROPIN_VENV)/bin/pip install --quiet pytest \
-		opentelemetry-sdk==1.43.0 hpack
+		opentelemetry-sdk==$(PYPROTO_SDK_VERSION) hpack
 	$(PYPROTO_DROPIN_VENV)/bin/pip install --quiet --no-deps \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-pyproto \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-common \
