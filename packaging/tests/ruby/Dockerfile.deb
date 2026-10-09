@@ -1,0 +1,26 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+ARG BASE_IMAGE=ruby:3.3-slim-bookworm
+FROM ${BASE_IMAGE}
+
+COPY build/local-repo/apt /local-repo
+RUN echo 'deb [trusted=yes] file:///local-repo stable main' > /etc/apt/sources.list.d/opentelemetry-local.list \
+    && apt-get update \
+    && apt-get install -y opentelemetry-injector opentelemetry-ruby-autoinstrumentation \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN { \
+      echo 'OTEL_TRACES_EXPORTER=otlp'; \
+      echo 'OTEL_METRICS_EXPORTER=none'; \
+      echo 'OTEL_LOGS_EXPORTER=none'; \
+      echo 'OTEL_SERVICE_NAME=ruby-testapp'; \
+      echo 'OTEL_BSP_SCHEDULE_DELAY=500'; \
+      echo 'OTEL_RUBY_REQUIRE_BUNDLER=true'; \
+      echo 'BUNDLE_GEMFILE=/app/Gemfile'; \
+    } >> /etc/opentelemetry/injector/default_env.conf
+
+COPY packaging/tests/shared/ruby/Gemfile /app/Gemfile
+COPY packaging/tests/shared/ruby/server.rb /app/server.rb
+EXPOSE 3000
+CMD ["ruby", "/app/server.rb"]

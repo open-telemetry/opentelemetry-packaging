@@ -23,6 +23,8 @@ Validate that built packages declare the correct metadata fields without startin
 | Java provides `opentelemetry-java-autoinstrumentation1` | Virtual package for vendor replacement |
 | Node.js provides `opentelemetry-nodejs-autoinstrumentation1` | Virtual package for vendor replacement |
 | .NET provides `opentelemetry-dotnet-autoinstrumentation1` | Virtual package for vendor replacement |
+| Python provides `opentelemetry-python-autoinstrumentation1` | Virtual package for vendor replacement |
+| Ruby provides `opentelemetry-ruby-autoinstrumentation1` | Virtual package for vendor replacement |
 | Metapackage depends on `opentelemetry-injector1` | Not a concrete package name |
 | Metapackage depends on `opentelemetry-java-autoinstrumentation1` | Not a concrete package name |
 | Metapackage depends on `opentelemetry-nodejs-autoinstrumentation1` | Not a concrete package name |
@@ -49,6 +51,8 @@ Validate that packages contain the expected files at the expected paths with cor
 | Node.js contains `conf.d/nodejs.conf` with correct path | Drop-in references correct entry point |
 | .NET contains native profiler for glibc and musl | Both libc flavors |
 | .NET contains `conf.d/dotnet.conf` with correct path prefix | Drop-in references correct prefix |
+| Python contains its glibc bundle and `conf.d/python.conf` | Bundle and injector path prefix |
+| Ruby contains its glibc gem bundle, fixed entry point, and `conf.d/ruby.conf` | Bundle and injector path prefix |
 | Man pages are present and gzipped | Documentation |
 
 **Implementation:** List package contents natively in Go with `pault.ag/go/debian` and `cavaliergopher/rpm` (no `dpkg-deb` or `rpm` CLI tools).
@@ -148,8 +152,8 @@ Implemented in `packaging/tests/vendor/vendor_test.go`; the mock package is buil
 
 ### 7. E2E telemetry (existing, expanded)
 
-Already implemented for Java, Node.js, .NET, and Python across DEB and RPM.
-No changes needed.
+Implemented for Java, Node.js, .NET, Python, and Ruby across DEB and RPM.
+The Ruby scenario starts an application with no OpenTelemetry dependency in its Gemfile and asserts that injector-activated instrumentation exports an OTLP client span.
 
 ### 8. Declarative configuration E2E
 
@@ -187,10 +191,12 @@ make integration-test-deb-java            # E2E telemetry
 make integration-test-deb-nodejs          # E2E telemetry
 make integration-test-deb-dotnet          # E2E telemetry
 make integration-test-deb-python          # E2E telemetry
+make integration-test-deb-ruby            # E2E telemetry
 make integration-test-rpm-java            # E2E telemetry
 make integration-test-rpm-nodejs          # E2E telemetry
 make integration-test-rpm-dotnet          # E2E telemetry
 make integration-test-rpm-python          # E2E telemetry
+make integration-test-rpm-ruby            # E2E telemetry
 make integration-test-deb-lifecycle       # DEB install/remove/upgrade/config
 make integration-test-rpm-lifecycle       # RPM install/remove/upgrade/config
 make integration-test-deb-vendor          # DEB vendor replacement

@@ -28,6 +28,7 @@ const (
 	dotnetConfigDir    = configDir + "/dotnet"
 	pythonInstallDir   = installDir + "/python"
 	pythonConfigDir    = configDir + "/python"
+	rubyInstallDir     = installDir + "/ruby"
 )
 
 // Injector is the opentelemetry-injector package component.
@@ -95,6 +96,18 @@ var Python = Component{
 	ContentsFunc: pythonContents,
 }
 
+// Ruby is the opentelemetry-ruby-autoinstrumentation package component.
+var Ruby = Component{
+	Name:        "ruby",
+	PackageName: "opentelemetry-ruby-autoinstrumentation",
+	Description: rubyDescription,
+	Relations: Relations{
+		Provides: []string{"opentelemetry-ruby-autoinstrumentation1"},
+		Suggests: []string{"opentelemetry-injector1"},
+	},
+	ContentsFunc: rubyContents,
+}
+
 // Meta is the opentelemetry metapackage component.
 var Meta = Component{
 	Name:        "meta",
@@ -108,6 +121,7 @@ var Meta = Component{
 			"opentelemetry-nodejs-autoinstrumentation1",
 			"opentelemetry-dotnet-autoinstrumentation1",
 			"opentelemetry-python-autoinstrumentation1",
+			"opentelemetry-ruby-autoinstrumentation1",
 		},
 	},
 	ContentsFunc: metaContents,
@@ -119,6 +133,7 @@ const (
 	nodejsDescription   = "OpenTelemetry Node.js Auto-Instrumentation"
 	dotnetDescription   = "OpenTelemetry .NET Automatic Instrumentation"
 	pythonDescription   = "OpenTelemetry Python Auto-Instrumentation"
+	rubyDescription     = "OpenTelemetry Ruby Auto-Instrumentation"
 	metaDescription     = "OpenTelemetry Auto-Instrumentation Suite (metapackage)"
 )
 
@@ -301,6 +316,36 @@ func pythonContents(cfg Config) (files.Contents, func(), error) {
 		// NOTICE at the repository root carries the attribution required by
 		// Apache-2.0 and ships alongside the package documentation.
 		regularFile(cfg.noticeFile(), "/usr/share/doc/opentelemetry-python-autoinstrumentation/NOTICE", 0o644),
+	}, cleanup, nil
+}
+
+func rubyContents(cfg Config) (files.Contents, func(), error) {
+	staging, err := os.MkdirTemp("", "otel-ruby-*")
+	if err != nil {
+		return nil, nil, err
+	}
+	cleanup := func() { os.RemoveAll(staging) }
+
+	rubyDir := filepath.Join(staging, "ruby")
+	if err := os.MkdirAll(rubyDir, 0o755); err != nil {
+		return nil, cleanup, err
+	}
+	if err := downloadRubyAgent(cfg, rubyDir); err != nil {
+		return nil, cleanup, fmt.Errorf("downloading Ruby agent: %w", err)
+	}
+
+	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "ruby"))
+	if err != nil {
+		return nil, cleanup, err
+	}
+
+	commonDir := filepath.Join(cfg.PackagingDir, "common")
+	return files.Contents{
+		tree(rubyDir, rubyInstallDir+"/glibc"),
+		regularFile(filepath.Join(commonDir, "ruby", "injector.conf"), injectorConfigDir+"/conf.d/ruby.conf", 0o644),
+		regularFile(manPath, "/usr/share/man/man8/opentelemetry-ruby.8.gz", 0o644),
+		regularFile(filepath.Join(commonDir, "ruby", "README.md"), "/usr/share/doc/opentelemetry-ruby-autoinstrumentation/README.md", 0o644),
+		regularFile(filepath.Join(commonDir, "ruby", "Gemfile.lock"), "/usr/share/doc/opentelemetry-ruby-autoinstrumentation/Gemfile.lock", 0o644),
 	}, cleanup, nil
 }
 

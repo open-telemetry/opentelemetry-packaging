@@ -11,7 +11,7 @@ Packages are created using [nfpm](https://github.com/goreleaser/nfpm) as a Go li
 make packages                  # Build all DEB + RPM packages
 make deb-packages              # Build DEB packages only
 make rpm-packages              # Build RPM packages only
-make deb-package-<component>   # Build a single DEB (injector, java, nodejs, dotnet, meta)
+make deb-package-<component>   # Build a single DEB (injector, java, nodejs, dotnet, python, ruby, meta)
 make rpm-package-<component>   # Build a single RPM
 
 make srpm                      # Build the source RPM (COPR path; needs rpmbuild)
@@ -20,7 +20,7 @@ make srpm-sources              # Generated spec + vendored source tarball only
 make rpm-rebuild-container     # Rebuild the SRPM into binary RPMs the way COPR does
                                #   REBUILD_IMAGE=almalinux:9 to exercise the EL rpm
 
-make go-unit-tests             # Go command unit tests (otel-config-check)
+make go-unit-tests             # Go command and packaging/builder unit tests
 make python-unit-tests         # sitecustomize.py unit tests (throwaway venv, no containers)
 make pyproto-unit-tests        # Vendored pyproto exporter test suites (throwaway venvs, no containers)
 make integration-test-metadata # Fast metadata tests (no containers)
@@ -43,10 +43,10 @@ make clean                     # Remove build/
 - `packaging/common/` — Config files, POSIX lifecycle scripts, man page templates (referenced by builder)
 - `packaging/repo/` — APT/YUM repo generation scripts (run in containers)
 - `packaging/tests/metadata/` — Host-side tests using native Go parsers (no CLI tools)
-- `packaging/tests/{java,nodejs,dotnet,python}/` — Testcontainers-based E2E telemetry tests; `python/` also hosts the sitecustomize.py interpreter compatibility tests (unit tests live next to the script)
+- `packaging/tests/{java,nodejs,dotnet,python,ruby}/` — Testcontainers-based E2E telemetry tests; `python/` also hosts the sitecustomize.py interpreter compatibility tests (unit tests live next to the script)
 - `packaging/tests/lifecycle/` — Package lifecycle tests (preload scripts, config handling, install/remove)
 - `packaging/tests/vendor/` — Vendor replacement tests; `mkvendor/` builds the mock acme package
-- `packaging/common/<component>/release.txt` — Renovate-managed upstream version pins (Python pins live in `packaging/common/python/requirements.txt`)
+- `packaging/common/<component>/release.txt` — Renovate-managed upstream version pins; Python uses `requirements.txt`, and Ruby uses `Gemfile`/`Gemfile.lock`
 
 ## Coding conventions
 

@@ -3,7 +3,7 @@
 
 // Package builder creates OpenTelemetry DEB and RPM packages using nfpm.
 //
-// Each component (injector, java, nodejs, dotnet, python, meta) is described as
+// Each component (injector, java, nodejs, dotnet, python, ruby, meta) is described as
 // a Component that carries the package metadata declaratively and knows how to
 // stage its payload. The Build function takes a Config, a format string ("deb"
 // or "rpm"), and a Component, and writes the package file to the output
@@ -209,6 +209,7 @@ var AllComponents = []Component{
 	Nodejs,
 	Dotnet,
 	Python,
+	Ruby,
 	Meta,
 }
 
