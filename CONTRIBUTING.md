@@ -19,7 +19,7 @@ cmd/otel-config-check/       Declarative-config validator shipped inside the Pyt
 packaging/
   builder/                   Go library that drives nfpm to create packages
     builder.go               Build orchestration, common metadata
-    components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
+    components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta, jmx-scraper)
     download.go              Upstream artifact download helpers
     spec.go                  RPM spec generation for the COPR build (projection of components.go)
     stage.go                 Payload staging into an rpmbuild buildroot, with generated %files lists
@@ -32,6 +32,7 @@ packaging/
     dotnet/                  "
     python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py (plus its unit tests)
       vendor/                The pyproto exporter chain, developed here with its test suites (unpublished pure-Python packages; see its README)
+    jmx-scraper/             Standalone JMX scraper config, systemd unit, man page, README, and release pin
   repo/                      APT and YUM repository generation scripts
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
@@ -56,6 +57,7 @@ The `cmd/build-packages` program:
    - Java agent JAR from [opentelemetry-java-instrumentation](https://github.com/open-telemetry/opentelemetry-java-instrumentation) GitHub Releases
    - Node.js agent from npm (`@opentelemetry/auto-instrumentations-node`)
    - .NET agent from [opentelemetry-dotnet-instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation) GitHub Releases (glibc only; musl-based distributions use apk, which this project does not build)
+   - JMX scraper JAR from [opentelemetry-java-contrib](https://github.com/open-telemetry/opentelemetry-java-contrib) GitHub Releases
    - Python packages via `pip`, as defined by `packaging/common/python/requirements.txt`
 
    The Python package bundles compiled C extensions, so its wheels are fetched
@@ -184,6 +186,8 @@ make deb-package-injector
 ```sh
 make rpm-package-java
 ```
+
+The standalone JMX scraper package can be built with `make deb-package-jmx-scraper` or `make rpm-package-jmx-scraper`.
 
 Specify version and architecture:
 

@@ -1,0 +1,16 @@
+[Unit]
+Description=OpenTelemetry JMX Metrics Scraper
+Documentation=man:opentelemetry-jmx-scraper(8)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=JMX_SCRAPER_CONFIG=/etc/opentelemetry/jmx-scraper/config.properties
+EnvironmentFile=-/etc/opentelemetry/jmx-scraper/jmx-scraper.env
+ExecStart=/usr/bin/env java -jar /usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar -config ${JMX_SCRAPER_CONFIG}
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
