@@ -1,0 +1,41 @@
+[Unit]
+Description=OpenTelemetry JMX Metrics Scraper
+Documentation=man:opentelemetry-jmx-scraper(8)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=JMX_SCRAPER_CONFIG=/etc/opentelemetry/jmx-scraper/config.properties
+EnvironmentFile=-/etc/opentelemetry/jmx-scraper/jmx-scraper.env
+ExecStart=/usr/bin/env java -jar /usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar -config ${JMX_SCRAPER_CONFIG}
+Restart=on-failure
+RestartSec=5s
+
+# The scraper reads a configuration file and opens outbound JMX and OTLP
+# connections, so it needs no privileges of its own. DynamicUser allocates a
+# transient UID per start, which avoids creating a system user from a package
+# lifecycle script.
+#
+# The transient UID is why config.properties must stay world-readable:
+# restricting it to root makes the service unable to read its own
+# configuration. Secrets therefore belong in the environment file above, which
+# systemd reads as root before dropping privileges. See
+# opentelemetry-jmx-scraper(8).
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+# Deliberately not set: the JVM needs writable-executable memory to JIT, so
+# MemoryDenyWriteExecute=yes would stop the scraper from starting.
+
+[Install]
+WantedBy=multi-user.target
