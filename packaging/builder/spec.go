@@ -144,7 +144,7 @@ func WriteSpec(cfg Config, w io.Writer) error {
 			Noarch:      comp.Noarch,
 			Provides:    comp.Relations.Provides,
 			Requires:    comp.Relations.Depends,
-			Suggests:    comp.Relations.Suggests,
+			Suggests:    comp.Relations.suggests("rpm"),
 			Conflicts:   comp.Relations.Conflicts,
 			Replaces:    comp.Relations.Replaces,
 			Guarded:     guarded,
