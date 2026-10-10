@@ -1,0 +1,24 @@
+.TH OPENTELEMETRY-JMX-SCRAPER 8 "@DATE@" "OpenTelemetry @VERSION@" "System Administration"
+.SH NAME
+opentelemetry-jmx-scraper \- collect JVM metrics over JMX and export them via OTLP
+.SH DESCRIPTION
+The OpenTelemetry JMX scraper connects to a configured JMX endpoint and exports metrics through OTLP.
+It runs as the systemd service opentelemetry-jmx-scraper.service.
+.SH CONFIGURATION
+Set otel.jmx.service.url and otel.jmx.target.system in /etc/opentelemetry/jmx-scraper/config.properties before starting the service.
+The service reads the optional environment overrides from /etc/opentelemetry/jmx-scraper/jmx-scraper.env.
+.SH FILES
+.TP
+.I /etc/opentelemetry/jmx-scraper/config.properties
+JMX scraper and OTLP exporter configuration.
+.TP
+.I /etc/opentelemetry/jmx-scraper/jmx-scraper.env
+Environment overrides for the systemd service.
+.TP
+.I /usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar
+The scraper application.
+.TP
+.I /usr/lib/systemd/system/opentelemetry-jmx-scraper.service
+The systemd service unit.
+.SH SEE ALSO
+systemd(1), systemd.unit(5)
