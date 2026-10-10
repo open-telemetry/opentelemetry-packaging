@@ -95,6 +95,10 @@ type Relations struct {
 	Depends    []string
 	Recommends []string
 	Suggests   []string
+	// DebSuggests and RPMSuggests override Suggests when a dependency has
+	// different names in each package ecosystem.
+	DebSuggests []string
+	RPMSuggests []string
 	// Conflicts and Replaces let a package displace another one. A vendor
 	// replacement declares the virtual name in Provides and the concrete
 	// upstream name in both of these, which is what makes the package manager
@@ -106,6 +110,20 @@ type Relations struct {
 	// --setopt=obsoletes=0.
 	Conflicts []string
 	Replaces  []string
+}
+
+func (r Relations) suggests(format string) []string {
+	switch format {
+	case "deb":
+		if r.DebSuggests != nil {
+			return r.DebSuggests
+		}
+	case "rpm":
+		if r.RPMSuggests != nil {
+			return r.RPMSuggests
+		}
+	}
+	return r.Suggests
 }
 
 // Component describes a single package to build.
@@ -172,7 +190,7 @@ func (c Component) Info(cfg Config, format string) (*nfpm.Info, func(), error) {
 			Provides:   c.Relations.Provides,
 			Depends:    c.Relations.Depends,
 			Recommends: c.Relations.Recommends,
-			Suggests:   c.Relations.Suggests,
+			Suggests:   c.Relations.suggests(format),
 			Conflicts:  c.Relations.Conflicts,
 			Replaces:   c.Relations.Replaces,
 			RPM: nfpm.RPM{
@@ -210,6 +228,7 @@ var AllComponents = []Component{
 	Dotnet,
 	Python,
 	Meta,
+	JMXScraper,
 }
 
 // Build creates a single package file and returns its path.
@@ -264,20 +283,31 @@ const (
 // outside this package. The unexported aliases keep the in-repo components
 // reading as before.
 var (
-	configFile  = ConfigFile
-	regularFile = RegularFile
-	directory   = Directory
-	tree        = Tree
+	configFile     = ConfigFile
+	configFileMode = ConfigFileMode
+	regularFile    = RegularFile
+	directory      = Directory
+	tree           = Tree
 )
 
-// ConfigFile creates a Content entry for a config file (noreplace for RPM).
+// ConfigFile creates a Content entry for a world-readable config file
+// (noreplace for RPM). Use ConfigFileMode for a file that carries secrets.
 func ConfigFile(src, dst string) *files.Content {
+	return ConfigFileMode(src, dst, 0o644)
+}
+
+// ConfigFileMode is ConfigFile with an explicit mode, for configuration a
+// package must keep from being world-readable — credentials, for instance.
+//
+// Restricting a config file constrains the unit that reads it: a service that
+// has dropped privileges cannot read a root-owned 0640 file.
+func ConfigFileMode(src, dst string, mode os.FileMode) *files.Content {
 	return &files.Content{
 		Source:      src,
 		Destination: dst,
 		Type:        "config|noreplace",
 		FileInfo: &files.ContentFileInfo{
-			Mode: 0o644,
+			Mode: mode,
 		},
 	}
 }

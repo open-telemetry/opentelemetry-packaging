@@ -403,6 +403,29 @@ The package installs the unit without starting or enabling it, and `config.prope
 The user must set the endpoint, port, and credentials if required, then run `systemctl enable --now opentelemetry-jmx-scraper.service`.
 Until then, the host does not claim to be scraping a JVM just because the package is installed.
 
+#### Service privileges
+
+The unit sets `DynamicUser=yes`, so systemd allocates the service a transient unprivileged user at every start and the scraper never runs as root.
+The scraper needs no privileges of its own: it reads its configuration and opens outbound JMX and OTLP connections.
+A dedicated system user was not an option, because creating one needs `useradd` in a lifecycle script and those scripts are restricted to POSIX shell builtins.
+The unit also sets the usual sandboxing directives (`ProtectSystem=strict`, `ProtectHome=yes`, `RestrictAddressFamilies=`, and so on).
+`MemoryDenyWriteExecute=yes` is deliberately absent: the JVM needs writable-executable memory to JIT, so setting it stops the scraper from starting.
+
+`DynamicUser` constrains how the two configuration files may be permissioned, because a transient UID owns nothing on disk:
+
+- `config.properties` is installed `0644`.
+  The service reads it as its transient user, so restricting it to `0640` stops the service from reading its own configuration.
+- `jmx-scraper.env` is installed `0640`.
+  systemd reads an `EnvironmentFile=` as PID 1, that is as root, before it drops the service to its transient user, so the service's own user cannot read this file at all.
+
+Secrets therefore live in `jmx-scraper.env`, not in `config.properties`.
+That works because the scraper is configured through the OpenTelemetry Java SDK's autoconfiguration, which maps every property to an environment variable: `otel.jmx.password` is `OTEL_JMX_PASSWORD`, and OTLP headers are `OTEL_EXPORTER_OTLP_HEADERS`.
+Both files document the split inline, so an operator who edits either one is told where credentials belong.
+
+Two systemd-native alternatives were tested and rejected.
+`ConfigurationDirectory=` does not help, because systemd does not chown an already-populated `/etc` directory to the transient user, so the `0640` file stays unreadable.
+`LoadCredential=` does solve the ownership problem, but it cannot be parameterised by an environment variable, so it would break the `JMX_SCRAPER_CONFIG` relocation described above.
+
 Automatic discovery of local JVMs started with `-Dcom.sun.management.jmxremote` cannot identify remote targets or determine their credentials.
 An interactive installation prompt also cannot configure unattended installs, and would introduce a second configuration path alongside `config.properties`.
 These options can be considered separately; this package requires an explicit target and service activation.

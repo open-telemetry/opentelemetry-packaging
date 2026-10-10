@@ -246,6 +246,28 @@ func downloadJavaAgent(cfg Config, dest string) error {
 	return verifyFileSHA256(dest, want)
 }
 
+// downloadJMXScraper fetches the standalone JMX scraper JAR from the
+// opentelemetry-java-contrib release and verifies GitHub's published digest.
+func downloadJMXScraper(cfg Config, dest string) error {
+	tag, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", "jmx-scraper", "release.txt"))
+	if err != nil {
+		return err
+	}
+	const owner, repo = "open-telemetry", "opentelemetry-java-contrib"
+	const assetName = "opentelemetry-jmx-scraper.jar"
+
+	want, err := fetchGitHubAssetDigest(owner, repo, tag, assetName)
+	if err != nil {
+		return fmt.Errorf("fetching asset digest: %w", err)
+	}
+
+	url := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", owner, repo, tag, assetName)
+	if err := downloadFile(url, dest); err != nil {
+		return err
+	}
+	return verifyFileSHA256(dest, want)
+}
+
 // npmRegistryBaseURL is the base of the npm registry's package metadata API,
 // overridable in tests.
 var npmRegistryBaseURL = "https://registry.npmjs.org"
