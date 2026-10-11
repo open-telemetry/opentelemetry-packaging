@@ -6,6 +6,19 @@ opentelemetry-jmx-scraper \- collect JVM metrics over JMX and export them via OT
 .SH DESCRIPTION
 The OpenTelemetry JMX scraper connects to a configured JMX endpoint and exports metrics through OTLP.
 It runs as the systemd service opentelemetry-jmx-scraper.service.
+.PP
+The scraper needs a Java runtime, which this package does not install.
+The runtime is a suggested dependency rather than a required one, so package managers do not pull it in automatically.
+Install
+.B default-jre
+on Debian and Ubuntu, or
+.B java-headless
+on RPM-based distributions.
+.PP
+The service unit resolves
+.B java
+through the PATH of the service, so whichever JVM is first on that PATH is used.
+Without one, the service fails to start with "env: java: No such file or directory".
 .SH CONFIGURATION
 Set otel.jmx.service.url and otel.jmx.target.system in /etc/opentelemetry/jmx-scraper/config.properties before starting the service.
 The service reads the optional environment overrides from /etc/opentelemetry/jmx-scraper/jmx-scraper.env.
@@ -23,6 +36,7 @@ The scraper application.
 .I /usr/lib/systemd/system/opentelemetry-jmx-scraper.service
 The systemd service unit.
 .SH SEE ALSO
+.BR java (1),
 .BR systemctl (1),
 .BR systemd.unit (5),
 .BR journalctl (1)
