@@ -73,6 +73,21 @@ That list is what the packaged scraper accepts; see
 .UE
 for what each target system collects.
 .RE
+.TP
+.B otel.jmx.remote.registry.ssl
+Set this when the target JVM runs with
+com.sun.management.jmxremote.registry.ssl=true.
+.PP
+Credentials are configured through the environment rather than this file; see
+ENVIRONMENT and SECURITY.
+.PP
+The file also accepts the OpenTelemetry Java SDK's autoconfiguration
+properties, so otel.exporter.otlp.protocol, otel.exporter.otlp.headers,
+otel.service.name, and otel.metric.export.interval all work here.
+See
+.UR https://opentelemetry.io/docs/languages/java/configuration/
+.UE
+for that set.
 .SH EXAMPLES
 Check that the configured endpoint is reachable before enabling the service:
 .PP
