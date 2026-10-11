@@ -238,6 +238,18 @@ make rpm-package-java
 
 The standalone JMX scraper package can be built with `make deb-package-jmx-scraper` or `make rpm-package-jmx-scraper`.
 
+### Updating the JMX scraper pin
+
+The target systems the scraper accepts come from the metric definitions inside its JAR, and the package enumerates them in the man page and the README.
+`config.properties` deliberately carries only a pointer to those two: it ships as `config|noreplace` and every operator edits it, so rewriting it on a version bump would raise a dpkg conffile prompt and strand the list at whatever the operator first installed.
+After changing `packaging/common/jmx-scraper/release.txt`, regenerate those lists:
+
+```sh
+make update-jmx-target-systems
+```
+
+CI runs `make check-jmx-target-systems` and fails when the committed lists no longer match the pinned JAR, so a Renovate bump that changes the set cannot merge with stale documentation.
+
 Specify version and architecture:
 
 ```sh
