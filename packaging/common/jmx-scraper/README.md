@@ -30,6 +30,17 @@ The file also supports the scraper's other Java properties, including JMX authen
 
 The optional environment file at `/etc/opentelemetry/jmx-scraper/jmx-scraper.env` can override `JMX_SCRAPER_CONFIG` or set `PATH` to select a Java runtime.
 
+## Verifying the configuration
+
+Check that the configured endpoint is reachable before enabling the service:
+
+```sh
+java -jar /usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar -test -config /etc/opentelemetry/jmx-scraper/config.properties
+```
+
+The command connects, prints `JMX connection test OK` or `JMX connection test ERROR`, and exits without scraping or exporting anything.
+Run it after every change to `config.properties`.
+
 ## Service
 
 Enable and start the service after configuring a target.

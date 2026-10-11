@@ -22,6 +22,18 @@ Without one, the service fails to start with "env: java: No such file or directo
 .SH CONFIGURATION
 Set otel.jmx.service.url and otel.jmx.target.system in /etc/opentelemetry/jmx-scraper/config.properties before starting the service.
 The service reads the optional environment overrides from /etc/opentelemetry/jmx-scraper/jmx-scraper.env.
+.SH EXAMPLES
+Check that the configured endpoint is reachable before enabling the service:
+.PP
+.RS
+.nf
+java -jar /usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar \e
+    -test -config /etc/opentelemetry/jmx-scraper/config.properties
+.fi
+.RE
+.PP
+The command connects, prints "JMX connection test OK" or "JMX connection test ERROR", and exits without scraping or exporting anything.
+Run it after every change to config.properties.
 .SH FILES
 .TP
 .I /etc/opentelemetry/jmx-scraper/config.properties
