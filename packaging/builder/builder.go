@@ -95,10 +95,10 @@ type Relations struct {
 	Depends    []string
 	Recommends []string
 	Suggests   []string
-	// DebSuggests and RPMSuggests override Suggests when a dependency has
-	// different names in each package ecosystem.
-	DebSuggests []string
-	RPMSuggests []string
+	// Deb and Rpm override the format-agnostic weak relationships above when a
+	// dependency is spelled differently in each package ecosystem.
+	Deb DebOverride
+	Rpm RpmOverride
 	// Conflicts and Replaces let a package displace another one. A vendor
 	// replacement declares the virtual name in Provides and the concrete
 	// upstream name in both of these, which is what makes the package manager
@@ -112,15 +112,43 @@ type Relations struct {
 	Replaces  []string
 }
 
+// DebOverride carries the DEB spelling of the relationships that differ
+// between the two ecosystems. A nil field means "no override": the
+// format-agnostic value from Relations is used instead.
+type DebOverride struct {
+	Recommends []string
+	Suggests   []string
+}
+
+// RpmOverride is the RPM counterpart of DebOverride.
+type RpmOverride struct {
+	Recommends []string
+	Suggests   []string
+}
+
+func (r Relations) recommends(format string) []string {
+	switch format {
+	case "deb":
+		if r.Deb.Recommends != nil {
+			return r.Deb.Recommends
+		}
+	case "rpm":
+		if r.Rpm.Recommends != nil {
+			return r.Rpm.Recommends
+		}
+	}
+	return r.Recommends
+}
+
 func (r Relations) suggests(format string) []string {
 	switch format {
 	case "deb":
-		if r.DebSuggests != nil {
-			return r.DebSuggests
+		if r.Deb.Suggests != nil {
+			return r.Deb.Suggests
 		}
 	case "rpm":
-		if r.RPMSuggests != nil {
-			return r.RPMSuggests
+		if r.Rpm.Suggests != nil {
+			return r.Rpm.Suggests
 		}
 	}
 	return r.Suggests
@@ -189,7 +217,7 @@ func (c Component) Info(cfg Config, format string) (*nfpm.Info, func(), error) {
 			Contents:   contents,
 			Provides:   c.Relations.Provides,
 			Depends:    c.Relations.Depends,
-			Recommends: c.Relations.Recommends,
+			Recommends: c.Relations.recommends(format),
 			Suggests:   c.Relations.suggests(format),
 			Conflicts:  c.Relations.Conflicts,
 			Replaces:   c.Relations.Replaces,
