@@ -96,6 +96,14 @@ which overrides the defaults the unit sets.
 Path to the scraper configuration, defaulting to
 /etc/opentelemetry/jmx-scraper/config.properties.
 .TP
+.B JDK_JAVA_OPTIONS
+Options the Java 9 and later launcher prepends to the command line. The unit
+sets it to
+.B \-\-add\-exports=java.security.sasl/com.sun.security.sasl=ALL\-UNNAMED
+\(em without it the scraper cannot install the SASL security provider on Java 16
+and later, and every SASL remote profile fails to authenticate. Override this
+only if that export is kept.
+.TP
 .B PATH
 Where the unit resolves
 .B java

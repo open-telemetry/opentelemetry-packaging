@@ -57,6 +57,16 @@ When the target JVM requires authentication, set `OTEL_JMX_USERNAME` and `OTEL_J
 See [Security](#security) for why credentials belong there.
 
 For SASL profiles, `OTEL_JMX_REMOTE_PROFILE` selects the mechanism and `OTEL_JMX_REALM` supplies the realm that `SASL/DIGEST-MD5` and `TLS SASL/DIGEST-MD5` require.
+The scraper installs the SASL provider reflectively, which the Java module system restricts, so the unit sets `JDK_JAVA_OPTIONS=--add-exports=java.security.sasl/com.sun.security.sasl=ALL-UNNAMED` to permit it.
+Java 9 to 15 allow the access but log a four-line illegal-access warning, and Java 16 and later refuse it: the scraper then logs `SASL unsupported in current environment` and every SASL profile fails to authenticate.
+Override `JDK_JAVA_OPTIONS` in `jmx-scraper.env` only if you keep that export.
+
+> [!NOTE]
+> The export is carried in `JDK_JAVA_OPTIONS` rather than on the unit's `ExecStart` line because the scraper JAR targets Java 8 bytecode and this package suggests `java8-runtime` as an alternative runtime.
+> On a Java 8 JVM `--add-exports` is an unrecognized option, so putting it on the command line would stop the service from starting at all on a runtime we explicitly support.
+> Only the Java 9 and later launcher reads `JDK_JAVA_OPTIONS`, which is exactly the range where the export matters, so Java 8 ignores it harmlessly.
+> The option is spelled `--add-exports=...` rather than with a space, because systemd splits an `Environment=` value on whitespace into separate assignments and the JVM would then be handed a bare `--add-exports`.
+
 `otel.jmx.remote.registry.ssl` carries no secret, so it can stay in `config.properties`; set it when the target JVM runs with `com.sun.management.jmxremote.registry.ssl=true`.
 
 ### Other properties
