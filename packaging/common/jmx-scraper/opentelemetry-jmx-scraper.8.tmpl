@@ -1,4 +1,6 @@
-.TH OPENTELEMETRY-JMX-SCRAPER 8 "@DATE@" "OpenTelemetry @VERSION@" "System Administration"
+.\" Copyright The OpenTelemetry Authors
+.\" SPDX-License-Identifier: Apache-2.0
+.TH OPENTELEMETRY-JMX-SCRAPER 8 "@DATE@" "opentelemetry-jmx-scraper @VERSION@" "System Administration"
 .SH NAME
 opentelemetry-jmx-scraper \- collect JVM metrics over JMX and export them via OTLP
 .SH DESCRIPTION
@@ -21,4 +23,8 @@ The scraper application.
 .I /usr/lib/systemd/system/opentelemetry-jmx-scraper.service
 The systemd service unit.
 .SH SEE ALSO
-systemd(1), systemd.unit(5)
+.BR systemctl (1),
+.BR systemd.unit (5),
+.BR journalctl (1)
+.SH AUTHORS
+The OpenTelemetry Authors
