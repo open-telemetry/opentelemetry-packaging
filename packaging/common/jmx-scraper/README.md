@@ -67,7 +67,18 @@ See the [upstream jmx-scraper documentation](https://github.com/open-telemetry/o
 The file also accepts the OpenTelemetry Java SDK's autoconfiguration properties, so `otel.exporter.otlp.protocol`, `otel.exporter.otlp.headers`, `otel.service.name`, `otel.resource.attributes`, and `otel.metric.export.interval` all work here.
 See the [SDK autoconfiguration reference](https://opentelemetry.io/docs/languages/java/configuration/) for that set.
 
-The optional environment file at `/etc/opentelemetry/jmx-scraper/jmx-scraper.env` can override `JMX_SCRAPER_CONFIG` or set `PATH` to select a Java runtime.
+### Environment overrides
+
+The optional environment file at `/etc/opentelemetry/jmx-scraper/jmx-scraper.env` overrides the defaults the unit sets.
+Set `JMX_SCRAPER_CONFIG` to keep the configuration somewhere other than the default location.
+
+The unit resolves `java` through `PATH`, so set `PATH` there to choose a specific JVM when the host has several:
+
+```sh
+PATH=/opt/myjdk/bin:/usr/bin:/bin
+```
+
+Restart the service after editing the file.
 
 ## Verifying the configuration
 

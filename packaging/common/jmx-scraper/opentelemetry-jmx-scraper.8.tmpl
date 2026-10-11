@@ -88,6 +88,19 @@ See
 .UR https://opentelemetry.io/docs/languages/java/configuration/
 .UE
 for that set.
+.SH ENVIRONMENT
+The service reads these from the optional environment file listed under FILES,
+which overrides the defaults the unit sets.
+.TP
+.B JMX_SCRAPER_CONFIG
+Path to the scraper configuration, defaulting to
+/etc/opentelemetry/jmx-scraper/config.properties.
+.TP
+.B PATH
+Where the unit resolves
+.B java
+from. Set it to put a specific JVM first when the host has several, or when the
+JVM to use is not on the system PATH.
 .SH EXAMPLES
 Check that the configured endpoint is reachable before enabling the service:
 .PP
