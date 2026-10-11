@@ -22,6 +22,57 @@ Without one, the service fails to start with "env: java: No such file or directo
 .SH CONFIGURATION
 Set otel.jmx.service.url and otel.jmx.target.system in /etc/opentelemetry/jmx-scraper/config.properties before starting the service.
 The service reads the optional environment overrides from /etc/opentelemetry/jmx-scraper/jmx-scraper.env.
+.TP
+.B otel.jmx.service.url
+The JMX endpoint to connect to, for example service:jmx:rmi:///jndi/rmi://localhost:9010/jmxrmi.
+.TP
+.B otel.jmx.target.system
+The metric definitions to apply, as one or more comma-separated values from:
+.RS
+.\" PD 0 sets the inter-paragraph distance to zero, which keeps the bullets
+.\" below on consecutive lines instead of double-spaced. The bare .PD after
+.\" the list restores the default.
+.PD 0
+.\" BEGIN GENERATED target systems (make update-jmx-target-systems)
+.IP \(bu 2
+activemq
+.IP \(bu 2
+camel
+.IP \(bu 2
+cassandra
+.IP \(bu 2
+experimental-cassandra
+.IP \(bu 2
+experimental-kafka-connect
+.IP \(bu 2
+hadoop
+.IP \(bu 2
+hbase
+.IP \(bu 2
+jetty
+.IP \(bu 2
+jvm
+.IP \(bu 2
+kafka
+.IP \(bu 2
+kafka-consumer
+.IP \(bu 2
+kafka-producer
+.IP \(bu 2
+solr
+.IP \(bu 2
+tomcat
+.IP \(bu 2
+wildfly
+.\" END GENERATED
+.PD
+.PP
+For example, "jvm,tomcat" collects the JVM metrics alongside the Tomcat ones.
+That list is what the packaged scraper accepts; see
+.UR https://github.com/open-telemetry/opentelemetry-java-contrib/tree/main/jmx-scraper
+.UE
+for what each target system collects.
+.RE
 .SH EXAMPLES
 Check that the configured endpoint is reachable before enabling the service:
 .PP
