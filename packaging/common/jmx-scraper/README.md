@@ -26,6 +26,31 @@ Without one, the service fails to start with `env: java: No such file or directo
 ## Configuration
 
 Edit `/etc/opentelemetry/jmx-scraper/config.properties` and set at least `otel.jmx.service.url` and `otel.jmx.target.system`.
+
+`otel.jmx.target.system` selects which metric definitions the scraper applies, as one or more comma-separated values from:
+
+<!-- BEGIN GENERATED target systems (make update-jmx-target-systems) -->
+- `activemq`
+- `camel`
+- `cassandra`
+- `experimental-cassandra`
+- `experimental-kafka-connect`
+- `hadoop`
+- `hbase`
+- `jetty`
+- `jvm`
+- `kafka`
+- `kafka-consumer`
+- `kafka-producer`
+- `solr`
+- `tomcat`
+- `wildfly`
+<!-- END GENERATED -->
+
+For example, `jvm,tomcat` collects the JVM metrics alongside the Tomcat ones.
+That list is what the packaged scraper accepts: a name is valid when the scraper JAR carries either `<name>.yaml` or `jmx/rules/<name>.yaml`.
+For what each target system collects, see the [upstream jmx-scraper documentation](https://github.com/open-telemetry/opentelemetry-java-contrib/tree/main/jmx-scraper).
+
 The file also supports the scraper's other Java properties, including JMX authentication and OTLP exporter settings.
 
 The optional environment file at `/etc/opentelemetry/jmx-scraper/jmx-scraper.env` can override `JMX_SCRAPER_CONFIG` or set `PATH` to select a Java runtime.
