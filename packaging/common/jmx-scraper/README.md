@@ -51,7 +51,21 @@ For example, `jvm,tomcat` collects the JVM metrics alongside the Tomcat ones.
 That list is what the packaged scraper accepts: a name is valid when the scraper JAR carries either `<name>.yaml` or `jmx/rules/<name>.yaml`.
 For what each target system collects, see the [upstream jmx-scraper documentation](https://github.com/open-telemetry/opentelemetry-java-contrib/tree/main/jmx-scraper).
 
-The file also supports the scraper's other Java properties, including JMX authentication and OTLP exporter settings.
+### JMX authentication
+
+When the target JVM requires authentication, set `OTEL_JMX_USERNAME` and `OTEL_JMX_PASSWORD` in `jmx-scraper.env` rather than `/etc/opentelemetry/jmx-scraper/config.properties`.
+See [Security](#security) for why credentials belong there.
+
+For SASL profiles, `OTEL_JMX_REMOTE_PROFILE` selects the mechanism and `OTEL_JMX_REALM` supplies the realm that `SASL/DIGEST-MD5` and `TLS SASL/DIGEST-MD5` require.
+`otel.jmx.remote.registry.ssl` carries no secret, so it can stay in `config.properties`; set it when the target JVM runs with `com.sun.management.jmxremote.registry.ssl=true`.
+
+### Other properties
+
+`otel.jmx.config` points at custom metric definitions, and `otel.jmx.target.source` chooses where the definitions for `otel.jmx.target.system` come from (`auto`, `instrumentation`, or `legacy`).
+See the [upstream jmx-scraper documentation](https://github.com/open-telemetry/opentelemetry-java-contrib/tree/main/jmx-scraper) for the full reference.
+
+The file also accepts the OpenTelemetry Java SDK's autoconfiguration properties, so `otel.exporter.otlp.protocol`, `otel.exporter.otlp.headers`, `otel.service.name`, `otel.resource.attributes`, and `otel.metric.export.interval` all work here.
+See the [SDK autoconfiguration reference](https://opentelemetry.io/docs/languages/java/configuration/) for that set.
 
 The optional environment file at `/etc/opentelemetry/jmx-scraper/jmx-scraper.env` can override `JMX_SCRAPER_CONFIG` or set `PATH` to select a Java runtime.
 
