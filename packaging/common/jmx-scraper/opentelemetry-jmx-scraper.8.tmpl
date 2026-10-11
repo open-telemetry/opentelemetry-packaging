@@ -47,6 +47,22 @@ The scraper application.
 .TP
 .I /usr/lib/systemd/system/opentelemetry-jmx-scraper.service
 The systemd service unit.
+.SH DIAGNOSTICS
+The scraper logs to the journal, which is the only place its errors are visible:
+.PP
+.RS
+.nf
+journalctl -u opentelemetry-jmx-scraper.service -f
+.fi
+.RE
+.PP
+A rejected configuration exits 1 and a missing Java runtime exits 127.
+The unit sets Restart=on-failure, so systemd restarts the service every five seconds instead of leaving it in the failed state.
+.BR systemctl (1)
+therefore reports a misconfigured service as activating rather than failed.
+.PP
+An unreachable JMX endpoint is not a startup failure.
+The scraper keeps running, logs "Failed to establish JMX connection", and retries until the endpoint answers.
 .SH SEE ALSO
 .BR java (1),
 .BR systemctl (1),
