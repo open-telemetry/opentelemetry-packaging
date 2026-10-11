@@ -149,7 +149,7 @@ func WriteSpec(cfg Config, w io.Writer) error {
 			Replaces:    comp.Relations.Replaces,
 			Guarded:     guarded,
 		}
-		for _, r := range comp.Relations.Recommends {
+		for _, r := range comp.Relations.recommends("rpm") {
 			pkg.Recommends = append(pkg.Recommends, specRelation{
 				Name:    r,
 				Guarded: strings.HasPrefix(r, Python.PackageName),
