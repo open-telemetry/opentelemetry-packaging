@@ -116,16 +116,33 @@ Run it after every change to config.properties.
 .SH FILES
 .TP
 .I /etc/opentelemetry/jmx-scraper/config.properties
-JMX scraper and OTLP exporter configuration.
+JMX scraper and OTLP exporter configuration. World-readable, and so not a
+place for secrets. See SECURITY.
 .TP
 .I /etc/opentelemetry/jmx-scraper/jmx-scraper.env
-Environment overrides for the systemd service.
+Environment overrides for the systemd service, and the place for credentials.
+Installed mode 0640.
 .TP
 .I /usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar
 The scraper application.
 .TP
 .I /usr/lib/systemd/system/opentelemetry-jmx-scraper.service
 The systemd service unit.
+.SH SECURITY
+The unit sets DynamicUser=yes, so systemd allocates the service a transient
+unprivileged user at every start. The scraper reads a configuration file and
+opens outbound connections, so it needs no privileges of its own.
+.PP
+That is why the two configuration files differ in permissions.
+config.properties is world-readable, because the service reads it as its
+transient user; restricting it stops the service from reading its own
+configuration. jmx-scraper.env is installed mode 0640, because systemd reads it
+as root before dropping privileges, so the service's own user cannot read it.
+.PP
+Put secrets in jmx-scraper.env, never in config.properties. Every scraper
+property has an environment variable equivalent \(em otel.jmx.password is
+OTEL_JMX_PASSWORD \(em so credentials and OTLP headers can live entirely in
+the restricted file.
 .SH DIAGNOSTICS
 The scraper logs to the journal, which is the only place its errors are visible:
 .PP
