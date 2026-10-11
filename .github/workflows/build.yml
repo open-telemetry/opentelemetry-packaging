@@ -43,6 +43,23 @@ jobs:
       - name: Run the vendored pyproto exporter test suites
         run: make pyproto-unit-tests
 
+      - name: Resolve the minimum supported Python from the builder
+        id: minimum_python
+        run: |
+          version="$(grep -o '"[0-9]\{1,\}\.[0-9]\{1,\}"' \
+            packaging/builder/supported_python_versions.json \
+            | tr -d '"' | sort -V | head -1)"
+          test -n "${version}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up the minimum supported Python for the version check
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ steps.minimum_python.outputs.version }}
+
+      - name: Check the supported Python versions are in sync with the bundled distributions
+        run: make check-minimum-python-version
+
   sitecustomize-compatibility-tests:
     runs-on: ubuntu-26.04
     steps:

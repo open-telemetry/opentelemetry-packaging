@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/sha512"
+	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -513,7 +514,21 @@ const pipTimeout = 10 * time.Minute
 
 // Update packaging/common/python/README.md and the interpreter cases in
 // packaging/tests/python/sitecustomize_test.go after adding a new interpreter here.
-var supportedPythonVersions = []string{"3.10", "3.11", "3.12", "3.13"}
+var (
+	//go:embed supported_python_versions.json
+	supportedPythonVersionsJSON string
+
+	supportedPythonVersions []string
+)
+
+func init() {
+	if err := json.Unmarshal([]byte(supportedPythonVersionsJSON), &supportedPythonVersions); err != nil {
+		panic(fmt.Sprintf("parsing supported_python_versions.json: %v", err))
+	}
+	if len(supportedPythonVersions) == 0 {
+		panic("supported_python_versions.json lists no Python version")
+	}
+}
 
 func pythonABITag(pythonVersion string) string {
 	return "cp" + strings.ReplaceAll(pythonVersion, ".", "")
