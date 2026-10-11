@@ -50,3 +50,18 @@ systemctl enable --now opentelemetry-jmx-scraper.service
 ```
 
 The package installs the unit without enabling or starting it.
+
+## Troubleshooting
+
+The scraper logs to the journal, which is the only place its errors are visible:
+
+```sh
+journalctl -u opentelemetry-jmx-scraper.service -f
+```
+
+A rejected configuration exits 1 and a missing Java runtime exits 127.
+The unit sets `Restart=on-failure`, so systemd restarts the service every five seconds instead of leaving it in the failed state.
+`systemctl status` therefore reports a misconfigured service as activating rather than failed.
+
+An unreachable JMX endpoint is not a startup failure.
+The scraper keeps running, logs `Failed to establish JMX connection`, and retries until the endpoint answers.
