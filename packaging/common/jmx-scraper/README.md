@@ -101,6 +101,19 @@ systemctl enable --now opentelemetry-jmx-scraper.service
 
 The package installs the unit without enabling or starting it.
 
+## Security
+
+The service runs under `DynamicUser=yes`, so systemd allocates it a transient unprivileged user at every start.
+The scraper reads a configuration file and opens outbound connections, so it needs no privileges of its own.
+
+This is why the two configuration files have different permissions:
+
+- `config.properties` is world-readable, because the service reads it as its transient user. Restricting it stops the service from reading its own configuration.
+- `jmx-scraper.env` is installed mode 0640, because systemd reads it as root before dropping privileges. The service's own user cannot read it.
+
+**Put secrets in `jmx-scraper.env`, never in `config.properties`.**
+Every scraper property has an environment variable equivalent — `otel.jmx.password` is `OTEL_JMX_PASSWORD` — so credentials and OTLP headers can live entirely in the restricted file.
+
 ## Troubleshooting
 
 The scraper logs to the journal, which is the only place its errors are visible:
