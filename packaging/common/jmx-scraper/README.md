@@ -74,8 +74,11 @@ Override `JDK_JAVA_OPTIONS` in `jmx-scraper.env` only if you keep that export.
 `otel.jmx.config` points at custom metric definitions, and `otel.jmx.target.source` chooses where the definitions for `otel.jmx.target.system` come from (`auto`, `instrumentation`, or `legacy`).
 See the [upstream jmx-scraper documentation](https://github.com/open-telemetry/opentelemetry-java-contrib/tree/main/jmx-scraper) for the full reference.
 
-The file also accepts the OpenTelemetry Java SDK's autoconfiguration properties, so `otel.exporter.otlp.protocol`, `otel.exporter.otlp.headers`, `otel.service.name`, `otel.resource.attributes`, and `otel.metric.export.interval` all work here.
+The file also accepts the OpenTelemetry Java SDK's autoconfiguration properties, so `otel.exporter.otlp.protocol`, `otel.exporter.otlp.endpoint`, `otel.service.name`, `otel.resource.attributes`, and `otel.metric.export.interval` all work here.
 See the [SDK autoconfiguration reference](https://opentelemetry.io/docs/languages/java/configuration/) for that set.
+
+`otel.exporter.otlp.headers` is the exception, because it is where an OTLP API key goes.
+Set `OTEL_EXPORTER_OTLP_HEADERS` in `jmx-scraper.env` instead, for the reason given under [Security](#security).
 
 ### Environment overrides
 
@@ -102,7 +105,7 @@ The command connects, prints `JMX connection test OK` or `JMX connection test ER
 Run it after every change to `config.properties` or `jmx-scraper.env`.
 
 > [!IMPORTANT]
-> Running the JAR straight from a shell acts differently than the service, and will fail the service would not have.
+> Running the JAR straight from a shell acts differently than the service, and will report a failure the service would not have.
 > The reason is that credentials live in `jmx-scraper.env`, which a plain shell does not read and which is mode 0640, so a non-root operator cannot source it.
 > A shell also runs as the invoking user rather than the service's transient one, so it can reach a relocated `JMX_SCRAPER_CONFIG` that the sandboxed service cannot.
 > `systemd-run` reproduces the unit's environment and sandbox instead.
