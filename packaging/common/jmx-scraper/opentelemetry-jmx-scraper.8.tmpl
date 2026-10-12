@@ -94,11 +94,25 @@ key goes. Set OTEL_EXPORTER_OTLP_HEADERS in the environment file instead; see
 SECURITY.
 .SH ENVIRONMENT
 The service reads these from the optional environment file listed under FILES,
-which overrides the defaults the unit sets.
+which overrides the defaults the unit sets. Every scraper property has an
+environment spelling: otel.jmx.password is OTEL_JMX_PASSWORD, and so on for the
+rest of the OpenTelemetry Java SDK's autoconfiguration.
 .TP
 .B JMX_SCRAPER_CONFIG
 Path to the scraper configuration, defaulting to
 /etc/opentelemetry/jmx-scraper/config.properties.
+.TP
+.BR OTEL_JMX_USERNAME ", " OTEL_JMX_PASSWORD
+Credentials for a target JVM that requires JMX authentication. These are the
+environment spellings of otel.jmx.username and otel.jmx.password, and they
+belong here rather than in config.properties; see SECURITY.
+.TP
+.B OTEL_JMX_REMOTE_PROFILE
+The SASL profile for the JMX connection, one of SASL/PLAIN, SASL/DIGEST-MD5,
+SASL/CRAM-MD5, TLS SASL/PLAIN, TLS SASL/DIGEST-MD5, or TLS SASL/CRAM-MD5.
+.TP
+.B OTEL_JMX_REALM
+The realm the DIGEST-MD5 profiles require.
 .TP
 .B JDK_JAVA_OPTIONS
 Options the Java 9 and later launcher prepends to the command line. The unit
