@@ -100,7 +100,12 @@ rest of the OpenTelemetry Java SDK's autoconfiguration.
 .TP
 .B JMX_SCRAPER_CONFIG
 Path to the scraper configuration, defaulting to
-/etc/opentelemetry/jmx-scraper/config.properties.
+/etc/opentelemetry/jmx-scraper/config.properties. A relocated file must be
+world-readable, because the service reads it as a transient user, and must not
+be under /home, /root, or /run/user, which ProtectHome=yes leaves empty for the
+service. /etc and /opt both work. Either mistake logs "Failed to read config
+from file" and leaves the service restarting, so the message does not say which
+one it was.
 .TP
 .BR OTEL_JMX_USERNAME ", " OTEL_JMX_PASSWORD
 Credentials for a target JVM that requires JMX authentication. These are the
