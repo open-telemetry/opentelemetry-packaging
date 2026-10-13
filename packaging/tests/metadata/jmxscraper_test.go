@@ -237,6 +237,68 @@ func assertJMXScraperConfigModes(t *testing.T, modeOf func(string) (os.FileMode,
 	}
 }
 
+// The unit's security settings are the other half of the permission split that
+// TestJMXScraperConfigFileModes pins: config.properties is world-readable only
+// because the service drops to a transient UID, and jmx-scraper.env can hold
+// secrets only because the service cannot read it. Dropping DynamicUser or a
+// sandbox directive silently widens what a compromised scraper reaches, and
+// nothing else in the build would notice.
+//
+// Asserted against the unit as shipped in the DEB rather than the source file,
+// so the test fails if the unit stops being packaged correctly too. The RPM
+// carries the same file; that it ships at all is covered by
+// TestRpmJMXScraperShipsExpectedFiles.
+func TestJMXScraperUnitIsHardened(t *testing.T) {
+	skipIfNoDebPackages(t)
+
+	unit := debExtractFile(t, findPackage(t, "opentelemetry-jmx-scraper_", ".deb"),
+		"/usr/lib/systemd/system/opentelemetry-jmx-scraper.service")
+	settings := systemdSettings(unit)
+
+	// DynamicUser is the reason the service needs no system user of its own,
+	// which a lifecycle script could not create under the POSIX-builtin rule.
+	assert.Equal(t, "yes", settings["DynamicUser"],
+		"the service must run as a transient unprivileged user")
+
+	// The scraper reads one configuration file and opens outbound connections.
+	// Everything below denies something it has no reason to need.
+	for key, want := range map[string]string{
+		"NoNewPrivileges":         "yes",
+		"ProtectSystem":           "strict",
+		"ProtectHome":             "yes",
+		"ProtectKernelTunables":   "yes",
+		"ProtectKernelModules":    "yes",
+		"ProtectControlGroups":    "yes",
+		"RestrictNamespaces":      "yes",
+		"RestrictSUIDSGID":        "yes",
+		"LockPersonality":         "yes",
+		"SystemCallArchitectures": "native",
+		"RestrictAddressFamilies": "AF_INET AF_INET6 AF_UNIX",
+	} {
+		assert.Equal(t, want, settings[key], "%s must stay set on the unit", key)
+	}
+
+	// Setting this would be a plausible "harden further" edit that stops the
+	// service from starting, because the JVM needs writable-executable memory
+	// to JIT. Failing here is the cheapest place to find that out.
+	assert.NotContains(t, settings, "MemoryDenyWriteExecute",
+		"MemoryDenyWriteExecute stops the JVM from starting; see the comment in the unit")
+
+	// Without this export the scraper cannot install the SASL security
+	// provider on Java 16 and later, and every SASL profile fails to
+	// authenticate. The "=" spelling matters: systemd splits an Environment=
+	// value on whitespace, so the spaced form reaches the JVM as a bare
+	// --add-exports and the service fails to start.
+	assert.Contains(t, unit,
+		"Environment=JDK_JAVA_OPTIONS=--add-exports=java.security.sasl/com.sun.security.sasl=ALL-UNNAMED",
+		"the unit must export com.sun.security.sasl, as a single whitespace-free token")
+
+	// The leading "-" makes the environment file optional, so an operator who
+	// deletes it gets a service that still starts on the unit's defaults.
+	assert.Contains(t, unit, "EnvironmentFile=-/etc/opentelemetry/jmx-scraper/jmx-scraper.env",
+		"the environment file must stay optional")
+}
+
 // --------------------------------------------------------------------------
 // Helpers
 // --------------------------------------------------------------------------
@@ -310,4 +372,23 @@ func debConffiles(t *testing.T, path string) string {
 	}
 	t.Fatalf("no conffiles member in the control archive of %s", path)
 	return ""
+}
+
+// systemdSettings parses a unit file into its key/value pairs. Unit files allow
+// repeated and sectioned keys, neither of which this unit uses, so the last
+// value for a key wins and sections are ignored.
+func systemdSettings(unit string) map[string]string {
+	settings := make(map[string]string)
+	for _, line := range strings.Split(unit, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "[") {
+			continue
+		}
+		key, value, found := strings.Cut(line, "=")
+		if !found {
+			continue
+		}
+		settings[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	}
+	return settings
 }
