@@ -85,6 +85,12 @@ Set `OTEL_EXPORTER_OTLP_HEADERS` in `jmx-scraper.env` instead, for the reason gi
 The optional environment file at `/etc/opentelemetry/jmx-scraper/jmx-scraper.env` overrides the defaults the unit sets.
 Set `JMX_SCRAPER_CONFIG` to keep the configuration somewhere other than the default location.
 
+> [!WARNING]
+> A relocated configuration file must be world-readable, because the service reads it as a transient user that owns nothing on disk.
+> It must also not live under `/home`, `/root`, or `/run/user`: the unit sets `ProtectHome=yes`, so those are empty for the service and a file there is invisible to it no matter who owns it.
+> `/etc` and `/opt` both work.
+> Either misconfigurations fails the same way — `Failed to read config from file` in the journal, and a service that restarts forever — so the message does not tell you which one you made.
+
 The unit resolves `java` through `PATH`, so set `PATH` there to choose a specific JVM when the host has several:
 
 ```sh
