@@ -95,6 +95,10 @@ type Relations struct {
 	Depends    []string
 	Recommends []string
 	Suggests   []string
+	// Deb and Rpm override the format-agnostic weak relationships above when a
+	// dependency is spelled differently in each package ecosystem.
+	Deb DebOverride
+	Rpm RpmOverride
 	// Conflicts and Replaces let a package displace another one. A vendor
 	// replacement declares the virtual name in Provides and the concrete
 	// upstream name in both of these, which is what makes the package manager
@@ -106,6 +110,48 @@ type Relations struct {
 	// --setopt=obsoletes=0.
 	Conflicts []string
 	Replaces  []string
+}
+
+// DebOverride carries the DEB spelling of the relationships that differ
+// between the two ecosystems. A nil field means "no override": the
+// format-agnostic value from Relations is used instead.
+type DebOverride struct {
+	Recommends []string
+	Suggests   []string
+}
+
+// RpmOverride is the RPM counterpart of DebOverride.
+type RpmOverride struct {
+	Recommends []string
+	Suggests   []string
+}
+
+func (r Relations) recommends(format string) []string {
+	switch format {
+	case "deb":
+		if r.Deb.Recommends != nil {
+			return r.Deb.Recommends
+		}
+	case "rpm":
+		if r.Rpm.Recommends != nil {
+			return r.Rpm.Recommends
+		}
+	}
+	return r.Recommends
+}
+
+func (r Relations) suggests(format string) []string {
+	switch format {
+	case "deb":
+		if r.Deb.Suggests != nil {
+			return r.Deb.Suggests
+		}
+	case "rpm":
+		if r.Rpm.Suggests != nil {
+			return r.Rpm.Suggests
+		}
+	}
+	return r.Suggests
 }
 
 // Component describes a single package to build.
@@ -171,8 +217,8 @@ func (c Component) Info(cfg Config, format string) (*nfpm.Info, func(), error) {
 			Contents:   contents,
 			Provides:   c.Relations.Provides,
 			Depends:    c.Relations.Depends,
-			Recommends: c.Relations.Recommends,
-			Suggests:   c.Relations.Suggests,
+			Recommends: c.Relations.recommends(format),
+			Suggests:   c.Relations.suggests(format),
 			Conflicts:  c.Relations.Conflicts,
 			Replaces:   c.Relations.Replaces,
 			RPM: nfpm.RPM{
@@ -210,6 +256,7 @@ var AllComponents = []Component{
 	Dotnet,
 	Python,
 	Meta,
+	JMXScraper,
 }
 
 // Build creates a single package file and returns its path.
@@ -264,20 +311,31 @@ const (
 // outside this package. The unexported aliases keep the in-repo components
 // reading as before.
 var (
-	configFile  = ConfigFile
-	regularFile = RegularFile
-	directory   = Directory
-	tree        = Tree
+	configFile     = ConfigFile
+	configFileMode = ConfigFileMode
+	regularFile    = RegularFile
+	directory      = Directory
+	tree           = Tree
 )
 
-// ConfigFile creates a Content entry for a config file (noreplace for RPM).
+// ConfigFile creates a Content entry for a world-readable config file
+// (noreplace for RPM). Use ConfigFileMode for a file that carries secrets.
 func ConfigFile(src, dst string) *files.Content {
+	return ConfigFileMode(src, dst, 0o644)
+}
+
+// ConfigFileMode is ConfigFile with an explicit mode, for configuration a
+// package must keep from being world-readable — credentials, for instance.
+//
+// Restricting a config file constrains the unit that reads it: a service that
+// has dropped privileges cannot read a root-owned 0640 file.
+func ConfigFileMode(src, dst string, mode os.FileMode) *files.Content {
 	return &files.Content{
 		Source:      src,
 		Destination: dst,
 		Type:        "config|noreplace",
 		FileInfo: &files.ContentFileInfo{
-			Mode: 0o644,
+			Mode: mode,
 		},
 	}
 }

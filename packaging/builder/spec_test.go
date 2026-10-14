@@ -196,9 +196,12 @@ func TestWriteSpecInlinesLifecycleScripts(t *testing.T) {
 	assert.Contains(t, spec, "/etc/ld.so.preload",
 		"the inlined scriptlets must carry the preload registration")
 
-	// Only the injector has lifecycle scripts.
-	assert.Equal(t, 1, strings.Count(spec, "\n%post -n "))
-	assert.Equal(t, 1, strings.Count(spec, "\n%preun -n "))
+	assert.Contains(t, spec, "%post -n opentelemetry-jmx-scraper\n")
+	assert.Contains(t, spec, "%preun -n opentelemetry-jmx-scraper\n")
+
+	// Only the injector and the JMX scraper have lifecycle scripts.
+	assert.Equal(t, 2, strings.Count(spec, "\n%post -n "))
+	assert.Equal(t, 2, strings.Count(spec, "\n%preun -n "))
 }
 
 // Every literal percent sign must be escaped, or rpm expands it as a macro —

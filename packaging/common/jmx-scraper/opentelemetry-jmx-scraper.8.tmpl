@@ -1,0 +1,213 @@
+.\" Copyright The OpenTelemetry Authors
+.\" SPDX-License-Identifier: Apache-2.0
+.TH OPENTELEMETRY-JMX-SCRAPER 8 "@DATE@" "opentelemetry-jmx-scraper @VERSION@" "System Administration"
+.SH NAME
+opentelemetry-jmx-scraper \- collect JVM metrics over JMX and export them via OTLP
+.SH DESCRIPTION
+The OpenTelemetry JMX scraper connects to a configured JMX endpoint and exports metrics through OTLP.
+It runs as the systemd service opentelemetry-jmx-scraper.service.
+.PP
+The scraper needs a Java runtime, which this package does not install.
+The runtime is a suggested dependency rather than a required one, so package managers do not pull it in automatically.
+Install
+.B default-jre
+on Debian and Ubuntu, or
+.B java-headless
+on RPM-based distributions.
+.PP
+The service unit resolves
+.B java
+through the PATH of the service, so whichever JVM is first on that PATH is used.
+Without one, the service fails to start with "env: java: No such file or directory".
+.SH CONFIGURATION
+Set otel.jmx.service.url and otel.jmx.target.system in /etc/opentelemetry/jmx-scraper/config.properties before starting the service.
+The service reads the optional environment overrides from /etc/opentelemetry/jmx-scraper/jmx-scraper.env.
+.TP
+.B otel.jmx.service.url
+The JMX endpoint to connect to, for example service:jmx:rmi:///jndi/rmi://localhost:9010/jmxrmi.
+.TP
+.B otel.jmx.target.system
+The metric definitions to apply, as one or more comma-separated values from:
+.RS
+.\" PD 0 sets the inter-paragraph distance to zero, which keeps the bullets
+.\" below on consecutive lines instead of double-spaced. The bare .PD after
+.\" the list restores the default.
+.PD 0
+.\" BEGIN GENERATED target systems (make update-jmx-target-systems)
+.IP \(bu 2
+activemq
+.IP \(bu 2
+camel
+.IP \(bu 2
+cassandra
+.IP \(bu 2
+experimental-cassandra
+.IP \(bu 2
+experimental-kafka-connect
+.IP \(bu 2
+hadoop
+.IP \(bu 2
+hbase
+.IP \(bu 2
+jetty
+.IP \(bu 2
+jvm
+.IP \(bu 2
+kafka
+.IP \(bu 2
+kafka-consumer
+.IP \(bu 2
+kafka-producer
+.IP \(bu 2
+solr
+.IP \(bu 2
+tomcat
+.IP \(bu 2
+wildfly
+.\" END GENERATED
+.PD
+.PP
+For example, "jvm,tomcat" collects the JVM metrics alongside the Tomcat ones.
+That list is what the packaged scraper accepts; see
+.UR https://github.com/open-telemetry/opentelemetry-java-contrib/tree/main/jmx-scraper
+.UE
+for what each target system collects.
+.RE
+.TP
+.B otel.jmx.remote.registry.ssl
+Set this when the target JVM runs with
+com.sun.management.jmxremote.registry.ssl=true.
+.PP
+Credentials are configured through the environment rather than this file; see
+ENVIRONMENT and SECURITY.
+.PP
+The file also accepts the OpenTelemetry Java SDK's autoconfiguration
+properties, so otel.exporter.otlp.protocol, otel.exporter.otlp.endpoint,
+otel.service.name, and otel.metric.export.interval all work here.
+See
+.UR https://opentelemetry.io/docs/languages/java/configuration/
+.UE
+for that set.
+.PP
+otel.exporter.otlp.headers is the exception, because it is where an OTLP API
+key goes. Set OTEL_EXPORTER_OTLP_HEADERS in the environment file instead; see
+SECURITY.
+.SH ENVIRONMENT
+The service reads these from the optional environment file listed under FILES,
+which overrides the defaults the unit sets. Every scraper property has an
+environment spelling: otel.jmx.password is OTEL_JMX_PASSWORD, and so on for the
+rest of the OpenTelemetry Java SDK's autoconfiguration.
+.TP
+.B JMX_SCRAPER_CONFIG
+Path to the scraper configuration, defaulting to
+/etc/opentelemetry/jmx-scraper/config.properties. A relocated file must be
+world-readable, because the service reads it as a transient user, and must not
+be under /home, /root, or /run/user, which ProtectHome=yes leaves empty for the
+service. /etc and /opt both work. Either mistake logs "Failed to read config
+from file" and leaves the service restarting, so the message does not say which
+one it was.
+.TP
+.BR OTEL_JMX_USERNAME ", " OTEL_JMX_PASSWORD
+Credentials for a target JVM that requires JMX authentication. These are the
+environment spellings of otel.jmx.username and otel.jmx.password, and they
+belong here rather than in config.properties; see SECURITY.
+.TP
+.B OTEL_JMX_REMOTE_PROFILE
+The SASL profile for the JMX connection, one of SASL/PLAIN, SASL/DIGEST-MD5,
+SASL/CRAM-MD5, TLS SASL/PLAIN, TLS SASL/DIGEST-MD5, or TLS SASL/CRAM-MD5.
+.TP
+.B OTEL_JMX_REALM
+The realm the DIGEST-MD5 profiles require.
+.TP
+.B JDK_JAVA_OPTIONS
+Options the Java 9 and later launcher prepends to the command line. The unit
+sets it to
+.B \-\-add\-exports=java.security.sasl/com.sun.security.sasl=ALL\-UNNAMED
+\(em without it the scraper cannot install the SASL security provider on Java 16
+and later, and every SASL remote profile fails to authenticate. Override this
+only if that export is kept.
+.TP
+.B PATH
+Where the unit resolves
+.B java
+from. Set it to put a specific JVM first when the host has several, or when the
+JVM to use is not on the system PATH.
+.SH EXAMPLES
+Check that the configured endpoint is reachable before enabling the service:
+.PP
+.RS
+.nf
+sudo systemd-run --wait --pipe --collect --service-type=exec \e
+    -p EnvironmentFile=-/etc/opentelemetry/jmx-scraper/jmx-scraper.env \e
+    -p Environment=JDK_JAVA_OPTIONS=--add-exports=java.security.sasl/com.sun.security.sasl=ALL-UNNAMED \e
+    -p DynamicUser=yes -p ProtectHome=yes \e
+    /usr/bin/env java -jar /usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar \e
+    -test -config /etc/opentelemetry/jmx-scraper/config.properties
+.fi
+.RE
+.PP
+The command connects, prints "JMX connection test OK" or "JMX connection test ERROR", and exits without scraping or exporting anything.
+Run it after every change to config.properties or jmx-scraper.env.
+.PP
+Running the jar straight from a shell acts differently than the service, and
+reports a failure the service would not have. The reason is that credentials
+live in jmx-scraper.env, which a shell does not read and which is mode 0640, so
+a non-root operator cannot source it. A shell also runs as the invoking user
+rather than the service's transient one, so it can reach a relocated
+JMX_SCRAPER_CONFIG that the sandboxed service cannot.
+.BR systemd-run (1)
+reproduces the unit's environment and sandbox instead.
+.SH FILES
+.TP
+.I /etc/opentelemetry/jmx-scraper/config.properties
+JMX scraper and OTLP exporter configuration. World-readable, and so not a
+place for secrets. See SECURITY.
+.TP
+.I /etc/opentelemetry/jmx-scraper/jmx-scraper.env
+Environment overrides for the systemd service, and the place for credentials.
+Installed mode 0640.
+.TP
+.I /usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar
+The scraper application.
+.TP
+.I /usr/lib/systemd/system/opentelemetry-jmx-scraper.service
+The systemd service unit.
+.SH SECURITY
+The unit sets DynamicUser=yes, so systemd allocates the service a transient
+unprivileged user at every start. The scraper reads a configuration file and
+opens outbound connections, so it needs no privileges of its own.
+.PP
+That is why the two configuration files differ in permissions.
+config.properties is world-readable, because the service reads it as its
+transient user; restricting it stops the service from reading its own
+configuration. jmx-scraper.env is installed mode 0640, because systemd reads it
+as root before dropping privileges, so the service's own user cannot read it.
+.PP
+Put secrets in jmx-scraper.env, never in config.properties. Every scraper
+property has an environment variable equivalent \(em otel.jmx.password is
+OTEL_JMX_PASSWORD \(em so credentials and OTLP headers can live entirely in
+the restricted file.
+.SH DIAGNOSTICS
+The scraper logs to the journal, which is the only place its errors are visible:
+.PP
+.RS
+.nf
+journalctl -u opentelemetry-jmx-scraper.service -f
+.fi
+.RE
+.PP
+A rejected configuration exits 1 and a missing Java runtime exits 127.
+The unit sets Restart=on-failure, so systemd restarts the service every five seconds instead of leaving it in the failed state.
+.BR systemctl (1)
+therefore reports a misconfigured service as activating rather than failed.
+.PP
+An unreachable JMX endpoint is not a startup failure.
+The scraper keeps running, logs "Failed to establish JMX connection", and retries until the endpoint answers.
+.SH SEE ALSO
+.BR java (1),
+.BR systemctl (1),
+.BR systemd.unit (5),
+.BR systemd-run (1),
+.BR journalctl (1)
+.SH AUTHORS
+The OpenTelemetry Authors

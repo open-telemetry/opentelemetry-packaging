@@ -13,37 +13,40 @@ No Ruby, FPM, or special Docker images are required to build packages.
 ## Repository layout
 
 ```
-cmd/build-packages/          CLI entry point for building .deb and .rpm packages
-cmd/build-spec/rpm/          CLI entry point for generating and staging the source RPM spec
-cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
+cmd/build-packages/               CLI entry point for building .deb and .rpm packages
+cmd/build-spec/rpm/               CLI entry point for generating and staging the source RPM spec
+cmd/otel-config-check/            Declarative-config validator shipped inside the Python package
+cmd/update-jmx-target-systems/    Regenerates the JMX target systems in the scraper's shipped docs
 packaging/
-  builder/                   Go library that drives nfpm to create packages
-    builder.go               Build orchestration, common metadata
-    components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
-    download.go              Upstream artifact download helpers
-    spec.go                  RPM spec generation for the COPR build (projection of components.go)
-    stage.go                 Payload staging into an rpmbuild buildroot, with generated %files lists
-  common/                    Shared assets referenced by the builder
-    <lang>/otel-config.yaml   Language-specific declarative configuration file, shipped by that language package (valid as shipped)
-    scripts/                 POSIX lifecycle scripts (postinstall, preuninstall)
-    injector/                Config files, man page template, README, release.txt (version pin)
-    java/                    "
-    nodejs/                  " (plus register.js, the --require entry point with declarative-config support)
-    dotnet/                  "
-    python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py (plus its unit tests)
-      vendor/                The pyproto exporter chain, developed here with its test suites (unpublished pure-Python packages; see its README)
-  repo/                      APT and YUM repository generation scripts
-  tests/                     Integration tests
-    metadata/                       Host-side metadata validation (no containers needed)
-    pyprotogrpc/                    Pure-Python gRPC transport tests against the otel-sink (host-side)
-    {python,java,nodejs,dotnet}/    Matrix E2E tests (deb+rpm × base images) asserting via the otel-sink
-                                    (python/ also hosts the sitecustomize.py interpreter compatibility tests)
-    lifecycle/                      Package lifecycle tests (preload scripts, config handling, install/remove scenarios)
-    vendor/                         Vendor replacement tests (plus mkvendor/, the mock acme package builder)
-    shared/                         Shared test application sources
-testutil/                    Shared Go test helpers
-  otelsink/                  In-process OTLP sink + typed assertion API for E2E tests
-docs/design/                 Architecture and design documents
+  builder/                        Go library that drives nfpm to create packages
+    builder.go                    Build orchestration, common metadata
+    components.go                 Per-component definitions (injector, java, nodejs, dotnet, python, meta, jmx-scraper)
+    download.go                   Upstream artifact download helpers
+    jmxtargets.go                 JMX target system extraction from the scraper JAR
+    spec.go                       RPM spec generation for the COPR build (projection of components.go)
+    stage.go                      Payload staging into an rpmbuild buildroot, with generated %files lists
+  common/                         Shared assets referenced by the builder
+    <lang>/otel-config.yaml       Language-specific declarative configuration file, shipped by that language package (valid as shipped)
+    scripts/                      POSIX lifecycle scripts (postinstall, preuninstall)
+    injector/                     Config files, man page template, README, release.txt (version pin)
+    java/                         "
+    nodejs/                       " (plus register.js, the --require entry point with declarative-config support)
+    dotnet/                       "
+    python/                       Config, man page template, README, requirements.txt (version pins), sitecustomize.py (plus its unit tests)
+      vendor/                     The pyproto exporter chain, developed here with its test suites (unpublished pure-Python packages; see its README)
+    jmx-scraper/                  Standalone JMX scraper config, systemd unit, man page, README, and release pin
+  repo/                           APT and YUM repository generation scripts
+  tests/                          Integration tests
+    metadata/                     Host-side metadata validation (no containers needed)
+    pyprotogrpc/                  Pure-Python gRPC transport tests against the otel-sink (host-side)
+    {python,java,nodejs,dotnet}/  Matrix E2E tests (deb+rpm × base images) asserting via the otel-sink
+                                  (python/ also hosts the sitecustomize.py interpreter compatibility tests)
+    lifecycle/                    Package lifecycle tests (preload scripts, config handling, install/remove scenarios)
+    vendor/                       Vendor replacement tests (plus mkvendor/, the mock acme package builder)
+    shared/                       Shared test application sources
+testutil/                         Shared Go test helpers
+  otelsink/                       In-process OTLP sink + typed assertion API for E2E tests
+docs/design/                      Architecture and design documents
 ```
 
 ## How package builds work
@@ -56,6 +59,7 @@ The `cmd/build-packages` program:
    - Java agent JAR from [opentelemetry-java-instrumentation](https://github.com/open-telemetry/opentelemetry-java-instrumentation) GitHub Releases
    - Node.js agent from npm (`@opentelemetry/auto-instrumentations-node`)
    - .NET agent from [opentelemetry-dotnet-instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation) GitHub Releases (glibc only; musl-based distributions use apk, which this project does not build)
+   - JMX scraper JAR from [opentelemetry-java-contrib](https://github.com/open-telemetry/opentelemetry-java-contrib) GitHub Releases
    - Python packages via `pip`, as defined by `packaging/common/python/requirements.txt`
 
    The Python package bundles compiled C extensions, so its wheels are fetched
@@ -196,6 +200,20 @@ make deb-package-injector
 ```sh
 make rpm-package-java
 ```
+
+The standalone JMX scraper package can be built with `make deb-package-jmx-scraper` or `make rpm-package-jmx-scraper`.
+
+### Updating the JMX scraper pin
+
+The target systems the scraper accepts come from the metric definitions inside its JAR, and the package enumerates them in the man page and the README.
+`config.properties` deliberately carries only a pointer to those two: it ships as `config|noreplace` and every operator edits it, so rewriting it on a version bump would raise a dpkg conffile prompt and strand the list at whatever the operator first installed.
+After changing `packaging/common/jmx-scraper/release.txt`, regenerate those lists:
+
+```sh
+make update-jmx-target-systems
+```
+
+CI runs `make check-jmx-target-systems` and fails when the committed lists no longer match the pinned JAR, so a Renovate bump that changes the set cannot merge with stale documentation.
 
 Specify version and architecture:
 

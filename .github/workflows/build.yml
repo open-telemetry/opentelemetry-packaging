@@ -43,6 +43,14 @@ jobs:
       - name: Run the vendored pyproto exporter test suites
         run: make pyproto-unit-tests
 
+      - name: Check the documented JMX target systems against the pinned JAR
+        env:
+          # Same rationale as build-packages: the release-asset digest lookup
+          # is rate limited to 60/hour per IP without a token, and that limit
+          # is shared across the whole Actions runner range.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: make check-jmx-target-systems
+
   sitecustomize-compatibility-tests:
     runs-on: ubuntu-26.04
     steps:
