@@ -129,10 +129,19 @@ jobs:
         env:
           BUILD_ID: ${{ steps.find.outputs.build-id }}
         run: |
+          # Without pipefail jq masks curl's exit status, so an unreachable or
+          # deleted build would read as an empty state and spin until the timeout.
+          set -o pipefail
           prev=""
+          # 330 attempts of 10 s bound the loop inside the job timeout.
+          attempt=0
           while :; do
-            state="$(curl --silent --show-error --fail --retry 3 --max-time 30 \
-              "${COPR_URL}/api_3/build/${BUILD_ID}" | jq -r '.state')"
+            if ! state="$(curl --silent --show-error --fail --retry 3 --max-time 30 \
+              "${COPR_URL}/api_3/build/${BUILD_ID}" | jq -r '.state // empty')" \
+              || [ -z "${state}" ]; then
+              echo "::error::could not read the state of build ${BUILD_ID} from COPR"
+              exit 1
+            fi
             if [ "${state}" != "${prev}" ]; then
               echo "build ${BUILD_ID}: ${state}"
               prev="${state}"
@@ -140,6 +149,11 @@ jobs:
             case "${state}" in
               succeeded|failed|canceled|skipped) exit 0 ;;
             esac
+            attempt=$(( attempt + 1 ))
+            if [ "${attempt}" -ge 330 ]; then
+              echo "::error::build ${BUILD_ID} is still ${state} after 55 minutes"
+              exit 1
+            fi
             sleep 10
           done
 
