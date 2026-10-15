@@ -22,3 +22,7 @@ docs/brainstorms/
 
 # Stray root build artifact from direct otel-config-check builds
 /otel-config-check
+
+# .copr/Makefile defaults outdir to the current directory, so running it by hand
+# drops a source RPM
+*.src.rpm
