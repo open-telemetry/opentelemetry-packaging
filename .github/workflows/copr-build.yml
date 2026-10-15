@@ -164,11 +164,19 @@ jobs:
               | jq -r '.state // empty')"
             state="${state:-unknown}"
             echo "- \`${chroot}\`: ${state}" >> "$GITHUB_STEP_SUMMARY"
-            if [ "${state}" = "succeeded" ]; then
-              echo "${chroot}: ${state}"
-            else
-              echo "::error::${chroot} finished in state ${state}"
-              failed=1
-            fi
+            case "${state}" in
+              succeeded)
+                echo "${chroot}: ${state}"
+                ;;
+              # COPR skips a chroot whose architecture the spec's ExclusiveArch
+              # excludes, which is how the project builds only x86_64 and aarch64.
+              skipped)
+                echo "${chroot}: ${state} (excluded by ExclusiveArch)"
+                ;;
+              *)
+                echo "::error::${chroot} finished in state ${state}"
+                failed=1
+                ;;
+            esac
           done
           exit "${failed}"
