@@ -1,0 +1,174 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Builds RPMs in Fedora COPR from .copr/Makefile; triggers a committish and waits.
+name: Build in COPR
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      committish:
+        description: "Branch, tag, or commit COPR should build (defaults to the commit this run is on)"
+        required: false
+        type: string
+
+permissions: {}
+
+env:
+  COPR_URL: https://copr.fedorainfracloud.org
+  COPR_OWNER: opentelemetry
+  COPR_PROJECT: opentelemetry-packaging
+  COPR_PROJECT_ID: "263263"
+  COPR_PACKAGE: opentelemetry-packaging
+
+# Runs for one committish must not overlap: builds match only by committish and time.
+concurrency:
+  group: copr-build-${{ inputs.committish || github.event.release.tag_name || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  copr-build:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read # to resolve the committish through the GitHub API
+    # Builds take about 5 minutes; the rest is headroom for COPR's background queue.
+    timeout-minutes: 60
+    steps:
+      # Releases build tags so git describe yields the version.
+      # Dispatch pins the resolved SHA so a moving branch cannot change it.
+      - name: Resolve the committish
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          REQUESTED: ${{ inputs.committish || github.sha }}
+        run: |
+          if [ -n "${RELEASE_TAG}" ]; then
+            ref="${RELEASE_TAG}"
+          else
+            ref="${REQUESTED}"
+          fi
+          # URL-encode ref so "/" stays one path segment.
+          encoded="$(jq -rn --arg ref "${ref}" '$ref | @uri')"
+          if ! sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${encoded}" --jq '.sha')"; then
+            echo "::error::${ref} is not a branch, tag, or commit of ${GITHUB_REPOSITORY}"
+            exit 1
+          fi
+          if [ -n "${RELEASE_TAG}" ]; then
+            committish="${RELEASE_TAG}"
+          else
+            committish="${sha}"
+          fi
+          echo "committish=${committish}" >> "$GITHUB_OUTPUT"
+          echo "Building ${ref} (${sha})"
+
+      - name: Trigger the build
+        id: trigger
+        env:
+          COPR_WEBHOOK_ID: ${{ secrets.COPR_WEBHOOK_ID }}
+          COMMITTISH: ${{ steps.resolve.outputs.committish }}
+          CLONE_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          # COPR builds ref verbatim on create/tag; push needs a commit list touching the package.
+          # The package URL suffix is required because v* tags do not match PKGNAME-VERSION.
+          payload="$(jq -n --arg ref "${COMMITTISH}" --arg clone_url "${CLONE_URL}" \
+            '{ref: $ref, ref_type: "tag", repository: {clone_url: $clone_url}}')"
+
+          # Allow 60 s for runner/COPR clock skew.
+          echo "since=$(( $(date +%s) - 60 ))" >> "$GITHUB_OUTPUT"
+
+          status="$(curl --silent --show-error --max-time 30 \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "X-GitHub-Event: create" \
+            --data "${payload}" \
+            --output response.txt \
+            --write-out "%{http_code}" \
+            --variable %COPR_WEBHOOK_ID \
+            --expand-url "${COPR_URL}/webhooks/github/${COPR_PROJECT_ID}/{{COPR_WEBHOOK_ID}}/${COPR_PACKAGE}/")"
+          # COPR errors are HTML; report only the status.
+          if [ "${status}" = "403" ]; then
+            echo "::error::COPR rejected the webhook (HTTP 403); COPR_WEBHOOK_ID does not match the project"
+            exit 1
+          fi
+          if [ "${status}" != "200" ] || [ "$(cat response.txt)" != "OK" ]; then
+            echo "::error::COPR rejected the webhook (HTTP ${status}); check the COPR_WEBHOOK_ID secret"
+            exit 1
+          fi
+          echo "Requested a COPR build of ${COMMITTISH} from ${CLONE_URL}"
+
+      # COPR's GitHub-style endpoint returns "OK" without a build id even if nothing matched, requiring lookup.
+      - name: Find the build
+        id: find
+        env:
+          COMMITTISH: ${{ steps.resolve.outputs.committish }}
+          SINCE: ${{ steps.trigger.outputs.since }}
+        run: |
+          api="${COPR_URL}/api_3"
+          list="${api}/build/list?ownername=${COPR_OWNER}&projectname=${COPR_PROJECT}&packagename=${COPR_PACKAGE}&limit=10&order_type=DESC"
+          for _ in $(seq 1 18); do
+            for id in $(curl --silent --show-error --fail --retry 3 --max-time 30 "${list}" \
+                | jq -r --argjson since "${SINCE}" '.items[] | select(.submitted_on >= $since) | .id'); do
+              committish="$(curl --silent --show-error --fail --retry 3 --max-time 30 \
+                "${api}/build/source-build-config/${id}" | jq -r '.source_dict.committish')"
+              if [ "${committish}" = "${COMMITTISH}" ]; then
+                echo "build-id=${id}" >> "$GITHUB_OUTPUT"
+                echo "Build [${id}](${COPR_URL}/coprs/build/${id}) of \`${COMMITTISH}\`" >> "$GITHUB_STEP_SUMMARY"
+                echo "Found build ${id}"
+                exit 0
+              fi
+            done
+            sleep 10
+          done
+          echo "::error::COPR created no build of ${COMMITTISH}; check that the package's clone URL matches this repository and that auto-rebuild is enabled"
+          exit 1
+
+      - name: Wait for the build
+        env:
+          BUILD_ID: ${{ steps.find.outputs.build-id }}
+        run: |
+          prev=""
+          while :; do
+            state="$(curl --silent --show-error --fail --retry 3 --max-time 30 \
+              "${COPR_URL}/api_3/build/${BUILD_ID}" | jq -r '.state')"
+            if [ "${state}" != "${prev}" ]; then
+              echo "build ${BUILD_ID}: ${state}"
+              prev="${state}"
+            fi
+            case "${state}" in
+              succeeded|failed|canceled|skipped) exit 0 ;;
+            esac
+            sleep 10
+          done
+
+      # Aggregate success can hide a failed chroot.
+      - name: Verify every chroot
+        env:
+          BUILD_ID: ${{ steps.find.outputs.build-id }}
+        run: |
+          api="${COPR_URL}/api_3"
+          chroots="$(curl --silent --show-error --fail --retry 3 --max-time 30 \
+            "${api}/build/${BUILD_ID}" | jq -r '.chroots[]')"
+          if [ -z "${chroots}" ]; then
+            echo "::error::build ${BUILD_ID} reports no chroots"
+            exit 1
+          fi
+
+          failed=0
+          for chroot in ${chroots}; do
+            # An empty build-chroot body means no chroot yet, never success.
+            state="$(curl --silent --show-error --fail --retry 3 --max-time 30 \
+              "${api}/build-chroot?build_id=${BUILD_ID}&chrootname=${chroot}" \
+              | jq -r '.state // empty')"
+            state="${state:-unknown}"
+            echo "- \`${chroot}\`: ${state}" >> "$GITHUB_STEP_SUMMARY"
+            if [ "${state}" = "succeeded" ]; then
+              echo "${chroot}: ${state}"
+            else
+              echo "::error::${chroot} finished in state ${state}"
+              failed=1
+            fi
+          done
+          exit "${failed}"

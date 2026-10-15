@@ -167,7 +167,8 @@ That step has network access, so it fetches the Go toolchain `go.mod` asks for a
 
 The version comes from the newest `v*` tag in the clone, as in every other target, so a build of a branch without tags gets the `0.0.0-dev` placeholder.
 
-A maintainer of the project can submit a build of any branch, tag, or commit with [`copr-cli`](https://developer.fedoraproject.org/deployment/copr/copr-cli.html):
+Builds are normally requested by the [Build in COPR workflow](.github/workflows/copr-build.yml), on every published release or on demand; [RELEASING.md](RELEASING.md) describes it.
+A maintainer of the project can also submit a build of any branch, tag, or commit directly with [`copr-cli`](https://developer.fedoraproject.org/deployment/copr/copr-cli.html):
 
 ```sh
 copr-cli buildscm opentelemetry/opentelemetry-packaging \

@@ -27,6 +27,19 @@ The workflow can also be dispatched manually with an existing release tag, to re
 gh workflow run publish-repos.yml -f tag=v1.0.0
 ```
 
+## Building in Fedora COPR
+
+Publishing the release also triggers the [Build in COPR workflow](.github/workflows/copr-build.yml), which builds the release tag in the [`opentelemetry/opentelemetry-packaging`](https://copr.fedorainfracloud.org/coprs/opentelemetry/opentelemetry-packaging/) COPR project.
+COPR builds the RPMs with mock from a source RPM, so they come from `rpmbuild` and the generated spec rather than from nfpm, and it publishes them as its own YUM repository alongside the one above.
+The workflow waits for the build and fails if any single chroot did not succeed, which the aggregate build state alone would hide.
+
+The workflow can also be dispatched against any branch, tag, or commit, which is how the spec is exercised outside a release.
+Without an input it builds the exact commit the run is on.
+
+```sh
+gh workflow run copr-build.yml -f committish=main
+```
+
 ## One-time GitHub Pages setup
 
 Deploying only pushes the `gh-pages` branch; serving it requires GitHub Pages to be enabled once in the repository settings ("Deploy from a branch", branch `gh-pages`, path `/`).
