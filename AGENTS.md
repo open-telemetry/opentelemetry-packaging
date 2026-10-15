@@ -36,6 +36,7 @@ make clean                     # Remove build/
 
 ## Architecture at a glance
 
+- `.copr/Makefile` — COPR "make srpm" entry point; installs the tooling and delegates to `make srpm`
 - `cmd/build-packages/` — CLI entry point; calls `packaging/builder/`
 - `cmd/build-spec/rpm/` — source RPM spec generation and rpmbuild payload staging
 - `cmd/otel-config-check/` — declarative-config validator, cross-compiled into the Python package and invoked by sitecustomize.py

@@ -13,6 +13,7 @@ No Ruby, FPM, or special Docker images are required to build packages.
 ## Repository layout
 
 ```
+.copr/Makefile               COPR "make srpm" entry point (installs the tooling, then calls make srpm)
 cmd/build-packages/          CLI entry point for building .deb and .rpm packages
 cmd/build-spec/rpm/          CLI entry point for generating and staging the source RPM spec
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
@@ -157,6 +158,25 @@ The metadata tests accept a `PACKAGES_DIR` override, so the same assertions that
 ```sh
 PACKAGES_DIR=build/rebuild/fedora go test -run TestRpm ./packaging/tests/metadata/
 ```
+
+### Building in COPR
+
+The RPMs are built in the [`opentelemetry/opentelemetry-packaging`](https://copr.fedorainfracloud.org/coprs/opentelemetry/opentelemetry-packaging/) COPR project with the SCM source type and the "make srpm" build method.
+COPR clones the repository and runs `make -f .copr/Makefile srpm outdir=<dir>`, which installs Go, git, and `rpmbuild`, calls `make srpm`, and copies the source RPM into `<dir>`.
+That step has network access, so it fetches the Go toolchain `go.mod` asks for and vendors the modules; COPR then rebuilds the source RPM once per chroot with mock, which is the step `make rpm-rebuild-container` reproduces locally.
+
+The version comes from the newest `v*` tag in the clone, as in every other target, so a build of a branch without tags gets the `0.0.0-dev` placeholder.
+
+A maintainer of the project can submit a build of any branch, tag, or commit with [`copr-cli`](https://developer.fedoraproject.org/deployment/copr/copr-cli.html):
+
+```sh
+copr-cli buildscm opentelemetry/opentelemetry-packaging \
+  --clone-url https://github.com/open-telemetry/opentelemetry-packaging \
+  --commit main \
+  --method make_srpm
+```
+
+To try a change before it is merged, point `--clone-url` and `--commit` at a fork and a branch, or submit the same command to a COPR project of your own with the same chroots.
 
 ### Upstream version pins
 
