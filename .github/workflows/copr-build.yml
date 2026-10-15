@@ -96,13 +96,18 @@ jobs:
             --write-out "%{http_code}" \
             --variable %COPR_WEBHOOK_ID \
             --expand-url "${COPR_URL}/webhooks/github/${COPR_PROJECT_ID}/{{COPR_WEBHOOK_ID}}/${COPR_PACKAGE}/")"
-          # COPR errors are HTML; report only the status.
           if [ "${status}" = "403" ]; then
             echo "::error::COPR rejected the webhook (HTTP 403); COPR_WEBHOOK_ID does not match the project"
             exit 1
           fi
           if [ "${status}" != "200" ] || [ "$(cat response.txt)" != "OK" ]; then
-            echo "::error::COPR rejected the webhook (HTTP ${status}); check the COPR_WEBHOOK_ID secret"
+            # A 404 names the missing object (PROJECT_NOT_FOUND, PACKAGE_NOT_FOUND) in
+            # plain text; other failures answer with HTML, so drop a markup body.
+            detail="$(head -c 200 response.txt | tr -d '\r' | tr '\n' ' ')"
+            case "${detail}" in
+              *'<'*) detail="" ;;
+            esac
+            echo "::error::COPR rejected the webhook (HTTP ${status})${detail:+: ${detail}}; check COPR_PROJECT_ID, COPR_PACKAGE, and the COPR_WEBHOOK_ID secret"
             exit 1
           fi
           echo "Requested a COPR build of ${COMMITTISH} from ${CLONE_URL}"
