@@ -406,9 +406,12 @@ go-unit-tests:
 .PHONY: python-unit-tests
 python-unit-tests:
 	python3 -m venv build/python-unit-tests-venv
-	build/python-unit-tests-venv/bin/pip install --quiet packaging
+	build/python-unit-tests-venv/bin/pip install --quiet packaging tomli
 	build/python-unit-tests-venv/bin/python -m unittest discover \
 		--start-directory packaging/common/python --pattern 'test_*.py' --verbose
+	PYTHONPATH=tools/python/tools build/python-unit-tests-venv/bin/python \
+		-m unittest discover --start-directory tools/python/test \
+		--pattern 'test_*.py' --verbose
 
 # Upstream test suites of the vendored pyproto exporter chain
 # (packaging/common/python/vendor/), in two throwaway venvs. The vendored
@@ -483,6 +486,10 @@ pyproto-unit-tests:
 			--rootdir $(PYPROTO_VENDOR_DIR)/$${suite%%/*} \
 			$(PYPROTO_VENDOR_DIR)/$$suite; \
 	done
+
+.PHONY: check-supported-python-versions
+check-supported-python-versions:
+	python3 tools/python/tools/check_supported_python_versions.py
 
 # ============================================================================
 # Lint

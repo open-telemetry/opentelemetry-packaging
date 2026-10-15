@@ -7,7 +7,8 @@ opentelemetry-python \- OpenTelemetry Python Auto-Instrumentation
 Python auto-instrumentation is activated automatically by the OpenTelemetry Injector
 via
 .B PYTHONPATH
-when a Python 3.10+ application starts.
+when an application starts under one of the interpreters the bundle ships
+wheels for (CPython @SUPPORTED_PYTHON_VERSIONS@).
 .SH DESCRIPTION
 The OpenTelemetry Python Auto-Instrumentation automatically instruments Python
 applications to collect distributed traces, metrics, and logs without requiring
@@ -114,8 +115,10 @@ PYTHONPATH=/usr/lib/opentelemetry/python/glibc:$PYTHONPATH \\
   python myapp.py
 .RE
 .SH NOTES
-Python 3.10 or later is required. Earlier versions are detected and skipped
-without crashing the instrumented process.
+One of CPython @SUPPORTED_PYTHON_VERSIONS@ is required: the bundle carries
+compiled extensions, which are built against one CPython ABI each, so this is a
+membership test rather than a minimum. Any other interpreter is detected and
+skipped without crashing the instrumented process.
 .PP
 If the application already carries OpenTelemetry SDK dependencies, the
 auto-instrumentation detects this (double-instrumentation check) and
