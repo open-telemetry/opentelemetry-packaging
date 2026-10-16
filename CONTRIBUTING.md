@@ -22,6 +22,7 @@ packaging/
     builder.go               Build orchestration, common metadata
     components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
     download.go              Upstream artifact download helpers
+    supported_python_versions.json  Python interpreters the Python package is built for, embedded by download.go
     spec.go                  RPM spec generation for the COPR build (projection of components.go)
     stage.go                 Payload staging into an rpmbuild buildroot, with generated %files lists
   common/                    Shared assets referenced by the builder
@@ -44,6 +45,11 @@ packaging/
     shared/                         Shared test application sources
 testutil/                    Shared Go test helpers
   otelsink/                  In-process OTLP sink + typed assertion API for E2E tests
+tools/                       Repository tooling, never packaged
+  python/
+    tools/                   Scripts that print, check and prune the supported Python versions,
+                             plus shared.py, whose module docstring defines the terms they use
+    test/                    Unit tests for those scripts
 docs/design/                 Architecture and design documents
 ```
 
@@ -61,7 +67,8 @@ The `cmd/build-packages` program:
 
    The Python package bundles compiled C extensions, so its wheels are fetched
    for a fixed target architecture and for the interpreters listed in
-   `supportedPythonVersions` (`download.go`) rather than for the build host.
+   `packaging/builder/supported_python_versions.json`, which `download.go` embeds,
+   rather than for the build host.
    PyPI requirements are installed
    binary-only (manylinux wheels for the target arch); unpublished pure-Python
    requirements — the pyproto exporter chain developed under
@@ -77,8 +84,9 @@ The `cmd/build-packages` program:
 
    `sitecustomize.py` therefore has to know which interpreters the bundle actually carries, and it does not derive that from a minimum version.
    The compiled extensions are each built against a single CPython ABI, and `rpds-py` has no pure-Python fallback, so an interpreter newer than every one in the bundle has no working copy of it there.
-   The builder writes the set it resolved into the script by replacing the `_SUPPORTED_PYTHON_MINORS` line marked with the `supported-python-minors` comment, and the script's version gate is a membership test against that set.
-   Change `supportedPythonVersions` and the gate follows; never edit that line by hand.
+   The builder writes the set it resolved into the script by replacing the module-level `supported_python_versions` line marked with the `supported-python-versions` comment, and the script's version gate is a membership test against that list.
+   The list holds the same `"3.10"`-style strings as the JSON, in the same order, so the two can be compared as they stand.
+   Change `packaging/builder/supported_python_versions.json` and the gate follows; never edit that line by hand.
 
 2. **Constructs an `nfpm.Info`** for each component with the correct metadata:
    - `Provides` virtual package names (e.g., `opentelemetry-injector1`)
@@ -243,13 +251,33 @@ Unit tests for the Go commands, currently the `otel-config-check` declarative-co
 make go-unit-tests
 ```
 
-### Python sitecustomize unit tests (fast, no containers)
+### Python unit tests (fast, no containers)
 
-Unit tests for the guard logic in `packaging/common/python/sitecustomize.py` (version gate, protocol and configuration-file checks, double-instrumentation detection, dependency-conflict checking).
+Two suites: the guard logic in `packaging/common/python/sitecustomize.py` (version gate, protocol and configuration-file checks, double-instrumentation detection, dependency-conflict checking), and the supported Python version scripts in `tools/python/tools/`.
 They run in a throwaway virtualenv under `build/`, so the host Python is untouched.
 
 ```sh
 make python-unit-tests
+```
+
+The second suite lives in `tools/python/test/` and imports `shared.py` from its sibling `tools/python/tools/`, which `unittest discover` does not put on `sys.path`.
+Running it by hand therefore needs `PYTHONPATH`:
+
+```sh
+PYTHONPATH=tools/python/tools python3 -m unittest discover --start-directory tools/python/test
+```
+
+### Supported Python versions check (fast, no containers)
+
+Checks that no supported Python version is below the minimum required Python version.
+Both terms are defined in the module docstring of `tools/python/tools/shared.py`, which is the only place either one is defined.
+It installs the PyPI pins into a throwaway bundled distributions directory with `pip install --target --python-version <target> --only-binary=:all:`, the same way the builder assembles the bundled distributions, and reads the vendored `requires-python` values straight from each `pyproject.toml`.
+It runs under whatever `python3` is on `PATH` and needs no other interpreter installed, because pip treats `--python-version` as a resolution target rather than an interpreter to run.
+It resolves for each supported Python version in ascending order and stops at the first that resolves, so a version whose pins no longer resolve is reported as one the package can no longer be built for, even when the metadata of what did resolve would not show it.
+Run `python3 tools/python/tools/prune_supported_python_versions.py` to drop the supported Python versions that fall below the minimum required Python version.
+
+```sh
+make check-supported-python-versions
 ```
 
 ### Pyproto exporter tests (fast, no containers)
