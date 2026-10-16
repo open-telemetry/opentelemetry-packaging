@@ -5,7 +5,7 @@
 - **Go 1.26+** (package builds and tests are pure Go)
 - **npm** (needed to fetch the Node.js auto-instrumentation agent from the npm registry)
 - **Python 3 with pip** (needed to fetch the Python auto-instrumentation packages; invoked as `python3 -m pip`)
-- **A container engine** (Podman or Docker — needed for local repository generation and integration tests)
+- **A container engine** (Podman or Docker, needed for package-image builds, local repository generation, and integration tests).
 - **`rpmbuild`** (optional — only for building the source RPM natively; `make srpm-container` runs it in a container instead)
 
 No Ruby, FPM, or special Docker images are required to build packages.
@@ -16,6 +16,7 @@ No Ruby, FPM, or special Docker images are required to build packages.
 .copr/Makefile               COPR "make srpm" entry point (installs the tooling, then calls make srpm)
 cmd/build-packages/          CLI entry point for building .deb and .rpm packages
 cmd/build-spec/rpm/          CLI entry point for generating and staging the source RPM spec
+cmd/image-metadata/          Package-image metadata and build plans
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
 packaging/
   builder/                   Go library that drives nfpm to create packages
@@ -33,9 +34,13 @@ packaging/
     dotnet/                  "
     python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py (plus its unit tests)
       vendor/                The pyproto exporter chain, developed here with its test suites (unpublished pure-Python packages; see its README)
+  images/                    Package-image tooling
+    config.json              Supported packages and architectures
+    Dockerfile               Shared package extraction and image definition
   repo/                      APT and YUM repository generation scripts
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
+    images/                         Package-image contents and copy tests
     pyprotogrpc/                    Pure-Python gRPC transport tests against the otel-sink (host-side)
     {python,java,nodejs,dotnet}/    Matrix E2E tests (deb+rpm × base images) asserting via the otel-sink
                                     (python/ also hosts the sitecustomize.py interpreter compatibility tests)
@@ -233,11 +238,21 @@ go run ./cmd/build-packages -version <VERSION> -arch <ARCH> -format all -output 
 The Python package ships the `otel-config-check` validator, which the make targets cross-compile beforehand (`make otel-config-check`, producing `build/bin/otel-config-check-<arch>`).
 When invoking `build-packages` directly for the Python component, build that binary first, or point `-config-check-binary` at one.
 
+### Building package images
+
+Build all configured package images:
+
+```sh
+make images
+```
+
+See [the image documentation](packaging/images/README.md) for configuration, image contents, naming, and individual Make tasks.
+
 ## Testing
 
 ### Go command unit tests (fast, no containers)
 
-Unit tests for the Go commands, currently the `otel-config-check` declarative-configuration validator that ships inside the Python package.
+Unit tests cover the Go commands, package-image configuration, and build-plan selection.
 
 ```sh
 make go-unit-tests
@@ -289,11 +304,23 @@ These tests parse `.deb` and `.rpm` files natively in Go using [pault.ag/go/debi
 make integration-test-metadata
 ```
 
+### Package-image tests (containers required)
+
+Build and test all configured package images:
+
+```sh
+make integration-test-images
+```
+
+These tests are also included in `make integration-tests`.
+See [the image Make tasks](packaging/images/README.md#make-tasks) for per-component targets.
+
 ### Integration tests (containers required)
 
-End-to-end tests that install packages in Debian/Fedora containers from a local APT/YUM repository, start instrumented applications, and verify telemetry output.
+End-to-end tests install packages in Debian/Fedora containers from a local APT/YUM repository, start instrumented applications, and verify telemetry output.
+The aggregate target also builds and tests package images.
 
-Run all integration tests (builds packages and local repositories first):
+Run all integration tests (builds packages, local repositories, and package images first):
 
 ```sh
 make integration-tests
@@ -377,4 +404,5 @@ To add a new language auto-instrumentation package:
 
 ## Releasing
 
-Cutting a release and publishing the package repositories is a maintainer task documented separately in [RELEASING.md](RELEASING.md).
+System-package releases and automatic package-image publication are documented separately in [RELEASING.md](RELEASING.md).
+Package images follow merged upstream version pins and do not require a system-package release.
