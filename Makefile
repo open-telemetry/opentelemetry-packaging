@@ -17,7 +17,7 @@ SHELL = /bin/bash
 
 # Package version. Derived from the latest git tag if available, otherwise
 # falls back to a development placeholder.
-VERSION ?= $(shell v=`git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null` && echo "$${v#v}" || echo "0.0.0-dev")
+VERSION ?= $(patsubst v%,%,$(shell git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null || echo "0.0.0-dev"))
 
 # Target CPU architecture (amd64 or arm64).
 ARCH ?= amd64
@@ -59,6 +59,11 @@ COMPONENTS := injector java nodejs dotnet python meta
 # Languages that have integration tests (meta is excluded).
 TEST_LANGUAGES := java nodejs dotnet python
 
+IMAGE_VERSION = $(shell go run ./cmd/image-metadata -component $* -field version)
+IMAGE_PACKAGE = $(shell go run ./cmd/image-metadata -component $* -field package)
+IMAGE_REF = ghcr.io/open-telemetry/opentelemetry-packaging/$(IMAGE_PACKAGE):$(IMAGE_VERSION)
+IMAGE_CONTEXT = build/images/$*
+
 # ============================================================================
 # Package Build Targets (nfpm, pure Go)
 # ============================================================================
@@ -90,6 +95,33 @@ rpm-packages: otel-config-check
 .PHONY: packages
 packages: otel-config-check
 	go run ./cmd/build-packages -version $(VERSION) -arch $(ARCH) -format all -output $(OUTPUT_DIR)
+
+# ============================================================================
+# Package images
+# ============================================================================
+
+.PHONY: images
+.PRECIOUS: image-packages-% image-%
+images:
+	@set -e; components="$$(go run ./cmd/image-metadata -field components)"; \
+	for component in $$components; do \
+		$(MAKE) image-$$component; \
+	done
+
+image-packages-%:
+	go run ./cmd/image-metadata -component $*
+	rm -rf $(IMAGE_CONTEXT)/$(ARCH)
+	go run ./cmd/build-packages -version $(IMAGE_VERSION) -arch $(ARCH) -format deb \
+		-component $* -output $(IMAGE_CONTEXT)/$(ARCH)
+
+image-%: image-packages-%
+	$(CONTAINER_ENGINE) build --platform linux/$(ARCH) \
+		--build-arg TARGETARCH=$(ARCH) --build-arg PACKAGE=$(IMAGE_PACKAGE) \
+		-f packaging/images/Dockerfile -t $(IMAGE_REF) $(IMAGE_CONTEXT)
+
+integration-test-image-%: image-%
+	IMAGE_COMPONENT=$* IMAGE_REF=$(IMAGE_REF) IMAGE_PACKAGES_DIR=$(IMAGE_CONTEXT)/$(ARCH) \
+		CONTAINER_ENGINE=$(CONTAINER_ENGINE) go test -v -timeout 5m ./packaging/tests/images/
 
 # ============================================================================
 # Source RPM (rpmbuild path, used by COPR)
@@ -324,9 +356,16 @@ export TESTCONTAINERS_RYUK_DISABLED = true
 integration-test-metadata: packages
 	go test -v -timeout 5m ./packaging/tests/metadata/
 
+.PHONY: integration-test-images
+integration-test-images:
+	@set -e; components="$$(go run ./cmd/image-metadata -field components)"; \
+	for component in $$components; do \
+		$(MAKE) integration-test-image-$$component; \
+	done
+
 .PHONY: integration-tests
 integration-tests: local-repos local-apt-repo-next local-rpm-repo-next \
-	local-apt-vendor-repo local-rpm-vendor-repo
+	local-apt-vendor-repo local-rpm-vendor-repo integration-test-images
 	go test -v -timeout 30m ./packaging/tests/...
 
 .PHONY: integration-test-deb-java
@@ -394,11 +433,10 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 # Unit Tests
 # ============================================================================
 
-# Unit tests for the Go commands (e.g. the otel-config-check validator shipped
-# in the Python package).
+# Unit tests for Go commands and package-image configuration.
 .PHONY: go-unit-tests
 go-unit-tests:
-	go test -v ./cmd/...
+	go test -v ./cmd/... ./packaging/images/
 
 # Unit tests for sitecustomize.py. They need the `packaging` module (a runtime
 # dependency of sitecustomize.py itself); a throwaway virtualenv keeps the

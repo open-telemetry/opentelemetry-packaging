@@ -1,0 +1,10 @@
+{
+  "packages": [
+    { "component": "injector" },
+    { "component": "java" }
+  ],
+  "architectures": [
+    { "arch": "amd64", "runner": "ubuntu-24.04" },
+    { "arch": "arm64", "runner": "ubuntu-24.04-arm" }
+  ]
+}
