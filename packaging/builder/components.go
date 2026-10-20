@@ -271,14 +271,14 @@ func pythonContents(cfg Config) (files.Contents, func(), error) {
 	if err := writeSitecustomize(
 		filepath.Join(commonDir, "python", "sitecustomize.py"),
 		filepath.Join(pythonDir, "sitecustomize.py"),
-		supportedPythonVersions,
+		SupportedPythonVersions,
 	); err != nil {
 		return nil, cleanup, fmt.Errorf("writing sitecustomize.py: %w", err)
 	}
 
 	// Generate the dependency manifest from the installed dist-info directories.
 	// sitecustomize.py reads this at runtime to detect version conflicts with the application.
-	for _, pythonVersion := range supportedPythonVersions {
+	for _, pythonVersion := range SupportedPythonVersions {
 		interpreterDir := filepath.Join(pythonDir, pythonABITag(pythonVersion))
 		if err := generateAllDependencies(
 			[]string{pythonDir, interpreterDir},

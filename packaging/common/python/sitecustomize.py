@@ -20,6 +20,16 @@ from os.path import dirname, isfile, join, normpath
 import sys
 from sys import path, version, version_info, stderr
 
+# GENERATED, do not hand-edit. packaging/builder/supported_python_versions.json
+# is the source of truth, and writeSitecustomize in
+# packaging/builder/download.go rewrites this line in the copy it stages into
+# the package, finding it by the trailing supported-python-versions marker and
+# requiring exactly one match. The entries are the same strings the JSON holds,
+# in the same order, so the two can be compared without reformatting either.
+# To change which interpreters the bundle admits, change the JSON and rebuild;
+# the value committed here only has to stay equal to it.
+supported_python_versions = ["3.10", "3.11", "3.12", "3.13"]  # supported-python-versions
+
 # Distributions whose presence in the application means it is already
 # instrumented. Activating on top of one of them would put a second copy of the
 # same modules and entry points in the process, which the distributions cannot
@@ -458,10 +468,9 @@ def import_distro():
     _log_debug("checking Python version")
     current_site = dirname(__file__)
 
-    # Require Python >= 3.10 (opentelemetry-exporter-otlp-pyproto-http minimum).
     # We cannot use named attributes (e.g. sys.version_info.major) as those were introduced in 3.1.
-    _SUPPORTED_PYTHON_MINORS = (10, 11, 12, 13,)  # supported-python-minors
-    if version_info[0] != 3 or version_info[1] not in _SUPPORTED_PYTHON_MINORS:
+    running_python_version = "{}.{}".format(version_info[0], version_info[1])
+    if running_python_version not in supported_python_versions:
         _self_deactivate(current_site)
         _log_cannot_auto_instrument_warning("unsupported Python version: {}".format(version))
         return
