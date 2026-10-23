@@ -16,10 +16,17 @@ package python_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/open-telemetry/opentelemetry-packaging/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // appMarker is printed by the containerized application after sitecustomize.py
@@ -36,43 +43,87 @@ const appLogMarker = "APP INFO myapp: application logging is intact"
 // level below the INFO it asked for.
 const appDebugMarker = "APP DEBUG"
 
+// supportedPythonVersionsFile holds the supported Python versions the builder
+// embeds. The cases below are generated from it rather than listed here, so
+// that changing which interpreters the package ships cannot leave this suite
+// asserting against a set the package no longer carries.
+const supportedPythonVersionsFile = "../../builder/supported_python_versions.json"
+
+// readSupportedPythonVersions returns the supported Python versions in
+// ascending order, as "major.minor" strings.
+func readSupportedPythonVersions(t *testing.T) []string {
+	t.Helper()
+	data, err := os.ReadFile(supportedPythonVersionsFile)
+	require.NoError(t, err, "reading %s", supportedPythonVersionsFile)
+
+	var versions []string
+	require.NoError(t, json.Unmarshal(data, &versions), "parsing %s", supportedPythonVersionsFile)
+	require.NotEmpty(t, versions, "%s lists no Python version", supportedPythonVersionsFile)
+
+	sort.Slice(versions, func(i, j int) bool {
+		return pythonMinor(t, versions[i]) < pythonMinor(t, versions[j])
+	})
+	return versions
+}
+
+// pythonMinor returns the minor of a "3.N" version. Every supported Python
+// version is a 3.x one; the builder's own writeSitecustomize rejects anything
+// else, so a 4.x entry is a bug to fail on rather than to interpret.
+func pythonMinor(t *testing.T, version string) int {
+	t.Helper()
+	major, minor, found := strings.Cut(version, ".")
+	require.True(t, found, "malformed Python version %q", version)
+	require.Equal(t, "3", major, "only 3.x Python versions are supported, found %q", version)
+	parsed, err := strconv.Atoi(minor)
+	require.NoError(t, err, "malformed Python version %q", version)
+	return parsed
+}
+
 func TestSitecustomizePythonVersionCompatibility(t *testing.T) {
-	cases := []struct {
+	supported := readSupportedPythonVersions(t)
+
+	type versionCase struct {
 		name  string
 		image string
 		// expectedGuard is the sitecustomize.py warning proving which guard
 		// handled this interpreter.
 		expectedGuard string
-	}{
+	}
+
+	// 2.7 is the oldest interpreter the injector may reach at all: the script
+	// has to parse there, which is why it is written in the Python 2 subset.
+	cases := []versionCase{
 		{
 			name:          "python2.7-deactivates-at-version-gate",
 			image:         "python:2.7-slim",
 			expectedGuard: "unsupported Python version",
 		},
-		{
-			name:          "python3.9-deactivates-at-version-gate",
-			image:         "python:3.9-slim",
+	}
+
+	// The gate is a membership test, so the interpreters just outside the set
+	// at either end are what prove it is one: one minor below the lowest
+	// supported version, and one above the highest.
+	for _, version := range []string{
+		fmt.Sprintf("3.%d", pythonMinor(t, supported[0])-1),
+		fmt.Sprintf("3.%d", pythonMinor(t, supported[len(supported)-1])+1),
+	} {
+		cases = append(cases, versionCase{
+			name:          "python" + version + "-deactivates-at-version-gate",
+			image:         "python:" + version + "-slim",
 			expectedGuard: "unsupported Python version",
-		},
-		{
-			// 3.10 is the minimum supported version: the version gate lets it
-			// through, so the protocol guard fires next. The Dockerfile sets an
-			// unsupported protocol (http/json) to make that deactivation
-			// deterministic — proof the gate passed.
-			name:          "python3.10-passes-version-gate",
-			image:         "python:3.10-slim",
+		})
+	}
+
+	// Every supported interpreter passes the version gate, so the protocol
+	// guard fires next. The Dockerfile sets an unsupported protocol
+	// (http/json) to make that deactivation deterministic — proof the gate
+	// passed.
+	for _, version := range supported {
+		cases = append(cases, versionCase{
+			name:          "python" + version + "-passes-version-gate",
+			image:         "python:" + version + "-slim",
 			expectedGuard: "OTEL_EXPORTER_OTLP_PROTOCOL=http/json is not supported",
-		},
-		{
-			name:          "python3.13-passes-version-gate",
-			image:         "python:3.13-slim",
-			expectedGuard: "OTEL_EXPORTER_OTLP_PROTOCOL=http/json is not supported",
-		},
-		{
-			name:          "python3.14-deactivates-at-version-gate",
-			image:         "python:3.14-slim",
-			expectedGuard: "unsupported Python version",
-		},
+		})
 	}
 
 	for _, tc := range cases {
