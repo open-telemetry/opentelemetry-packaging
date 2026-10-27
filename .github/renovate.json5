@@ -17,6 +17,17 @@
       "matchStrings": [
         "# renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(?:\\s+versioning=(?<versioning>\\S+))?\\s+(?<currentValue>\\S+)"
       ]
+    },
+    {
+      // Update github runners used to publish images, which are maintained in packaging/images/config.json.
+      "customType": "regex",
+      "managerFilePatterns": ["/^packaging/images/config\\.json$/"],
+      "matchStrings": [
+        "\"runner\"\\s*:\\s*\"(?<depName>[a-z]+)-(?<currentValue>[0-9][0-9a-z.-]*)\""
+      ],
+      "datasourceTemplate": "github-runners",
+      // Docker versioning preserves compatibility suffixes such as "-arm".
+      "versioningTemplate": "docker"
     }
   ],
   "packageRules": [
