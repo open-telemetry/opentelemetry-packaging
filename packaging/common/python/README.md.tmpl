@@ -1,7 +1,7 @@
 # OpenTelemetry Python Auto-Instrumentation
 
 This package provides OpenTelemetry Python auto-instrumentation for automatic
-instrumentation of applications running CPython 3.10, 3.11, 3.12, or 3.13.
+instrumentation of applications running CPython @SUPPORTED_PYTHON_VERSIONS@.
 
 ## Overview
 
@@ -19,7 +19,7 @@ Everything that is the same for every supported interpreter sits in the bundle r
 the pure-Python wheels, the stable-ABI wheels such as the one `psutil` publishes, and
 `sitecustomize.py` itself.
 The rest sits in a subdirectory per interpreter, named after that interpreter's CPython
-ABI tag (`cp310`, `cp311`, `cp312`, `cp313`), each with its own `all-dependencies.txt`.
+ABI tag (@SUPPORTED_PYTHON_ABI_TAGS@), each with its own `all-dependencies.txt`.
 `sitecustomize.py` adds the subdirectory matching the running interpreter to `sys.path`
 directly after the bundle root, so an application running Python 3.12 loads the `cp312`
 wheels and never sees the others.
@@ -106,7 +106,7 @@ export OTEL_CONFIG_FILE=/etc/opentelemetry/python/otel-config.yaml
 `sitecustomize.py` performs the following checks at startup before activating instrumentation:
 
 1. **Python version**: Requires one of the interpreters the bundle ships wheels for
-   (CPython 3.10, 3.11, 3.12, or 3.13). This is a membership test, not a minimum: an
+   (CPython @SUPPORTED_PYTHON_VERSIONS@). This is a membership test, not a minimum: an
    interpreter newer than every one in the bundle has no wheels here either, since
    `rpds-py` ships no pure-Python fallback. Any other interpreter, older or newer, is
    skipped gracefully.

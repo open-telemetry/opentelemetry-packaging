@@ -43,6 +43,9 @@ jobs:
       - name: Run the vendored pyproto exporter test suites
         run: make pyproto-unit-tests
 
+      - name: Check the supported Python versions are in sync with the bundled distributions
+        run: make check-supported-python-versions
+
   sitecustomize-compatibility-tests:
     runs-on: ubuntu-26.04
     steps:
