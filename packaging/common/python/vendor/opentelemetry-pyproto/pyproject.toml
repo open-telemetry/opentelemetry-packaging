@@ -25,7 +25,9 @@ dev = [
     "opentelemetry-proto == 1.44.0.dev",
     "protobuf>=5.0",
     "pytest>=7.0",
-    "pytest-benchmark>=4",
+    # 5.3.1 is the first release that reads the public node.nodeid; earlier
+    # ones error at fixture setup under pytest 9.2 and newer.
+    "pytest-benchmark>=5.3.1",
 ]
 
 [tool.uv.sources]
