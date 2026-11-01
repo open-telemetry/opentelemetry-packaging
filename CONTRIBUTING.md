@@ -2,6 +2,7 @@
 
 ## Prerequisites
 
+- **GNU Make 4.0+** (the Makefile uses constructs that GNU Make 3.81 cannot parse)
 - **Go 1.26+** (package builds and tests are pure Go)
 - **npm** (needed to fetch the Node.js auto-instrumentation agent from the npm registry)
 - **Python 3 with pip** (needed to fetch the Python auto-instrumentation packages; invoked as `python3 -m pip`)
@@ -9,6 +10,15 @@
 - **`rpmbuild`** (optional — only for building the source RPM natively; `make srpm-container` runs it in a container instead)
 
 No Ruby, FPM, or special Docker images are required to build packages.
+
+macOS ships GNU Make 3.81 as `make`, which fails on this Makefile with `*** unterminated call to function 'shell': missing ')'`.
+Install a current GNU Make with Homebrew and run the targets through `gmake`:
+
+```sh
+brew install make
+```
+
+Every `make` invocation in this document is then `gmake` instead.
 
 ## Repository layout
 
