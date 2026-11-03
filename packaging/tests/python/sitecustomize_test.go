@@ -16,8 +16,12 @@ package python_test
 
 import (
 	"context"
+	"fmt"
+	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/open-telemetry/opentelemetry-packaging/packaging/builder"
 	"github.com/open-telemetry/opentelemetry-packaging/testutil"
 	"github.com/stretchr/testify/assert"
 )
@@ -36,44 +40,65 @@ const appLogMarker = "APP INFO myapp: application logging is intact"
 // level below the INFO it asked for.
 const appDebugMarker = "APP DEBUG"
 
+const versionGateGuard = "unsupported Python version"
+
+const protocolGuard = "OTEL_EXPORTER_OTLP_PROTOCOL=http/json is not supported"
+
 func TestSitecustomizePythonVersionCompatibility(t *testing.T) {
-	cases := []struct {
+	type interpreterCase struct {
 		name  string
 		image string
 		// expectedGuard is the sitecustomize.py warning proving which guard
 		// handled this interpreter.
 		expectedGuard string
-	}{
-		{
-			name:          "python2.7-deactivates-at-version-gate",
-			image:         "python:2.7-slim",
-			expectedGuard: "unsupported Python version",
-		},
-		{
-			name:          "python3.9-deactivates-at-version-gate",
-			image:         "python:3.9-slim",
-			expectedGuard: "unsupported Python version",
-		},
-		{
-			// 3.10 is the minimum supported version: the version gate lets it
-			// through, so the protocol guard fires next. The Dockerfile sets an
-			// unsupported protocol (http/json) to make that deactivation
-			// deterministic — proof the gate passed.
-			name:          "python3.10-passes-version-gate",
-			image:         "python:3.10-slim",
-			expectedGuard: "OTEL_EXPORTER_OTLP_PROTOCOL=http/json is not supported",
-		},
-		{
-			name:          "python3.13-passes-version-gate",
-			image:         "python:3.13-slim",
-			expectedGuard: "OTEL_EXPORTER_OTLP_PROTOCOL=http/json is not supported",
-		},
-		{
-			name:          "python3.14-deactivates-at-version-gate",
-			image:         "python:3.14-slim",
-			expectedGuard: "unsupported Python version",
-		},
 	}
+
+	lowest, highest := -1, -1
+	for _, supportedVersion := range builder.SupportedPythonVersions {
+		major, minorText, separated := strings.Cut(supportedVersion, ".")
+		if !separated || major != "3" {
+			t.Fatalf("supported_python_versions.json lists %q; this suite derives"+
+				" its interpreters from 3.x versions only", supportedVersion)
+		}
+		minor, err := strconv.Atoi(minorText)
+		if err != nil {
+			t.Fatalf("supported_python_versions.json lists %q: %v", supportedVersion, err)
+		}
+		if lowest < 0 || minor < lowest {
+			lowest = minor
+		}
+		if minor > highest {
+			highest = minor
+		}
+	}
+
+	cases := []interpreterCase{{
+		name:          "python2.7-deactivates-at-version-gate",
+		image:         "python:2.7-slim",
+		expectedGuard: versionGateGuard,
+	}}
+	deactivatesAtVersionGate := func(minor int, tagSuffix string) {
+		cases = append(cases, interpreterCase{
+			name:          fmt.Sprintf("python3.%d-deactivates-at-version-gate", minor),
+			image:         fmt.Sprintf("python:3.%d-%s", minor, tagSuffix),
+			expectedGuard: versionGateGuard,
+		})
+	}
+	passesVersionGate := func(minor int) {
+		cases = append(cases, interpreterCase{
+			name:          fmt.Sprintf("python3.%d-passes-version-gate", minor),
+			image:         fmt.Sprintf("python:3.%d-slim", minor),
+			expectedGuard: protocolGuard,
+		})
+	}
+	if lowest > 0 {
+		deactivatesAtVersionGate(lowest-1, "slim")
+	}
+	passesVersionGate(lowest)
+	if highest != lowest {
+		passesVersionGate(highest)
+	}
+	deactivatesAtVersionGate(highest+1, "rc-slim")
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

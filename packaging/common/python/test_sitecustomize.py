@@ -27,10 +27,10 @@ TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 SITECUSTOMIZE_PATH = os.path.join(TEST_DIR, "sitecustomize.py")
 
 
-def _supported_python_minors():
-    """Read the interpreter minor versions the committed sitecustomize.py admits.
+def _supported_python_versions():
+    """Read the interpreter versions the committed sitecustomize.py admits.
 
-    The tuple is a build-time substitution point: writeSitecustomize in
+    The list is a build-time substitution point: writeSitecustomize in
     packaging/builder/download.go rewrites it from the set the builder actually
     resolved wheels for. The tests read it out of the source rather than
     repeating it, so they keep testing the gate instead of drifting into
@@ -38,12 +38,16 @@ def _supported_python_minors():
     """
     with open(SITECUSTOMIZE_PATH, "r", encoding="utf-8") as source:
         match = re_search(
-            r"_SUPPORTED_PYTHON_MINORS = \(([0-9, ]*)\)  # supported-python-minors",
+            r"supported_python_versions = \[([0-9\". ,]*)\]  # supported-python-versions",
             source.read())
-    return tuple(int(minor) for minor in match.group(1).replace(" ", "").rstrip(",").split(","))
+    return tuple(
+        entry.strip().strip('"') for entry in match.group(1).split(","))
 
 
-SUPPORTED_PYTHON_MINORS = _supported_python_minors()
+SUPPORTED_PYTHON_VERSIONS = _supported_python_versions()
+
+SUPPORTED_PYTHON_MINORS = tuple(
+    int(version_string.split(".")[1]) for version_string in SUPPORTED_PYTHON_VERSIONS)
 
 LOADED_PYTHON_MINOR = SUPPORTED_PYTHON_MINORS[0]
 

@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/sha512"
+	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -511,9 +512,22 @@ func extractZipFile(f *zip.File, destDir string) (retErr error) {
 // pipTimeout is the maximum duration for a pip subprocess.
 const pipTimeout = 10 * time.Minute
 
-// Update packaging/common/python/README.md and the interpreter cases in
-// packaging/tests/python/sitecustomize_test.go after adding a new interpreter here.
-var supportedPythonVersions = []string{"3.10", "3.11", "3.12", "3.13"}
+// Update packaging/common/python/README.md after adding a new interpreter here.
+var (
+	//go:embed supported_python_versions.json
+	supportedPythonVersionsJSON string
+
+	SupportedPythonVersions []string
+)
+
+func init() {
+	if err := json.Unmarshal([]byte(supportedPythonVersionsJSON), &SupportedPythonVersions); err != nil {
+		panic(fmt.Sprintf("parsing supported_python_versions.json: %v", err))
+	}
+	if len(SupportedPythonVersions) == 0 {
+		panic("supported_python_versions.json lists no Python version")
+	}
+}
 
 func pythonABITag(pythonVersion string) string {
 	return "cp" + strings.ReplaceAll(pythonVersion, ".", "")
@@ -734,8 +748,8 @@ func downloadPythonAgent(cfg Config, destDir string) error {
 
 	// Pass 1a: download the full resolved closure into a local cache and
 	// verify it before anything is installed.
-	caches := make([]interpreterCache, 0, len(supportedPythonVersions))
-	for _, pythonVersion := range supportedPythonVersions {
+	caches := make([]interpreterCache, 0, len(SupportedPythonVersions))
+	for _, pythonVersion := range SupportedPythonVersions {
 		fmt.Printf("  Resolving Python OTel packages (PyPI, linux/%s, py%s)\n", cfg.Arch, pythonVersion)
 
 		downloadDir, err := os.MkdirTemp("", "otel-python-download-*")
@@ -770,11 +784,11 @@ func downloadPythonAgent(cfg Config, destDir string) error {
 	// Pass 1b: install from the verified local cache only. --no-index means
 	// pip cannot fall back to re-fetching a file that was never checked.
 	fmt.Printf("  Installing %d shared Python OTel package(s) into %s\n", len(sharedWheels), destDir)
-	if err := installWheels(python, sharedWheels, destDir, supportedPythonVersions[0], platforms); err != nil {
+	if err := installWheels(python, sharedWheels, destDir, SupportedPythonVersions[0], platforms); err != nil {
 		return fmt.Errorf("installing shared packages: %w", err)
 	}
 
-	for _, pythonVersion := range supportedPythonVersions {
+	for _, pythonVersion := range SupportedPythonVersions {
 		interpreterDir := filepath.Join(destDir, pythonABITag(pythonVersion))
 		wheels := wheelsPerVersion[pythonVersion]
 		fmt.Printf("  Installing %d Python %s package(s) into %s\n", len(wheels), pythonVersion, interpreterDir)
@@ -817,8 +831,10 @@ func downloadPythonAgent(cfg Config, destDir string) error {
 	return nil
 }
 
-var supportedPythonMinorsPattern = regexp.MustCompile(
-	`_SUPPORTED_PYTHON_MINORS = \([0-9, ]*\)  # supported-python-minors`)
+var supportedPythonVersionsPattern = regexp.MustCompile(
+	`supported_python_versions = \[[0-9". ,]*\]  # supported-python-versions`)
+
+var pythonVersionPattern = regexp.MustCompile(`^3\.[0-9]+$`)
 
 func writeSitecustomize(sourcePath, destPath string, pythonVersions []string) error {
 	data, err := os.ReadFile(sourcePath)
@@ -826,26 +842,25 @@ func writeSitecustomize(sourcePath, destPath string, pythonVersions []string) er
 		return err
 	}
 
-	if found := supportedPythonMinorsPattern.FindAllString(string(data), -1); len(found) != 1 {
+	if found := supportedPythonVersionsPattern.FindAllString(string(data), -1); len(found) != 1 {
 		return fmt.Errorf(
-			"expected exactly 1 supported-python-minors marker in %s, found %d",
+			"expected exactly 1 supported-python-versions marker in %s, found %d",
 			sourcePath, len(found))
 	}
 
-	minors := make([]string, 0, len(pythonVersions))
+	quoted := make([]string, 0, len(pythonVersions))
 	for _, pythonVersion := range pythonVersions {
-		major, minor, found := strings.Cut(pythonVersion, ".")
-		if !found || major != "3" {
+		if !pythonVersionPattern.MatchString(pythonVersion) {
 			return fmt.Errorf("unsupported Python version %q, want \"3.N\"", pythonVersion)
 		}
-		minors = append(minors, minor)
+		quoted = append(quoted, fmt.Sprintf("%q", pythonVersion))
 	}
 
 	replacement := fmt.Sprintf(
-		"_SUPPORTED_PYTHON_MINORS = (%s,)  # supported-python-minors",
-		strings.Join(minors, ", "))
+		"supported_python_versions = [%s]  # supported-python-versions",
+		strings.Join(quoted, ", "))
 
-	rewritten := supportedPythonMinorsPattern.ReplaceAllString(string(data), replacement)
+	rewritten := supportedPythonVersionsPattern.ReplaceAllString(string(data), replacement)
 	return os.WriteFile(destPath, []byte(rewritten), 0o644)
 }
 
