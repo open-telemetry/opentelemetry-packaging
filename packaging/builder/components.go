@@ -293,6 +293,12 @@ func pythonContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, err
 	}
 
+	readmePath, err := generateDoc(cfg, staging,
+		filepath.Join(commonDir, "python", "README.md.tmpl"))
+	if err != nil {
+		return nil, cleanup, err
+	}
+
 	return files.Contents{
 		// The injector resolves the agent path as <prefix>/<libc> (the same scheme
 		// as .NET), so the bundle installs under a glibc/ subdirectory while the
@@ -303,7 +309,7 @@ func pythonContents(cfg Config) (files.Contents, func(), error) {
 		configFile(filepath.Join(commonDir, "python", "otel-config.yaml"), pythonConfigDir+"/otel-config.yaml"),
 		regularFile(filepath.Join(commonDir, "python", "injector.conf"), injectorConfigDir+"/conf.d/python.conf", 0o644),
 		regularFile(manPath, "/usr/share/man/man8/opentelemetry-python.8.gz", 0o644),
-		regularFile(filepath.Join(commonDir, "python", "README.md"), "/usr/share/doc/opentelemetry-python-autoinstrumentation/README.md", 0o644),
+		regularFile(readmePath, "/usr/share/doc/opentelemetry-python-autoinstrumentation/README.md", 0o644),
 		// The bundle redistributes files derived from the Dash0 operator; the
 		// NOTICE at the repository root carries the attribution required by
 		// Apache-2.0 and ships alongside the package documentation.
@@ -335,7 +341,64 @@ func manPageTemplate(cfg Config, component string) string {
 		fmt.Sprintf("opentelemetry-%s.8.tmpl", component))
 }
 
-// GenerateManPage expands @VERSION@ and @DATE@ placeholders in the man page
+// expandDocPlaceholders substitutes the placeholders the documentation
+// templates carry. Everything generated here has exactly one source in the
+// repository — the version the build was given, the supported Python versions
+// file — so no shipped document can name interpreters the package does not
+// carry. Placeholders a given template does not use cost nothing.
+func expandDocPlaceholders(content, version string) string {
+	abiTags := make([]string, 0, len(supportedPythonVersions))
+	for _, pythonVersion := range supportedPythonVersions {
+		abiTags = append(abiTags, "`"+pythonABITag(pythonVersion)+"`")
+	}
+
+	replacer := strings.NewReplacer(
+		"@VERSION@", version,
+		"@DATE@", time.Now().Format("January 2006"),
+		"@SUPPORTED_PYTHON_VERSIONS@", joinWithOr(supportedPythonVersions),
+		"@SUPPORTED_PYTHON_ABI_TAGS@", strings.Join(abiTags, ", "),
+	)
+	return replacer.Replace(content)
+}
+
+// joinWithOr renders a list the way prose names one: "3.10, 3.11, or 3.12".
+func joinWithOr(items []string) string {
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return items[0]
+	case 2:
+		return items[0] + " or " + items[1]
+	default:
+		return strings.Join(items[:len(items)-1], ", ") + ", or " + items[len(items)-1]
+	}
+}
+
+// generateDoc expands the documentation placeholders in the template at
+// templatePath and writes the result into stagingDir under the template's own
+// name minus the .tmpl suffix. It returns the path to the written file. Unlike
+// GenerateManPage it compresses nothing, since a README ships as it reads.
+func generateDoc(cfg Config, stagingDir, templatePath string) (string, error) {
+	templateName := filepath.Base(templatePath)
+	if !strings.HasSuffix(templateName, ".tmpl") {
+		return "", fmt.Errorf("documentation template %q must end in .tmpl", templateName)
+	}
+
+	tmplData, err := os.ReadFile(templatePath)
+	if err != nil {
+		return "", fmt.Errorf("reading documentation template: %w", err)
+	}
+
+	outPath := filepath.Join(stagingDir, strings.TrimSuffix(templateName, ".tmpl"))
+	content := expandDocPlaceholders(string(tmplData), cfg.Version)
+	if err := os.WriteFile(outPath, []byte(content), 0o644); err != nil {
+		return "", err
+	}
+	return outPath, nil
+}
+
+// GenerateManPage expands the documentation placeholders in the man page
 // template at templatePath, compresses it with gzip, and writes the result
 // into stagingDir. It returns the path to the gzipped file.
 //
@@ -353,9 +416,7 @@ func GenerateManPage(cfg Config, stagingDir, templatePath string) (string, error
 		return "", fmt.Errorf("reading man page template: %w", err)
 	}
 
-	content := string(tmplData)
-	content = strings.ReplaceAll(content, "@VERSION@", cfg.Version)
-	content = strings.ReplaceAll(content, "@DATE@", time.Now().Format("January 2006"))
+	content := expandDocPlaceholders(string(tmplData), cfg.Version)
 
 	outPath := filepath.Join(stagingDir, strings.TrimSuffix(templateName, ".tmpl")+".gz")
 	f, err := os.Create(outPath)

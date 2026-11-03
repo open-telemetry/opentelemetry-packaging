@@ -93,10 +93,10 @@ func TestPartitionWheelsByInterpreterRejectsAnEmptyCacheList(t *testing.T) {
 	}
 }
 
-func TestWriteSitecustomizeRewritesTheSupportedInterpreterTuple(t *testing.T) {
+func TestWriteSitecustomizeRewritesTheSupportedInterpreterList(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "sitecustomize.py")
 	const body = "x = 1\n" +
-		"    _SUPPORTED_PYTHON_MINORS = (99,)  # supported-python-minors\n" +
+		"supported_python_versions = [\"3.99\"]  # supported-python-versions\n" +
 		"y = 2\n"
 	if err := os.WriteFile(source, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
@@ -111,7 +111,7 @@ func TestWriteSitecustomizeRewritesTheSupportedInterpreterTuple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "    _SUPPORTED_PYTHON_MINORS = (10, 11, 13,)  # supported-python-minors\n"
+	want := "supported_python_versions = [\"3.10\", \"3.11\", \"3.13\"]  # supported-python-versions\n"
 	if !strings.Contains(string(written), want) {
 		t.Errorf("written sitecustomize.py does not contain %q:\n%s", want, written)
 	}
@@ -120,10 +120,10 @@ func TestWriteSitecustomizeRewritesTheSupportedInterpreterTuple(t *testing.T) {
 	}
 }
 
-func TestWriteSitecustomizeKeepsASingleInterpreterATuple(t *testing.T) {
+func TestWriteSitecustomizeKeepsASingleInterpreterAList(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "sitecustomize.py")
 	if err := os.WriteFile(source,
-		[]byte("_SUPPORTED_PYTHON_MINORS = (10, 11,)  # supported-python-minors\n"), 0o644); err != nil {
+		[]byte("supported_python_versions = [\"3.10\", \"3.11\"]  # supported-python-versions\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	dest := filepath.Join(t.TempDir(), "sitecustomize.py")
@@ -134,16 +134,16 @@ func TestWriteSitecustomizeKeepsASingleInterpreterATuple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(string(written)); got != "_SUPPORTED_PYTHON_MINORS = (11,)  # supported-python-minors" {
-		t.Errorf("got %q, want a single-element tuple", got)
+	if got := strings.TrimSpace(string(written)); got != "supported_python_versions = [\"3.11\"]  # supported-python-versions" {
+		t.Errorf("got %q, want a single-element list", got)
 	}
 }
 
 func TestWriteSitecustomizeFailsWithoutExactlyOneMarker(t *testing.T) {
 	for name, body := range map[string]string{
-		"no marker": "_SUPPORTED_PYTHON_MINORS = (10,)\n",
-		"two markers": "_SUPPORTED_PYTHON_MINORS = (10,)  # supported-python-minors\n" +
-			"_SUPPORTED_PYTHON_MINORS = (11,)  # supported-python-minors\n",
+		"no marker": "supported_python_versions = [\"3.10\"]\n",
+		"two markers": "supported_python_versions = [\"3.10\"]  # supported-python-versions\n" +
+			"supported_python_versions = [\"3.11\"]  # supported-python-versions\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			source := filepath.Join(t.TempDir(), "sitecustomize.py")
@@ -161,7 +161,7 @@ func TestWriteSitecustomizeFailsWithoutExactlyOneMarker(t *testing.T) {
 func TestWriteSitecustomizeRejectsANonThreeMajorVersion(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "sitecustomize.py")
 	if err := os.WriteFile(source,
-		[]byte("_SUPPORTED_PYTHON_MINORS = (10,)  # supported-python-minors\n"), 0o644); err != nil {
+		[]byte("supported_python_versions = [\"3.10\"]  # supported-python-versions\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	dest := filepath.Join(t.TempDir(), "sitecustomize.py")

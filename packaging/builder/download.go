@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/sha512"
+	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -511,9 +512,49 @@ func extractZipFile(f *zip.File, destDir string) (retErr error) {
 // pipTimeout is the maximum duration for a pip subprocess.
 const pipTimeout = 10 * time.Minute
 
-// Update packaging/common/python/README.md and the interpreter cases in
-// packaging/tests/python/sitecustomize_test.go after adding a new interpreter here.
-var supportedPythonVersions = []string{"3.10", "3.11", "3.12", "3.13"}
+// supportedPythonVersions is the hand-maintained list of interpreters the
+// package is built for. Everything else that names them derives from this
+// file: writeSitecustomize generates the script's version gate from it, the
+// man page and README get it substituted in at build time, and
+// packaging/tests/python/sitecustomize_test.go reads it to generate its
+// interpreter cases. Adding or removing an entry here is therefore the whole
+// edit. The JSON can carry no comment of its own, which is why this note
+// lives here.
+var (
+	//go:embed supported_python_versions.json
+	supportedPythonVersionsJSON string
+
+	supportedPythonVersions []string
+)
+
+func init() {
+	if err := json.Unmarshal([]byte(supportedPythonVersionsJSON), &supportedPythonVersions); err != nil {
+		panic(fmt.Sprintf("parsing supported_python_versions.json: %v", err))
+	}
+	if err := validateSupportedPythonVersions(supportedPythonVersions); err != nil {
+		panic(err.Error())
+	}
+}
+
+// validateSupportedPythonVersions rejects a list the rest of the build cannot
+// work with. It runs at package initialization rather than where the entries
+// are first used, because every use is downstream of resolving, downloading
+// and verifying a wheel set per entry: writeSitecustomize applies the same
+// pattern, but only after all of that network work, and pythonABITag would
+// have turned "3.10.1" into the nonexistent "cp3101" long before then.
+func validateSupportedPythonVersions(versions []string) error {
+	if len(versions) == 0 {
+		return fmt.Errorf("supported_python_versions.json lists no Python version")
+	}
+	for _, pythonVersion := range versions {
+		if !pythonVersionPattern.MatchString(pythonVersion) {
+			return fmt.Errorf(
+				"supported_python_versions.json lists unsupported Python version %q, want \"3.N\"",
+				pythonVersion)
+		}
+	}
+	return nil
+}
 
 func pythonABITag(pythonVersion string) string {
 	return "cp" + strings.ReplaceAll(pythonVersion, ".", "")
@@ -817,8 +858,10 @@ func downloadPythonAgent(cfg Config, destDir string) error {
 	return nil
 }
 
-var supportedPythonMinorsPattern = regexp.MustCompile(
-	`_SUPPORTED_PYTHON_MINORS = \([0-9, ]*\)  # supported-python-minors`)
+var supportedPythonVersionsPattern = regexp.MustCompile(
+	`supported_python_versions = \[[0-9". ,]*\]  # supported-python-versions`)
+
+var pythonVersionPattern = regexp.MustCompile(`^3\.[0-9]+$`)
 
 func writeSitecustomize(sourcePath, destPath string, pythonVersions []string) error {
 	data, err := os.ReadFile(sourcePath)
@@ -826,26 +869,25 @@ func writeSitecustomize(sourcePath, destPath string, pythonVersions []string) er
 		return err
 	}
 
-	if found := supportedPythonMinorsPattern.FindAllString(string(data), -1); len(found) != 1 {
+	if found := supportedPythonVersionsPattern.FindAllString(string(data), -1); len(found) != 1 {
 		return fmt.Errorf(
-			"expected exactly 1 supported-python-minors marker in %s, found %d",
+			"expected exactly 1 supported-python-versions marker in %s, found %d",
 			sourcePath, len(found))
 	}
 
-	minors := make([]string, 0, len(pythonVersions))
+	quoted := make([]string, 0, len(pythonVersions))
 	for _, pythonVersion := range pythonVersions {
-		major, minor, found := strings.Cut(pythonVersion, ".")
-		if !found || major != "3" {
+		if !pythonVersionPattern.MatchString(pythonVersion) {
 			return fmt.Errorf("unsupported Python version %q, want \"3.N\"", pythonVersion)
 		}
-		minors = append(minors, minor)
+		quoted = append(quoted, fmt.Sprintf("%q", pythonVersion))
 	}
 
 	replacement := fmt.Sprintf(
-		"_SUPPORTED_PYTHON_MINORS = (%s,)  # supported-python-minors",
-		strings.Join(minors, ", "))
+		"supported_python_versions = [%s]  # supported-python-versions",
+		strings.Join(quoted, ", "))
 
-	rewritten := supportedPythonMinorsPattern.ReplaceAllString(string(data), replacement)
+	rewritten := supportedPythonVersionsPattern.ReplaceAllString(string(data), replacement)
 	return os.WriteFile(destPath, []byte(rewritten), 0o644)
 }
 

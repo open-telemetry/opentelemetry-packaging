@@ -22,6 +22,7 @@ make rpm-rebuild-container     # Rebuild the SRPM into binary RPMs the way COPR 
 
 make go-unit-tests             # Go command unit tests (otel-config-check)
 make python-unit-tests         # sitecustomize.py unit tests (throwaway venv, no containers)
+make check-supported-python-versions # Every supported Python version is at or above the minimum required Python version
 make pyproto-unit-tests        # Vendored pyproto exporter test suites (throwaway venvs, no containers)
 make integration-test-metadata # Fast metadata tests (no containers)
 make integration-tests         # Full E2E tests (requires Podman/Docker)
@@ -48,6 +49,7 @@ make clean                     # Remove build/
 - `packaging/tests/lifecycle/` — Package lifecycle tests (preload scripts, config handling, install/remove)
 - `packaging/tests/vendor/` — Vendor replacement tests; `mkvendor/` builds the mock acme package
 - `packaging/common/<component>/release.txt` — Renovate-managed upstream version pins (Python pins live in `packaging/common/python/requirements.txt`)
+- `tools/python/tools/` — Repository tooling, never packaged: the scripts that print, check and prune the supported Python versions, plus `shared.py`, whose module docstring is the only definition of the terms they use; `tools/python/test/` holds their unit tests
 
 ## Coding conventions
 

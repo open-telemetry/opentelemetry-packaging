@@ -424,3 +424,44 @@ func TestVerifyPyPIDownloadsMismatch(t *testing.T) {
 		t.Error("verifyPyPIDownloads: expected error on checksum mismatch, got nil")
 	}
 }
+
+// The supported Python versions file is hand-maintained, and every entry
+// drives a pip resolution, an ABI tag and the generated sitecustomize.py
+// gate. An entry of the wrong shape has to stop the build at package
+// initialization: pythonABITag would otherwise turn "3.10.1" into the
+// nonexistent "cp3101" and spend the whole download before anything noticed.
+func TestValidateSupportedPythonVersions(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		versions []string
+		wantErr  string
+	}{
+		{name: "the shipped list", versions: supportedPythonVersions},
+		{name: "a single version", versions: []string{"3.10"}},
+		{name: "a two-digit minor", versions: []string{"3.100"}},
+		{name: "no version", versions: nil, wantErr: "lists no Python version"},
+		{name: "a patch version", versions: []string{"3.10.1"}, wantErr: `"3.10.1"`},
+		{name: "a minor-less version", versions: []string{"3"}, wantErr: `"3"`},
+		{name: "an ABI tag", versions: []string{"310"}, wantErr: `"310"`},
+		{name: "a major version other than 3", versions: []string{"4.0"}, wantErr: `"4.0"`},
+		{name: "an empty entry", versions: []string{""}, wantErr: `""`},
+		{name: "one bad entry among good ones", versions: []string{"3.10", "3.11.2"}, wantErr: `"3.11.2"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSupportedPythonVersions(tc.versions)
+
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected an error naming %s, got none", tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("error %q does not name %s", err, tc.wantErr)
+			}
+		})
+	}
+}
