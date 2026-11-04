@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/require"
@@ -218,7 +219,9 @@ func ImageOf(t *testing.T, container testcontainers.Container) string {
 // the remaining containers from its image: concurrent scenario subtests would
 // otherwise each trigger their own build of the same Dockerfile, multiplying
 // build work and image storage.
-func StartContainerFromImage(t *testing.T, ctx context.Context, image string) testcontainers.Container {
+//
+// capAdd grants the container extra Linux capabilities, e.g. "LINUX_IMMUTABLE".
+func StartContainerFromImage(t *testing.T, ctx context.Context, image string, capAdd ...string) testcontainers.Container {
 	t.Helper()
 
 	req := testcontainers.ContainerRequest{
@@ -226,17 +229,22 @@ func StartContainerFromImage(t *testing.T, ctx context.Context, image string) te
 		ImagePlatform: imagePlatform(),
 		WaitingFor:    wait.ForLog("").WithStartupTimeout(2 * time.Minute),
 	}
+	if len(capAdd) > 0 {
+		req.HostConfigModifier = func(hc *container.HostConfig) {
+			hc.CapAdd = append(hc.CapAdd, capAdd...)
+		}
+	}
 
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+	ctr, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		_ = container.Terminate(context.Background())
+		_ = ctr.Terminate(context.Background())
 	})
 
-	return container
+	return ctr
 }
 
 // ContainerHTTPGet sends an HTTP GET request to the given port and path on
