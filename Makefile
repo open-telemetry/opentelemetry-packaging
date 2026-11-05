@@ -516,7 +516,11 @@ pyproto-unit-tests: check-uv-installed
 	done
 	uv venv --quiet --python ">=3.10" $(PYPROTO_EQUIV_VENV)
 	uv pip install --quiet --python $(PYPROTO_EQUIV_VENV)/bin/python \
-		--requirement $(PYPROTO_VENDOR_DIR)/test-requirements-equivalence.txt
+		--requirement $(PYPROTO_VENDOR_DIR)/test-requirements-equivalence.txt \
+		opentelemetry-sdk==1.43.0 \
+		opentelemetry-proto==1.43.0 \
+		opentelemetry-exporter-otlp-proto-http==1.43.0 \
+		opentelemetry-exporter-otlp-proto-grpc==1.43.0
 	uv pip install --quiet --python $(PYPROTO_EQUIV_VENV)/bin/python --no-deps \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-pyproto \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-common \
