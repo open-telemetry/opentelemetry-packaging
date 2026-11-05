@@ -29,7 +29,7 @@ Every `make` invocation in this document is then `gmake` instead.
 cmd/build-packages/          CLI entry point for building .deb and .rpm packages
 cmd/build-spec/rpm/          CLI entry point for generating and staging the source RPM spec
 cmd/build-spec/deb/          CLI entry point for writing the debbuild specs and source archives built on OBS
-cmd/package-metadata/        Per-component package metadata and build plans for CI (package images)
+cmd/package-metadata/        Per-component package metadata and build plans for CI (package images, OBS)
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
 packaging/
   builder/                   Go library that drives nfpm to create packages
