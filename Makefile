@@ -496,8 +496,9 @@ pyproto-unit-tests:
 	@test -n "$(PYPROTO_SDK_VERSION)" || \
 		{ echo "cannot read the opentelemetry-sdk pin from packaging/common/python/requirements.txt"; exit 1; }
 	python3 -m venv $(PYPROTO_DROPIN_VENV)
-	$(PYPROTO_DROPIN_VENV)/bin/pip install --quiet pytest \
-		opentelemetry-sdk==$(PYPROTO_SDK_VERSION) hpack
+	$(PYPROTO_DROPIN_VENV)/bin/pip install --quiet \
+		--requirement $(PYPROTO_VENDOR_DIR)/test-requirements-dropin.txt \
+		opentelemetry-sdk==$(PYPROTO_SDK_VERSION)
 	$(PYPROTO_DROPIN_VENV)/bin/pip install --quiet --no-deps \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-pyproto \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-common \
@@ -513,17 +514,8 @@ pyproto-unit-tests:
 			$(PYPROTO_VENDOR_DIR)/$$suite; \
 	done
 	python3 -m venv $(PYPROTO_EQUIV_VENV)
-# pytest-benchmark needs a floor, not a ceiling. pytest 9.2.0 dropped the
-# private Node._nodeid that pytest-benchmark read in its benchmark fixture, so
-# every benchmark-fixture test errored at setup with an AttributeError until
-# 5.3.1 switched to the public node.nodeid. Without the floor a fresh venv can
-# resolve that broken pair again, and the failure reads as a bug in the
-# vendored encoder rather than in the test tooling.
-	$(PYPROTO_EQUIV_VENV)/bin/pip install --quiet pytest 'pytest-benchmark>=5.3.1' \
-		opentelemetry-sdk==1.43.0 \
-		opentelemetry-proto==1.43.0 \
-		opentelemetry-exporter-otlp-proto-http==1.43.0 \
-		opentelemetry-exporter-otlp-proto-grpc==1.43.0
+	$(PYPROTO_EQUIV_VENV)/bin/pip install --quiet \
+		--requirement $(PYPROTO_VENDOR_DIR)/test-requirements-equivalence.txt
 	$(PYPROTO_EQUIV_VENV)/bin/pip install --quiet --no-deps \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-pyproto \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-common \
