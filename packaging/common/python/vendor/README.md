@@ -62,6 +62,8 @@ Moving either file back under `vendor/` would leave its pins frozen with nothing
 The opentelemetry versions are passed on the `uv pip install` command line in the Makefile rather than written into either file, because the four the equivalence venv installs constrain each other and have to move together.
 `protobuf` is passed the same way and for the same reason: `opentelemetry-proto` 1.43.0 requires `protobuf>=5.0,<8.0`, so the two cannot be raised independently.
 Renovate reads a requirements file and does not read the Makefile recipe, so a pin placed in the file would be raised on its own and leave the file unresolvable.
+The consequence is that nothing raises the five command-line pins: they move by hand, when the vendored chain is rebased onto a newer opentelemetry release, and that rebase is what has to retest the equivalence suites against the new pair.
+Automating them needs the five raised in a single branch, and that branch is red today for a reason none of the pins can fix: raising the four opentelemetry versions to 1.45.2 fails `opentelemetry-exporter-otlp-pyproto-http/equivalence_tests`, which patches `requests.Session.post` while the real exporter no longer uses `requests`.
 The drop-in venv reads its `opentelemetry-sdk` version from `packaging/common/python/requirements.txt` at run time, for the reason given above the `PYPROTO_SDK_VERSION` assignment in the Makefile.
 
 Benchmarks in `opentelemetry-pyproto/tests` run through `pytest-benchmark` with `--benchmark-disable`, executing each benchmark once as a plain test.
