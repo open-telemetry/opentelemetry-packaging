@@ -38,6 +38,12 @@ umask 022
 PRELOAD_PATH="/etc/ld.so.preload"
 LIBOTELINJECT_PATH="/usr/lib/opentelemetry/injector/libotelinject.so"
 
+# No trap runs on SIGKILL, so a killed removal leaves its tmpfile behind, and
+# the tmpfile below is named for this run's PID, not that one. Clear any
+# leftovers; the package manager's lock rules out a concurrent run. An
+# unmatched glob stays literal, which rm -f ignores.
+rm -f "${PRELOAD_PATH}".tmp.*
+
 if [ ! -f "$PRELOAD_PATH" ]; then
     echo "No $PRELOAD_PATH file found; nothing to do."
     exit 0

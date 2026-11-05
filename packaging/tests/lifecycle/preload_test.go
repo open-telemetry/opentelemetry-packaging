@@ -61,6 +61,25 @@ var preloadScenarios = []scenario{
 		},
 	},
 	{
+		name: "preload-remove-clears-stale-tmpfiles",
+		run: func(t *testing.T, ctx context.Context, h *harness) {
+			h.install(t, ctx, "opentelemetry-injector")
+			// Tmpfiles a SIGKILLed preuninstall run would leave behind, since
+			// no trap runs on SIGKILL.
+			stale := []string{preloadPath + ".tmp.48", preloadPath + ".tmp.12345"}
+			for _, path := range stale {
+				h.exec(t, ctx, "sh", "-c", "echo partial > "+path)
+			}
+
+			h.remove(t, ctx, "opentelemetry-injector")
+
+			for _, path := range stale {
+				require.False(t, h.fileExists(t, ctx, path),
+					"%s left by an earlier killed run should be removed", path)
+			}
+		},
+	},
+	{
 		name: "preload-whitespace-only-file-deleted-on-remove",
 		run: func(t *testing.T, ctx context.Context, h *harness) {
 			h.install(t, ctx, "opentelemetry-injector")
