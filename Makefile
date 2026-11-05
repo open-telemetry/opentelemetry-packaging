@@ -59,8 +59,8 @@ COMPONENTS := injector java nodejs dotnet python meta
 # Languages that have integration tests (meta is excluded).
 TEST_LANGUAGES := java nodejs dotnet python
 
-IMAGE_VERSION = $(shell go run ./cmd/image-metadata -component $* -field version)
-IMAGE_PACKAGE = $(shell go run ./cmd/image-metadata -component $* -field package)
+IMAGE_VERSION = $(shell go run ./cmd/package-metadata -component $* -field version)
+IMAGE_PACKAGE = $(shell go run ./cmd/package-metadata -component $* -field package)
 IMAGE_REF = ghcr.io/open-telemetry/opentelemetry-packaging/$(IMAGE_PACKAGE):$(IMAGE_VERSION)
 IMAGE_CONTEXT = build/images/$*
 
@@ -103,13 +103,13 @@ packages: otel-config-check
 .PHONY: images
 .PRECIOUS: image-packages-% image-%
 images:
-	@set -e; components="$$(go run ./cmd/image-metadata -field components)"; \
+	@set -e; components="$$(go run ./cmd/package-metadata -field components)"; \
 	for component in $$components; do \
 		$(MAKE) image-$$component; \
 	done
 
 image-packages-%: otel-config-check
-	go run ./cmd/image-metadata -component $*
+	go run ./cmd/package-metadata -component $*
 	rm -rf "$(IMAGE_CONTEXT)/$(ARCH)"
 	go run ./cmd/build-packages -version $(IMAGE_VERSION) -arch "$(ARCH)" -format deb \
 		-component $* -output "$(IMAGE_CONTEXT)/$(ARCH)"
@@ -431,7 +431,7 @@ integration-test-metadata: packages
 
 .PHONY: integration-test-images
 integration-test-images:
-	@set -e; components="$$(go run ./cmd/image-metadata -field components)"; \
+	@set -e; components="$$(go run ./cmd/package-metadata -field components)"; \
 	for component in $$components; do \
 		$(MAKE) integration-test-image-$$component; \
 	done
@@ -507,7 +507,7 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 # ============================================================================
 
 # Unit tests for Go commands, the package builder, and package-image
-# configuration. The image-metadata tests construct git histories, so git must
+# configuration. The package-metadata tests construct git histories, so git must
 # be on PATH; no containers or network access are needed.
 .PHONY: go-unit-tests
 go-unit-tests:
