@@ -471,7 +471,7 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 # be on PATH; no containers or network access are needed.
 .PHONY: go-unit-tests
 go-unit-tests:
-	go test -v ./cmd/... ./packaging/builder/ ./packaging/images/ ./packaging/changes/
+	go test -v ./cmd/... ./packaging/builder/ ./packaging/images/ ./packaging/changes/ ./packaging/obs/
 
 # Unit tests for sitecustomize.py. They need the `packaging` module (a runtime
 # dependency of sitecustomize.py itself); a throwaway virtualenv keeps the

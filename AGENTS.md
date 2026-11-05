@@ -43,6 +43,7 @@ make clean                     # Remove build/
 - `cmd/build-spec/rpm/` — source RPM spec generation and rpmbuild payload staging
 - `cmd/build-spec/deb/` — debbuild spec and pre-staged source archive per component, for the OBS DEB build
 - `cmd/package-metadata/` — CI build plans: package images (`-target images`) and OBS uploads (`-target obs`)
+- `cmd/obs-publish/` + `packaging/obs/` — OBS API client that commits one package's sources, waits for every build of that revision, and releases it (used by `.github/workflows/obs.yml`)
 - `packaging/changes/` — maps changed paths to the components they affect, shared by the image and OBS workflows
 - `cmd/otel-config-check/` — declarative-config validator, cross-compiled into the Python package and invoked by sitecustomize.py
 - `packaging/builder/` — Go package that constructs nfpm.Info per component and writes .deb/.rpm

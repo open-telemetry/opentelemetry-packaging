@@ -19,6 +19,7 @@ cmd/build-packages/          CLI entry point for building .deb and .rpm packages
 cmd/build-spec/rpm/          CLI entry point for generating and staging the source RPM spec
 cmd/build-spec/deb/          CLI entry point for writing the debbuild specs and source archives built on OBS
 cmd/package-metadata/        Per-component package metadata and build plans for CI (package images, OBS)
+cmd/obs-publish/             CLI entry point for uploading, building, and releasing one package on OBS
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
 packaging/
   builder/                   Go library that drives nfpm to create packages
@@ -43,6 +44,7 @@ packaging/
   images/                    Package-image tooling
     config.json              Supported packages and architectures
     Dockerfile               Shared package extraction and image definition
+  obs/                       Minimal OBS API client in place of osc: commit sources, wait for the builds, release (see its README)
   repo/                      APT and YUM repository generation scripts
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
