@@ -18,14 +18,22 @@
 const path = require('path');
 const modules = path.join(__dirname, 'node_modules');
 
+// Resolve bare specifiers against the bundled node_modules tree rather than
+// joining paths into it. Node applies the package's "exports" map only to bare
+// specifiers, so this follows the subpaths upstream publishes as its API
+// ("." and "./register") instead of the file layout behind them: 0.82.0 moved
+// the register hook from build/src/register.js to dist/register.cjs, which a
+// hardcoded path does not survive and an exports lookup does.
+const resolve = (request) => require.resolve(request, { paths: [modules] });
+
 if (process.env.OTEL_CONFIG_FILE) {
   // Any throw here (missing/invalid config file, experimental startNodeSDK
   // API drift) would otherwise abort the --require phase and kill the host
   // process before the application starts; degrade to uninstrumented instead.
   try {
-    const { startNodeSDK } = require(path.join(modules, '@opentelemetry/sdk-node'));
+    const { startNodeSDK } = require(resolve('@opentelemetry/sdk-node'));
     const { getNodeAutoInstrumentations } = require(
-      path.join(modules, '@opentelemetry/auto-instrumentations-node')
+      resolve('@opentelemetry/auto-instrumentations-node')
     );
     if (typeof startNodeSDK !== 'function') {
       throw new TypeError('startNodeSDK is not exported by @opentelemetry/sdk-node');
@@ -64,7 +72,5 @@ if (process.env.OTEL_CONFIG_FILE) {
     );
   }
 } else {
-  require(
-    path.join(modules, '@opentelemetry/auto-instrumentations-node/build/src/register.js')
-  );
+  require(resolve('@opentelemetry/auto-instrumentations-node/register'));
 }
