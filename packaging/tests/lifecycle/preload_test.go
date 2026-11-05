@@ -113,4 +113,40 @@ var preloadScenarios = []scenario{
 			require.NotContains(t, content, injectorLib, "injector entry should be gone after remove")
 		},
 	},
+	// An immutable ld.so.preload (chattr +i) makes the rewrite fail. The
+	// removal must still go through, and the script must warn that the entry
+	// is left behind instead of reporting success.
+	immutablePreloadScenario("preload-remove-warns-when-replace-fails",
+		"/opt/acme/libfoo.so", "WARNING: could not replace "+preloadPath),
+	immutablePreloadScenario("preload-remove-warns-when-delete-fails",
+		"", "WARNING: could not remove "+preloadPath),
+}
+
+// immutablePreloadScenario installs the injector, optionally after seeding a
+// foreign preload entry, marks ld.so.preload immutable, and removes the
+// injector. It asserts the removal succeeds with wantWarning, without the
+// success line, and with the file unchanged.
+func immutablePreloadScenario(name, foreignEntry, wantWarning string) scenario {
+	return scenario{
+		name:   name,
+		capAdd: []string{"LINUX_IMMUTABLE"},
+		run: func(t *testing.T, ctx context.Context, h *harness) {
+			if foreignEntry != "" {
+				h.exec(t, ctx, "sh", "-c", "echo "+foreignEntry+" > "+preloadPath)
+			}
+			h.install(t, ctx, "opentelemetry-injector")
+			before := h.fileContent(t, ctx, preloadPath)
+			h.exec(t, ctx, "chattr", "+i", preloadPath)
+
+			out := h.remove(t, ctx, "opentelemetry-injector")
+
+			require.False(t, h.installed(t, ctx, "opentelemetry-injector"),
+				"removal must succeed when %s is immutable", preloadPath)
+			require.Contains(t, out, wantWarning)
+			require.NotContains(t, out, "OpenTelemetry Injector removed from ld.so.preload.",
+				"must not report success while the entry remains")
+			require.Equal(t, before, h.fileContent(t, ctx, preloadPath),
+				"%s should be left unchanged", preloadPath)
+		},
+	}
 }

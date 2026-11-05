@@ -65,6 +65,7 @@ Validate that the injector's lifecycle scripts correctly manage `/etc/ld.so.prel
 | Remove cleans up the injector path from `/etc/ld.so.preload` | Pre-uninstall |
 | Remove deletes `/etc/ld.so.preload` if it becomes empty | Cleanup |
 | Remove preserves other entries in `/etc/ld.so.preload` | Non-destructive |
+| Remove warns instead of reporting success when `/etc/ld.so.preload` is immutable | Failed rewrite |
 
 **Implementation:** Install/remove the injector package in a container and inspect `/etc/ld.so.preload` at each stage.
 Implemented in `packaging/tests/lifecycle/preload_test.go`.

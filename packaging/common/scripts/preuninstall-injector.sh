@@ -111,10 +111,22 @@ if [ "$write_failed" = true ]; then
     exit 0
 fi
 
+# Check the replacement: on an unwritable target (read-only /etc, chattr +i)
+# the entry stays, so the script must not claim it was removed. Exit 0 anyway,
+# because a failing prerm aborts the removal under both dpkg and rpm.
 if [ "$has_other_entries" = true ]; then
-    mv "$tmpfile" "$PRELOAD_PATH"
+    if ! mv "$tmpfile" "$PRELOAD_PATH"; then
+        echo "WARNING: could not replace $PRELOAD_PATH; leaving it unchanged." >&2
+        echo "WARNING: remove the $LIBOTELINJECT_PATH entry manually to silence linker warnings." >&2
+        exit 0
+    fi
 else
-    rm -f "$tmpfile" "$PRELOAD_PATH"
+    rm -f "$tmpfile"
+    if ! rm -f "$PRELOAD_PATH"; then
+        echo "WARNING: could not remove $PRELOAD_PATH; leaving it unchanged." >&2
+        echo "WARNING: remove the $LIBOTELINJECT_PATH entry manually to silence linker warnings." >&2
+        exit 0
+    fi
     echo "Removed empty $PRELOAD_PATH"
 fi
 

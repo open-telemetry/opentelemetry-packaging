@@ -21,6 +21,10 @@ FROM ${BASE_IMAGE}
 
 ARG ARCH=amd64
 
+# chattr, for the immutable ld.so.preload scenarios. The Debian base image
+# already ships it. Installed before the distro repositories are removed.
+RUN dnf -y install e2fsprogs && dnf clean all
+
 RUN rm -f /etc/yum.repos.d/*.repo
 
 COPY build/local-repo/rpm /local-repo
