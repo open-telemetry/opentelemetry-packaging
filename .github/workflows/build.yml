@@ -37,6 +37,9 @@ jobs:
       - name: Run the Go command unit tests
         run: make go-unit-tests
 
+      - name: Run the register.js unit tests
+        run: make nodejs-unit-tests
+
       - name: Run the sitecustomize.py unit tests
         run: make python-unit-tests
 
