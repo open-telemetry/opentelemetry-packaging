@@ -163,6 +163,39 @@ func TestGenerateManPageArbitraryTemplate(t *testing.T) {
 	assert.NotContains(t, string(body), "@DATE@")
 }
 
+// The page goes into the OBS source archive, which must be byte-identical for
+// an unchanged component, so its date follows SOURCE_DATE_EPOCH, not the clock.
+func TestGenerateManPageDateFollowsSourceDateEpoch(t *testing.T) {
+	tmpl := filepath.Join(t.TempDir(), "acme-java.8.tmpl")
+	require.NoError(t, os.WriteFile(tmpl, []byte("dated @DATE@\n"), 0o644))
+	t.Setenv("SOURCE_DATE_EPOCH", "1700000000") // 2023-11-14
+
+	render := func() []byte {
+		out, err := GenerateManPage(Config{Version: "1.0.0"}, t.TempDir(), tmpl)
+		require.NoError(t, err)
+		body, err := os.ReadFile(out)
+		require.NoError(t, err)
+		return body
+	}
+	first := render()
+	require.Equal(t, first, render())
+
+	gr, err := gzip.NewReader(bytes.NewReader(first))
+	require.NoError(t, err)
+	text, err := io.ReadAll(gr)
+	require.NoError(t, err)
+	assert.Equal(t, "dated November 2023\n", string(text))
+}
+
+func TestGenerateManPageRejectsInvalidSourceDateEpoch(t *testing.T) {
+	tmpl := filepath.Join(t.TempDir(), "acme-java.8.tmpl")
+	require.NoError(t, os.WriteFile(tmpl, []byte("dated @DATE@\n"), 0o644))
+	t.Setenv("SOURCE_DATE_EPOCH", "yesterday")
+
+	_, err := GenerateManPage(Config{Version: "1.0.0"}, t.TempDir(), tmpl)
+	require.ErrorContains(t, err, "SOURCE_DATE_EPOCH")
+}
+
 func TestGenerateManPageRejectsNonTemplate(t *testing.T) {
 	_, err := GenerateManPage(Config{Version: "1.0.0"}, t.TempDir(), "/nowhere/acme-java.8")
 	require.Error(t, err)
@@ -289,7 +322,7 @@ func TestManPageReportsUpstreamVersion(t *testing.T) {
 
 	for _, component := range []string{"injector", "java", "nodejs", "dotnet", "python"} {
 		t.Run(component, func(t *testing.T) {
-			upstream, err := upstreamVersion(Config{PackagingDir: packagingDir}, component)
+			upstream, err := UpstreamVersion(Config{PackagingDir: packagingDir}, component)
 			require.NoError(t, err)
 			require.NotEmpty(t, upstream)
 
@@ -323,17 +356,18 @@ func TestUpstreamVersionMatchesPins(t *testing.T) {
 	require.NoError(t, err)
 	cfg := Config{PackagingDir: filepath.Join(repoRoot, "packaging")}
 
-	// Agent components take their version from the Renovate-managed pin.
-	for _, component := range []string{"injector", "java", "nodejs", "dotnet"} {
+	// Agent components take their version from the Renovate-managed pin, and
+	// the metapackage from its hand-bumped one.
+	for _, component := range []string{"injector", "java", "nodejs", "dotnet", "meta"} {
 		pin, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", component, "release.txt"))
 		require.NoError(t, err)
-		got, err := upstreamVersion(cfg, component)
+		got, err := UpstreamVersion(cfg, component)
 		require.NoError(t, err)
 		require.Equal(t, strings.TrimPrefix(pin, "v"), got)
 	}
 
 	// Python has no release.txt; it reports the distro pin from requirements.
-	got, err := upstreamVersion(cfg, "python")
+	got, err := UpstreamVersion(cfg, "python")
 	require.NoError(t, err)
 	requirements, err := os.ReadFile(filepath.Join(cfg.PackagingDir, "common", "python", "requirements.txt"))
 	require.NoError(t, err)

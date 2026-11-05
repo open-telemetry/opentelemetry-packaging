@@ -8,10 +8,14 @@
 // Each component lands in its own directory, named after its package, which is
 // the content of the OBS package of the same name.
 //
+// Each package is versioned on its own, by the upstream version it ships
+// (builder.UpstreamVersion); -version overrides that for every component.
+//
 // Usage:
 //
+//	go run ./cmd/build-spec/deb -output build/deb-sources
+//	go run ./cmd/build-spec/deb -component injector -output build/deb-sources
 //	go run ./cmd/build-spec/deb -version 1.0.0 -output build/deb-sources
-//	go run ./cmd/build-spec/deb -version 1.0.0 -component injector -output build/deb-sources
 package main
 
 import (
@@ -28,7 +32,7 @@ import (
 func main() {
 	log.SetFlags(0)
 
-	version := flag.String("version", "", "Package version (required)")
+	version := flag.String("version", "", "Package version for every component (defaults to each component's upstream version pin)")
 	release := flag.String("release", "", "Packaging revision (defaults to 1)")
 	outputDir := flag.String("output", "build/deb-sources", "Output directory; each component gets a subdirectory named after its package")
 	component := flag.String("component", "all", "Component to write: injector, java, nodejs, dotnet, python, meta, or all")
@@ -37,10 +41,6 @@ func main() {
 		"Directory holding the prebuilt otel-config-check-<arch> binaries, one per architecture")
 
 	flag.Parse()
-
-	if *version == "" {
-		log.Fatal("error: -version is required")
-	}
 
 	pkgDir := *packagingDir
 	if pkgDir == "" {
@@ -72,8 +72,7 @@ func main() {
 		components = []builder.Component{selected}
 	}
 
-	cfg := builder.Config{
-		Version:      strings.TrimPrefix(*version, "v"),
+	base := builder.Config{
 		Release:      *release,
 		PackagingDir: pkgDir,
 	}
@@ -82,6 +81,13 @@ func main() {
 	}
 
 	for _, comp := range components {
+		cfg := base
+		cfg.Version = strings.TrimPrefix(*version, "v")
+		if cfg.Version == "" {
+			if cfg.Version, err = builder.UpstreamVersion(cfg, comp.Name); err != nil {
+				log.Fatalf("error: %v", err)
+			}
+		}
 		// The directory is what gets committed to OBS, so an archive left over
 		// from another version must not survive in it.
 		dir := filepath.Join(absOutput, comp.PackageName)

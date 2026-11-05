@@ -258,14 +258,16 @@ otel-config-check-all:
 	$(MAKE) --no-print-directory otel-config-check ARCH=arm64
 
 # Writes $(DEB_SOURCES_DIR)/<package>/ with the debbuild spec and source archive
-# of every component; deb-sources-<component> writes one.
+# of every component; deb-sources-<component> writes one. Each package takes the
+# version of the upstream agent it ships, not $(VERSION): on OBS every package
+# is versioned and released on its own.
 .PHONY: deb-sources
 deb-sources: otel-config-check-all
-	go run ./cmd/build-spec/deb -version $(VERSION) -output $(DEB_SOURCES_DIR)
+	go run ./cmd/build-spec/deb -output $(DEB_SOURCES_DIR)
 
 .PHONY: deb-sources-%
 deb-sources-%: otel-config-check-all
-	go run ./cmd/build-spec/deb -version $(VERSION) -component $* -output $(DEB_SOURCES_DIR)
+	go run ./cmd/build-spec/deb -component $* -output $(DEB_SOURCES_DIR)
 
 # ============================================================================
 # Local Package Repositories for Testing
