@@ -51,9 +51,13 @@ Two venvs, because the suites' `conftest.py` guards make opposing demands:
 
 The guards detect which side owns a path by looking for "pyproto" in resolved file paths, which is also why the venv directory names must not contain that substring, and why the packages install editable.
 
-Each venv installs its dependencies from a pinned requirements file, `test-requirements-dropin.txt` and `test-requirements-equivalence.txt`, so that a rebuild installs the versions the suites were last run against instead of whatever is newest on PyPI.
-Renovate manages both files and raises each pin in its own pull request, so an incompatible release of the test tooling fails that one pull request instead of every open branch at once.
-One version is deliberately absent from `test-requirements-dropin.txt`: the drop-in venv still reads its `opentelemetry-sdk` version from `packaging/common/python/requirements.txt` at run time, for the reason given above the `PYPROTO_SDK_VERSION` assignment in the Makefile.
+Each venv installs its test tooling from a pinned requirements file, `test-requirements-dropin.txt` and `test-requirements-equivalence.txt`, so that a rebuild installs the versions the suites were last run against instead of whatever is newest on PyPI.
+Renovate manages both files, which moves an incompatible release of the test tooling onto a Renovate branch instead of onto every open branch at once.
+A patch release arrives in the shared "all patch versions" branch and a minor or major release in a branch of its own, both configured in `.github/renovate.json5`.
+
+The opentelemetry versions are passed on the `uv pip install` command line in the Makefile rather than written into either file, because the four the equivalence venv installs constrain each other and have to move together.
+Renovate reads a requirements file and does not read the Makefile recipe, so a pin placed in the file would be raised on its own and leave the file unresolvable.
+The drop-in venv reads its `opentelemetry-sdk` version from `packaging/common/python/requirements.txt` at run time, for the reason given above the `PYPROTO_SDK_VERSION` assignment in the Makefile.
 
 Benchmarks in `opentelemetry-pyproto/tests` run through `pytest-benchmark` with `--benchmark-disable`, executing each benchmark once as a plain test.
 
