@@ -1,0 +1,166 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Builds the DEBs on the Open Build Service and releases each package on its own.
+name: Build on OBS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or commit to build (defaults to the commit this run is on)"
+        required: false
+        type: string
+      packages:
+        description: "all, or a comma-separated list of components (injector, java, nodejs, dotnet, python, meta)"
+        required: false
+        default: all
+        type: string
+      project:
+        description: "stable builds in home:opentelemetry:stable:build and releases to home:opentelemetry:stable; sandbox only builds in home:opentelemetry:sandbox"
+        required: false
+        default: stable
+        type: choice
+        options: [stable, sandbox]
+      release:
+        description: "Release to home:opentelemetry:stable once built (stable only)"
+        required: false
+        default: true
+        type: boolean
+      release_unchanged:
+        description: "Also release packages whose sources are already on OBS, to recover a run that failed before releasing"
+        required: false
+        default: false
+        type: boolean
+
+permissions: {}
+
+jobs:
+  # The packages a push changed, or the dispatched selection, each with its
+  # version and the source date that makes an unchanged package reproduce its
+  # last upload byte for byte.
+  plan:
+    # Pushes publish only from the official repository; forks dispatch.
+    if: github.event_name == 'workflow_dispatch' || github.repository == 'open-telemetry/opentelemetry-packaging'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    outputs:
+      packages: ${{ steps.plan.outputs.packages }}
+      sha: ${{ steps.target.outputs.sha }}
+      project: ${{ steps.target.outputs.project }}
+      release: ${{ steps.target.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          # The source dates come from the history of each component's inputs.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Choose the OBS project
+        id: target
+        env:
+          EVENT: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          INPUT_PROJECT: ${{ inputs.project }}
+          INPUT_RELEASE: ${{ inputs.release }}
+        run: |
+          project=stable
+          release=true
+          if [[ "$EVENT" == workflow_dispatch ]]; then
+            project="$INPUT_PROJECT"
+            release="$INPUT_RELEASE"
+          fi
+          # Only the official repository publishes; a fork's runs stay in the sandbox.
+          if [[ "$REPOSITORY" != open-telemetry/opentelemetry-packaging ]]; then
+            project=sandbox
+          fi
+          if [[ "$project" == sandbox ]]; then
+            release=false
+          fi
+          {
+            echo "project=$project"
+            echo "release=$release"
+            echo "sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Select the packages
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          PACKAGES: ${{ inputs.packages }}
+        run: |
+          if [[ "$EVENT" == workflow_dispatch ]]; then
+            go run ./cmd/package-metadata -target obs -plan -components "${PACKAGES:-all}" >> "$GITHUB_OUTPUT"
+          elif git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            go run ./cmd/package-metadata -target obs -plan -base "$BEFORE" >> "$GITHUB_OUTPUT"
+          else
+            # A push without a usable base (a new branch, a force-push) selects everything.
+            go run ./cmd/package-metadata -target obs -plan -components all >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    needs: plan
+    if: needs.plan.outputs.packages != '[]'
+    strategy:
+      # Each package releases on its own; one failing must not hold back the others.
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.plan.outputs.packages) }}
+    runs-on: ubuntu-24.04
+    # Holds OBS_USERNAME and OBS_PASSWORD, the release bot's credentials.
+    environment: obs
+    permissions:
+      contents: read
+    # One upload of a package at a time: a commit and its release must not
+    # interleave with another run's. A newer pending run supersedes an older
+    # pending one, which is fine: it builds a later commit.
+    concurrency:
+      group: obs-${{ needs.plan.outputs.project }}-${{ matrix.package.package }}
+      cancel-in-progress: false
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+
+      - name: Generate the sources
+        env:
+          COMPONENT: ${{ matrix.package.component }}
+          SOURCE_DATE_EPOCH: ${{ matrix.package.source_date_epoch }}
+        run: |
+          make otel-config-check-all
+          go run ./cmd/build-spec/deb -component "$COMPONENT" -output build/deb-sources
+
+      - name: Upload, build, and release
+        env:
+          OBS_USERNAME: ${{ secrets.OBS_USERNAME }}
+          OBS_PASSWORD: ${{ secrets.OBS_PASSWORD }}
+          PROJECT: ${{ needs.plan.outputs.project }}
+          RELEASE: ${{ needs.plan.outputs.release }}
+          RELEASE_UNCHANGED: ${{ inputs.release_unchanged }}
+          PACKAGE: ${{ matrix.package.package }}
+          VERSION: ${{ matrix.package.version }}
+          SHA: ${{ needs.plan.outputs.sha }}
+        run: |
+          case "$PROJECT" in
+            stable) obs_project=home:opentelemetry:stable:build ;;
+            sandbox) obs_project=home:opentelemetry:sandbox ;;
+            *) echo "::error::unknown project $PROJECT"; exit 1 ;;
+          esac
+          args=()
+          if [[ "$RELEASE" == true ]]; then
+            args+=(-release)
+            if [[ "$RELEASE_UNCHANGED" == true ]]; then
+              args+=(-release-unchanged)
+            fi
+          fi
+          go run ./cmd/obs-publish -project "$obs_project" -package "$PACKAGE" \
+            -dir "build/deb-sources/$PACKAGE" -timeout 200m \
+            -message "$PACKAGE $VERSION from $GITHUB_REPOSITORY@$SHA" "${args[@]}"
