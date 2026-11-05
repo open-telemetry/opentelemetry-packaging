@@ -455,7 +455,7 @@ nodejs-unit-tests:
 # host Python untouched.
 .PHONY: python-unit-tests
 python-unit-tests: check-uv-installed
-	uv venv --quiet build/python-unit-tests-venv
+	uv venv --quiet --clear build/python-unit-tests-venv
 	uv pip install --quiet --python build/python-unit-tests-venv/bin/python \
 		--requirement packaging/common/python/test-requirements.txt
 	build/python-unit-tests-venv/bin/python -m unittest discover \
@@ -496,7 +496,7 @@ PYPROTO_SDK_VERSION = $(shell sed -n \
 pyproto-unit-tests: check-uv-installed
 	@test -n "$(PYPROTO_SDK_VERSION)" || \
 		{ echo "cannot read the opentelemetry-sdk pin from packaging/common/python/requirements.txt"; exit 1; }
-	uv venv --quiet --python ">=3.10" $(PYPROTO_DROPIN_VENV)
+	uv venv --quiet --clear --python ">=3.10" $(PYPROTO_DROPIN_VENV)
 	uv pip install --quiet --python $(PYPROTO_DROPIN_VENV)/bin/python \
 		--requirement $(PYPROTO_VENDOR_DIR)/test-requirements-dropin.txt \
 		opentelemetry-sdk==$(PYPROTO_SDK_VERSION)
@@ -514,7 +514,7 @@ pyproto-unit-tests: check-uv-installed
 			--rootdir $(PYPROTO_VENDOR_DIR)/$${suite%%/*} \
 			$(PYPROTO_VENDOR_DIR)/$$suite; \
 	done
-	uv venv --quiet --python ">=3.10" $(PYPROTO_EQUIV_VENV)
+	uv venv --quiet --clear --python ">=3.10" $(PYPROTO_EQUIV_VENV)
 	uv pip install --quiet --python $(PYPROTO_EQUIV_VENV)/bin/python \
 		--requirement $(PYPROTO_VENDOR_DIR)/test-requirements-equivalence.txt \
 		opentelemetry-sdk==1.43.0 \
