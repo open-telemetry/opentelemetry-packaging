@@ -94,7 +94,7 @@ gh workflow run obs.yml -f project=sandbox -f packages=injector -f ref=my-branch
 A run that committed a package but failed before releasing it, for example because OBS took longer than the job allows, leaves sources a re-run sees as unchanged.
 Dispatch with `release_unchanged=true` to wait for those builds and release them.
 
-The workflow authenticates as the release bot with the `OBS_USERNAME` and `OBS_PASSWORD` secrets of the `obs` environment.
+The workflow authenticates as the release bot with the `OBS_USERNAME` and `OBS_PASSWORD` repository secrets.
 Runs in forks always build in the sandbox, and pushes to a fork's `main` do not run it at all.
 
 ## Building in Fedora COPR
