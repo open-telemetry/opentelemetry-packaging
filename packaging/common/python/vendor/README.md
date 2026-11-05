@@ -51,6 +51,10 @@ Two venvs, because the suites' `conftest.py` guards make opposing demands:
 
 The guards detect which side owns a path by looking for "pyproto" in resolved file paths, which is also why the venv directory names must not contain that substring, and why the packages install editable.
 
+Each venv installs its dependencies from a pinned requirements file, `test-requirements-dropin.txt` and `test-requirements-equivalence.txt`, so that a rebuild installs the versions the suites were last run against instead of whatever is newest on PyPI.
+Renovate manages both files and raises each pin in its own pull request, so an incompatible release of the test tooling fails that one pull request instead of every open branch at once.
+One version is deliberately absent from `test-requirements-dropin.txt`: the drop-in venv still reads its `opentelemetry-sdk` version from `packaging/common/python/requirements.txt` at run time, for the reason given above the `PYPROTO_SDK_VERSION` assignment in the Makefile.
+
 Benchmarks in `opentelemetry-pyproto/tests` run through `pytest-benchmark` with `--benchmark-disable`, executing each benchmark once as a plain test.
 
 The `_pygrpc` transport is additionally exercised end to end against `testutil/otelsink`, whose grpc-go server is the same stack as the Collector's OTLP receiver:
