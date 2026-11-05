@@ -60,6 +60,7 @@ Both files sit in `packaging/common/python/` and not in this directory, which is
 Moving either file back under `vendor/` would leave its pins frozen with nothing to report them, which is worse than not pinning them, because the staleness would be silent.
 
 The opentelemetry versions are passed on the `uv pip install` command line in the Makefile rather than written into either file, because the four the equivalence venv installs constrain each other and have to move together.
+`protobuf` is passed the same way and for the same reason: `opentelemetry-proto` 1.43.0 requires `protobuf>=5.0,<8.0`, so the two cannot be raised independently.
 Renovate reads a requirements file and does not read the Makefile recipe, so a pin placed in the file would be raised on its own and leave the file unresolvable.
 The drop-in venv reads its `opentelemetry-sdk` version from `packaging/common/python/requirements.txt` at run time, for the reason given above the `PYPROTO_SDK_VERSION` assignment in the Makefile.
 
