@@ -6,6 +6,12 @@ This package provides the OpenTelemetry Node.js Auto-Instrumentation for automat
 
 The Node.js instrumentation automatically instruments popular Node.js frameworks and libraries to collect distributed traces, metrics, and logs without requiring code changes.
 
+## Supported Node.js versions
+
+The bundled instrumentation supports Node.js 22.15.0 and newer, the floor upstream set when `@opentelemetry/auto-instrumentations-node` 0.82.0 moved to SDK 3.0.
+The package declares no dependency on a `nodejs` package: the agent is loaded into whichever `node` binary the application runs, which is often not the one the distribution ships.
+On older interpreters the agent may still load, but that combination is not supported upstream.
+
 ## Installation
 
 The instrumentation packages are installed at `/usr/lib/opentelemetry/nodejs/`.
