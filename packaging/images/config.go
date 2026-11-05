@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/open-telemetry/opentelemetry-packaging/packaging/builder"
+	"github.com/open-telemetry/opentelemetry-packaging/packaging/changes"
 )
 
 type Package struct {
@@ -118,36 +119,23 @@ func (c Config) Platforms() string {
 	return strings.Join(platforms, ",")
 }
 
-func (c Config) Changed(paths []string) []Package {
-	for _, path := range paths {
-		for _, shared := range []string{
-			"packaging/images", "packaging/builder", "packaging/common/scripts",
-			"cmd/build-packages", "cmd/package-metadata", "packaging/tests/images", "testutil",
-			"Makefile", "go.mod", "go.sum", ".github/workflows/images.yml",
-			// Shipped inside the Python package: the cross-compiled validator
-			// at /usr/lib/opentelemetry/python/otel-config-check, and the
-			// attribution NOTICE. Without these a commit that only fixes the
-			// validator selects nothing, and the published image keeps serving
-			// the previous one with no signal.
-			"cmd/otel-config-check", "NOTICE",
-		} {
-			if under(path, shared) {
-				return c.Packages
-			}
-		}
-	}
-	packages := make([]Package, 0)
-	for _, pkg := range c.Packages {
-		for _, path := range paths {
-			if under(path, "packaging/common/"+pkg.Component) {
-				packages = append(packages, pkg)
-				break
-			}
-		}
-	}
-	return packages
+// sharedInputs are the paths besides changes.PackageInputs that every image
+// build reads: the image tooling, the nfpm build it extracts, and the planner
+// that versions it.
+var sharedInputs = []string{
+	"packaging/images", "cmd/build-packages", "cmd/package-metadata",
+	"packaging/tests/images", "testutil", ".github/workflows/images.yml",
 }
 
-func under(path, prefix string) bool {
-	return path == prefix || strings.HasPrefix(path, prefix+"/")
+func (c Config) Changed(paths []string) []Package {
+	components := make([]string, 0, len(c.Packages))
+	for _, pkg := range c.Packages {
+		components = append(components, pkg.Component)
+	}
+	selected := changes.Select(components, append(sharedInputs, changes.PackageInputs...), paths)
+	packages := make([]Package, 0, len(selected))
+	for _, component := range selected {
+		packages = append(packages, Package{Component: component})
+	}
+	return packages
 }

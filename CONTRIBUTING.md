@@ -50,6 +50,7 @@ packaging/
     python/                  Config, man page template, README, requirements.txt (bundle version pins), test-requirements-*.txt (pyproto test tooling pins, kept out of vendor/ so Renovate sees them), sitecustomize.py (plus its unit tests)
       vendor/                The pyproto exporter chain, developed here with its test suites (unpublished pure-Python packages; see its README)
     meta/                    release.txt: the metapackage's own version, bumped by hand (not Renovate-managed)
+  changes/                   Selects the components a set of changed paths affects, for CI
   images/                    Package-image tooling
     config.json              Supported packages and architectures
     Dockerfile               Shared package extraction and image definition

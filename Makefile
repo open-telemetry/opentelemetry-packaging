@@ -511,7 +511,7 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 # be on PATH; no containers or network access are needed.
 .PHONY: go-unit-tests
 go-unit-tests:
-	go test -v ./cmd/... ./packaging/builder/ ./packaging/images/
+	go test -v ./cmd/... ./packaging/builder/ ./packaging/images/ ./packaging/changes/
 
 # Unit tests for register.js, the Node.js entry point. They stage fake
 # @opentelemetry packages in a temporary directory, so they need no npm
