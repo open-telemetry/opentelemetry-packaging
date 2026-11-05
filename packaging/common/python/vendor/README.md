@@ -77,6 +77,8 @@ The shipped-bundle scenario — the shims owning the public paths — is covered
 ## Rules
 
 - Keep the versions self-consistent: the four packages pin each other at their common development version (currently `1.44.0.dev`).
+  That version is published nowhere, so `uv sync` and `uv run` cannot resolve it and fail in the three packages that depend on a sibling.
+  Install them the way the Makefile does, with `uv pip install --no-deps --editable`, which is also why the test targets pass `--no-deps`.
 - Preserve the drop-in property: the public shims and the entry points must keep matching the standard protobuf-based packages' surface, or environment-variable and declarative configuration silently break.
 - Keep changes upstreamable: OpenTelemetry Authors copyright, Apache-2.0, no dependencies beyond `opentelemetry-api`/`opentelemetry-sdk` and the standard library.
 - Run all three test layers before shipping changes: `make pyproto-unit-tests`, `make pyproto-grpc-integration-tests`, and `make integration-test-deb-python`.
