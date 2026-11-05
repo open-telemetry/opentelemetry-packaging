@@ -123,7 +123,7 @@ func (c Config) Changed(paths []string) []Package {
 	for _, path := range paths {
 		for _, shared := range []string{
 			"packaging/images", "packaging/builder", "packaging/common/scripts",
-			"cmd/build-packages", "cmd/image-metadata", "packaging/tests/images", "testutil",
+			"cmd/build-packages", "cmd/package-metadata", "packaging/tests/images", "testutil",
 			"Makefile", "go.mod", "go.sum", ".github/workflows/images.yml",
 			// Shipped inside the Python package: the cross-compiled validator
 			// at /usr/lib/opentelemetry/python/otel-config-check, and the
