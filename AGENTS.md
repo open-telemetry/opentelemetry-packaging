@@ -19,7 +19,7 @@ make srpm-container            # Same, running rpmbuild in a container instead
 make srpm-sources              # Generated spec + vendored source tarball only
 make rpm-rebuild-container     # Rebuild the SRPM into binary RPMs the way COPR does
                                #   REBUILD_IMAGE=almalinux:9 to exercise the EL rpm
-make deb-sources               # debbuild specs + staged source archives for OBS (build/deb-sources/<package>/)
+make deb-sources               # debbuild specs + staged source archives for OBS (build/deb-sources/<package>/), each at its upstream version
 make deb-sources-<component>   # Same, for one component
 make deb-rebuild-container     # Build those specs with debbuild the way OBS does
                                #   DEB_REBUILD_IMAGE=ubuntu:24.04 to exercise the Ubuntu dpkg

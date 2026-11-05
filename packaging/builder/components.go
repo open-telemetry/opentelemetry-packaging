@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/goreleaser/nfpm/v2/files"
 )
@@ -414,7 +413,11 @@ func manPageTemplate(cfg Config, component string) string {
 		fmt.Sprintf("opentelemetry-%s.8.tmpl", component))
 }
 
-// upstreamVersion returns the version of the upstream agent a component ships.
+// UpstreamVersion returns the version of the upstream agent a component ships.
+// It is also the version of the component's DEBs on the Open Build Service,
+// where each package is versioned and released on its own. The metapackage
+// ships no agent; its hand-bumped packaging/common/meta/release.txt plays the
+// same role.
 //
 // This is deliberately not cfg.Version. That is the distribution packaging
 // version, and the two move independently: the same agent is republished
@@ -423,7 +426,7 @@ func manPageTemplate(cfg Config, component string) string {
 // something different about the same agent depending on which build produced
 // it, which is what "opentelemetry-java-autoinstrumentation <version>" reads as
 // to anyone running man(1).
-func upstreamVersion(cfg Config, component string) (string, error) {
+func UpstreamVersion(cfg Config, component string) (string, error) {
 	if component == "python" {
 		// Python ships no single upstream artifact: its payload is a set of
 		// wheels pinned in requirements.txt. opentelemetry-distro is the
@@ -470,7 +473,7 @@ func pinnedRequirement(path, name string) (string, error) {
 
 // componentManPage renders a component's man page with its upstream version.
 func componentManPage(cfg Config, stagingDir, component string) (string, error) {
-	upstream, err := upstreamVersion(cfg, component)
+	upstream, err := UpstreamVersion(cfg, component)
 	if err != nil {
 		return "", fmt.Errorf("resolving upstream version for %s: %w", component, err)
 	}
@@ -480,7 +483,9 @@ func componentManPage(cfg Config, stagingDir, component string) (string, error) 
 
 // GenerateManPage expands @VERSION@ and @DATE@ placeholders in the man page
 // template at templatePath, compresses it with gzip, and writes the result
-// into stagingDir. It returns the path to the gzipped file.
+// into stagingDir. It returns the path to the gzipped file. @DATE@ is the month
+// of SOURCE_DATE_EPOCH when it is set, so the page is reproducible, and the
+// current month otherwise.
 //
 // @VERSION@ is the packaging version. Callers that also want to report the
 // version of the upstream software the package ships pass it through
@@ -501,9 +506,14 @@ func GenerateManPage(cfg Config, stagingDir, templatePath string, substitutions 
 		return "", fmt.Errorf("reading man page template: %w", err)
 	}
 
+	date, _, err := buildTime()
+	if err != nil {
+		return "", err
+	}
+
 	content := string(tmplData)
 	content = strings.ReplaceAll(content, "@VERSION@", cfg.Version)
-	content = strings.ReplaceAll(content, "@DATE@", time.Now().Format("January 2006"))
+	content = strings.ReplaceAll(content, "@DATE@", date.Format("January 2006"))
 	for _, set := range substitutions {
 		for placeholder, value := range set {
 			content = strings.ReplaceAll(content, placeholder, value)

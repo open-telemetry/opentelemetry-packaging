@@ -208,6 +208,7 @@ OBS builds have no network access, and the Debian releases do not ship the Go ve
 The payload is staged beforehand, by the same builder as every other path, and committed to OBS in the source archive.
 
 Each component is its own OBS package, so a component can be built and released on its own.
+Each is versioned by the upstream agent it ships, the version in its pin (see "Upstream version pins"), not by the packaging tag.
 Write the sources of every component:
 
 ```sh
@@ -223,19 +224,21 @@ make deb-sources-injector
 Both write `build/deb-sources/<package>/`, the content of the OBS package of the same name, by running:
 
 ```sh
-go run ./cmd/build-spec/deb -version 1.0.0 -output build/deb-sources
+go run ./cmd/build-spec/deb -output build/deb-sources
 ```
+
+`-version` overrides every component's version, for testing.
 
 Each directory holds two files.
 `<package>.spec` is a [debbuild](https://github.com/debbuild/debbuild) spec rendered from `components.go`, with nothing to build.
 `<package>-<version>.tar.gz` holds the payload staged for each DEB architecture under `<arch>/root`, or once under `all/root` for an architecture-independent component, with the `%files` list for it alongside.
 The spec picks the tree debbuild's `%{_arch}` names and copies it into the buildroot.
-The archive entries carry the time in [`SOURCE_DATE_EPOCH`](https://reproducible-builds.org/specs/source-date-epoch/), so identical payloads give identical archives and an unchanged component is no change to commit.
+The archive entries, and the date in the man pages, carry the time in [`SOURCE_DATE_EPOCH`](https://reproducible-builds.org/specs/source-date-epoch/), so identical payloads give identical archives and an unchanged component is no change to commit.
 Without it the archive records the current time, and the command warns.
 
 Some properties of the result differ from the nfpm packages, and are worth knowing:
 
-- The DEB version is the one nfpm writes (`1.0.0~rc.1` for `1.0.0-rc.1`), followed by a revision that OBS sets from its own commit and build counters (`-2.1`), so an OBS package sorts above the identically versioned nfpm one.
+- The DEB version is the upstream version written the way nfpm would (`1.0.0~rc.1` for `1.0.0-rc.1`), followed by a revision that OBS sets from its own commit and build counters (`-2.1`). A packaging-only change keeps the version and gets a higher revision, so it still upgrades.
 - The spec sets `AutoReq: no`, so the dependencies are exactly those in `components.go`, as with nfpm.
 - The file lists declare no `%attr`: debbuild would turn each one into a `chown` and `chmod` in the `postinst`. The modes come from the source archive instead, and the spec sets umask 022 for the directories and man pages debbuild creates itself.
 - debbuild writes no `md5sums` control file. dpkg generates the equivalent at unpack time, so `dpkg --verify` and `debsums` work on an installed package either way; what remains is the advisory lintian `no-md5sums-control-file` tag.
