@@ -155,9 +155,18 @@ Restart the service for the new configuration to take effect:
 sudo systemctl restart otelcol
 ```
 
+## Package images
+
+[Package-image tooling](packaging/images/README.md) distributes package contents in OCI image format.
+A shared Dockerfile extracts each selected DEB and copies all package-owned contents into a BusyBox image at their installed paths, without package-manager state or hook-generated files.
+The [image configuration](packaging/images/config.json) defines the supported packages, architectures, and publication matrix.
+Version-pin updates merged into `main` publish the affected images automatically, independently of system-package releases.
+
 ## Current scope
 
-Scope as defined by the approved [System Packages](https://github.com/open-telemetry/community/blob/main/projects/packaging.md) project.
+The original scope is defined by the approved [System Packages](https://github.com/open-telemetry/community/blob/main/projects/packaging.md) project.
+
+Package images also distribute package contents as container images.
 
 ### Infrastructure and packaging
 
@@ -177,7 +186,6 @@ Scope as defined by the approved [System Packages](https://github.com/open-telem
 
 - Operating systems beyond Debian and RHEL derivatives.
 - Profilers integration.
-- Container image building.
 
 ## Contributing
 

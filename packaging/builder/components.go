@@ -8,11 +8,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/goreleaser/nfpm/v2/files"
 )
+
+// Architectures are the target architectures package builds support. Callers
+// that accept an architecture from configuration or a flag validate against
+// this rather than keeping their own copy of the list.
+var Architectures = []string{"amd64", "arm64"}
+
+// SupportedArchitecture reports whether arch is one of Architectures.
+func SupportedArchitecture(arch string) bool {
+	return slices.Contains(Architectures, arch)
+}
 
 // Installation paths (FHS-compliant).
 const (
@@ -134,7 +145,7 @@ func injectorContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("downloading injector: %w", err)
 	}
 
-	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "injector"))
+	manPath, err := componentManPage(cfg, staging, "injector")
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -163,7 +174,7 @@ func javaContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("downloading Java agent: %w", err)
 	}
 
-	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "java"))
+	manPath, err := componentManPage(cfg, staging, "java")
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -190,7 +201,7 @@ func nodejsContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("downloading Node.js agent: %w", err)
 	}
 
-	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "nodejs"))
+	manPath, err := componentManPage(cfg, staging, "nodejs")
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -222,7 +233,7 @@ func dotnetContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("downloading .NET agent: %w", err)
 	}
 
-	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "dotnet"))
+	manPath, err := componentManPage(cfg, staging, "dotnet")
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -288,7 +299,7 @@ func pythonContents(cfg Config) (files.Contents, func(), error) {
 		}
 	}
 
-	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "python"))
+	manPath, err := componentManPage(cfg, staging, "python")
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -335,14 +346,83 @@ func manPageTemplate(cfg Config, component string) string {
 		fmt.Sprintf("opentelemetry-%s.8.tmpl", component))
 }
 
+// upstreamVersion returns the version of the upstream agent a component ships.
+//
+// This is deliberately not cfg.Version. That is the distribution packaging
+// version, and the two move independently: the same agent is republished
+// whenever the packaging itself changes, and package images version their DEBs
+// by the upstream pin instead. A man page reporting cfg.Version therefore says
+// something different about the same agent depending on which build produced
+// it, which is what "opentelemetry-java-autoinstrumentation <version>" reads as
+// to anyone running man(1).
+func upstreamVersion(cfg Config, component string) (string, error) {
+	if component == "python" {
+		// Python ships no single upstream artifact: its payload is a set of
+		// wheels pinned in requirements.txt. opentelemetry-distro is the
+		// auto-instrumentation distribution itself -- the direct analogue of
+		// the Java agent or the .NET tracer -- so its pin is the version to
+		// report.
+		return pinnedRequirement(
+			filepath.Join(cfg.PackagingDir, "common", "python", "requirements.txt"),
+			"opentelemetry-distro",
+		)
+	}
+	version, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", component, "release.txt"))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimPrefix(version, "v"), nil
+}
+
+// pinnedRequirement returns the version a requirements file pins for name with
+// the "name==version" form, ignoring any extras in brackets.
+func pinnedRequirement(path, name string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		pkg, version, ok := strings.Cut(line, "==")
+		if !ok {
+			continue
+		}
+		if base, _, found := strings.Cut(pkg, "["); found {
+			pkg = base
+		}
+		if strings.TrimSpace(pkg) == name {
+			return strings.TrimSpace(version), nil
+		}
+	}
+	return "", fmt.Errorf("no %s==<version> pin in %s", name, path)
+}
+
+// componentManPage renders a component's man page with its upstream version.
+func componentManPage(cfg Config, stagingDir, component string) (string, error) {
+	upstream, err := upstreamVersion(cfg, component)
+	if err != nil {
+		return "", fmt.Errorf("resolving upstream version for %s: %w", component, err)
+	}
+	return GenerateManPage(cfg, stagingDir, manPageTemplate(cfg, component),
+		map[string]string{"@UPSTREAM_VERSION@": upstream})
+}
+
 // GenerateManPage expands @VERSION@ and @DATE@ placeholders in the man page
 // template at templatePath, compresses it with gzip, and writes the result
 // into stagingDir. It returns the path to the gzipped file.
 //
+// @VERSION@ is the packaging version. Callers that also want to report the
+// version of the upstream software the package ships pass it through
+// substitutions, which apply after the built-in placeholders; the
+// OpenTelemetry components use it for @UPSTREAM_VERSION@.
+//
 // The template is addressed by path rather than derived from a component name,
 // so a caller is free to name its templates whatever its packages are called.
 // The output file keeps the template's own name minus the .tmpl suffix.
-func GenerateManPage(cfg Config, stagingDir, templatePath string) (string, error) {
+func GenerateManPage(cfg Config, stagingDir, templatePath string, substitutions ...map[string]string) (string, error) {
 	templateName := filepath.Base(templatePath)
 	if !strings.HasSuffix(templateName, ".tmpl") {
 		return "", fmt.Errorf("man page template %q must end in .tmpl", templateName)
@@ -356,6 +436,11 @@ func GenerateManPage(cfg Config, stagingDir, templatePath string) (string, error
 	content := string(tmplData)
 	content = strings.ReplaceAll(content, "@VERSION@", cfg.Version)
 	content = strings.ReplaceAll(content, "@DATE@", time.Now().Format("January 2006"))
+	for _, set := range substitutions {
+		for placeholder, value := range set {
+			content = strings.ReplaceAll(content, placeholder, value)
+		}
+	}
 
 	outPath := filepath.Join(stagingDir, strings.TrimSuffix(templateName, ".tmpl")+".gz")
 	f, err := os.Create(outPath)
