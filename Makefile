@@ -498,7 +498,7 @@ pyproto-unit-tests: check-uv-installed
 		{ echo "cannot read the opentelemetry-sdk pin from packaging/common/python/requirements.txt"; exit 1; }
 	uv venv --quiet --clear --python ">=3.10" $(PYPROTO_DROPIN_VENV)
 	uv pip install --quiet --python $(PYPROTO_DROPIN_VENV)/bin/python \
-		--requirement $(PYPROTO_VENDOR_DIR)/test-requirements-dropin.txt \
+		--requirement packaging/common/python/test-requirements-dropin.txt \
 		opentelemetry-sdk==$(PYPROTO_SDK_VERSION)
 	uv pip install --quiet --python $(PYPROTO_DROPIN_VENV)/bin/python --no-deps \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-pyproto \
@@ -516,7 +516,7 @@ pyproto-unit-tests: check-uv-installed
 	done
 	uv venv --quiet --clear --python ">=3.10" $(PYPROTO_EQUIV_VENV)
 	uv pip install --quiet --python $(PYPROTO_EQUIV_VENV)/bin/python \
-		--requirement $(PYPROTO_VENDOR_DIR)/test-requirements-equivalence.txt \
+		--requirement packaging/common/python/test-requirements-equivalence.txt \
 		opentelemetry-sdk==1.43.0 \
 		opentelemetry-proto==1.43.0 \
 		opentelemetry-exporter-otlp-proto-http==1.43.0 \

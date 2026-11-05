@@ -51,9 +51,13 @@ Two venvs, because the suites' `conftest.py` guards make opposing demands:
 
 The guards detect which side owns a path by looking for "pyproto" in resolved file paths, which is also why the venv directory names must not contain that substring, and why the packages install editable.
 
-Each venv installs its test tooling from a pinned requirements file, `test-requirements-dropin.txt` and `test-requirements-equivalence.txt`, so that a rebuild installs the versions the suites were last run against instead of whatever is newest on PyPI.
+Each venv installs its test tooling from a pinned requirements file, `../test-requirements-dropin.txt` and `../test-requirements-equivalence.txt`, so that a rebuild installs the versions the suites were last run against instead of whatever is newest on PyPI.
 Renovate manages both files, which moves an incompatible release of the test tooling onto a Renovate branch instead of onto every open branch at once.
 A patch release arrives in the shared "all patch versions" branch and a minor or major release in a branch of its own, both configured in `.github/renovate.json5`.
+
+Both files sit in `packaging/common/python/` and not in this directory, which is the only reason Renovate sees them.
+`config:best-practices` pulls in the `:ignoreModulesAndTests` preset, whose `ignorePaths` includes `**/vendor/**`, and a file removed by `ignorePaths` never reaches a manager at all.
+Moving either file back under `vendor/` would leave its pins frozen with nothing to report them, which is worse than not pinning them, because the staleness would be silent.
 
 The opentelemetry versions are passed on the `uv pip install` command line in the Makefile rather than written into either file, because the four the equivalence venv installs constrain each other and have to move together.
 Renovate reads a requirements file and does not read the Makefile recipe, so a pin placed in the file would be raised on its own and leave the file unresolvable.
