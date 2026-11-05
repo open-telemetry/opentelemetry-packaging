@@ -456,8 +456,7 @@ nodejs-unit-tests:
 .PHONY: python-unit-tests
 python-unit-tests: check-uv-installed
 	uv venv --quiet --clear build/python-unit-tests-venv
-	uv pip install --quiet --python build/python-unit-tests-venv/bin/python \
-		--requirement packaging/common/python/test-requirements.txt
+	uv pip install --quiet --python build/python-unit-tests-venv/bin/python packaging
 	build/python-unit-tests-venv/bin/python -m unittest discover \
 		--start-directory packaging/common/python --pattern 'test_*.py' --verbose
 
@@ -520,7 +519,8 @@ pyproto-unit-tests: check-uv-installed
 		opentelemetry-sdk==1.43.0 \
 		opentelemetry-proto==1.43.0 \
 		opentelemetry-exporter-otlp-proto-http==1.43.0 \
-		opentelemetry-exporter-otlp-proto-grpc==1.43.0
+		opentelemetry-exporter-otlp-proto-grpc==1.43.0 \
+		protobuf==7.36.2
 	uv pip install --quiet --python $(PYPROTO_EQUIV_VENV)/bin/python --no-deps \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-pyproto \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-common \

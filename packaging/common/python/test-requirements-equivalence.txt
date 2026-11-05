@@ -8,7 +8,3 @@
 # tooling.
 pytest==9.2.0
 pytest-benchmark==5.3.1
-# The equivalence suites compare the pure-Python encoder against this one, so
-# its version is part of what they measure rather than an incidental
-# dependency of the runner.
-protobuf==7.36.2
