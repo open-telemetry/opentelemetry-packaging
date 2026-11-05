@@ -113,8 +113,6 @@ jobs:
       matrix:
         package: ${{ fromJSON(needs.plan.outputs.packages) }}
     runs-on: ubuntu-24.04
-    # Holds OBS_USERNAME and OBS_PASSWORD, the release bot's credentials.
-    environment: obs
     permissions:
       contents: read
     # One upload of a package at a time: a commit and its release must not
