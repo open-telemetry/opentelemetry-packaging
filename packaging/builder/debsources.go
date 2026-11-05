@@ -23,7 +23,7 @@ type DebSources struct {
 // WriteDebSources writes a component's debbuild spec and source archive into
 // outputDir, ready to be committed to an OBS package.
 //
-// The archive holds one staged payload per DEB architecture in DebArchs, each
+// The archive holds one staged payload per architecture in Architectures, each
 // under <prefix>/<arch>/root with its file list beside it, or a single one
 // under <prefix>/all for an architecture-independent component. cfg.Arch is
 // ignored. configCheckBinary returns the otel-config-check binary built for an
@@ -73,14 +73,15 @@ func WriteDebSources(cfg Config, comp Component, configCheckBinary func(arch str
 	return sources, nil
 }
 
-// debPayloadArchs returns the architectures a component is staged for. An
+// debPayloadArchs returns the architectures a component is staged for. They
+// are DEB architecture names, which is what debbuild expands %{_arch} to. An
 // architecture-independent payload is the same for every one, so it is staged
 // once.
 func debPayloadArchs(comp Component) []string {
 	if comp.Noarch {
-		return DebArchs[:1]
+		return Architectures[:1]
 	}
-	return DebArchs
+	return Architectures
 }
 
 func debPayloadDir(comp Component, arch string) string {

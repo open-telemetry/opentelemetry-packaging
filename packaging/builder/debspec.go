@@ -25,10 +25,6 @@ var (
 // package carries.
 const DebNoarchDir = "all"
 
-// DebArchs lists the DEB architectures the source archive carries a payload
-// for. They are also the names debbuild expands its arch macro to.
-var DebArchs = []string{"amd64", "arm64"}
-
 // debSpecData is the template input describing one component's spec.
 type debSpecData struct {
 	Name        string

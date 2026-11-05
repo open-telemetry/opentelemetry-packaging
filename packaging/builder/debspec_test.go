@@ -268,10 +268,10 @@ func TestWriteDebSourcesStagesEveryArchitecture(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(out, "opentelemetry-fixture.spec"), sources.Spec)
 	assert.Equal(t, filepath.Join(out, "opentelemetry-fixture-1.2.3.tar.gz"), sources.Archive)
-	assert.Equal(t, DebArchs, checkBinaries)
+	assert.Equal(t, Architectures, checkBinaries)
 
 	entries := readArchive(t, sources.Archive)
-	for _, arch := range DebArchs {
+	for _, arch := range Architectures {
 		prefix := "opentelemetry-fixture-1.2.3/" + arch + "/"
 		bin := entries[prefix+"root"+installDir+"/fixture/"+arch+".bin"]
 		require.NotNil(t, bin, "payload for %s", arch)
