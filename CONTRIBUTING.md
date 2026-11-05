@@ -29,7 +29,7 @@ packaging/
     scripts/                 POSIX lifecycle scripts (postinstall, preuninstall)
     injector/                Config files, man page template, README, release.txt (version pin)
     java/                    "
-    nodejs/                  " (plus register.js, the --require entry point with declarative-config support)
+    nodejs/                  " (plus register.js, the --require entry point with declarative-config support, and its unit tests)
     dotnet/                  "
     python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py (plus its unit tests)
       vendor/                The pyproto exporter chain, developed here with its test suites (unpublished pure-Python packages; see its README)
@@ -241,6 +241,15 @@ Unit tests for the Go commands, currently the `otel-config-check` declarative-co
 
 ```sh
 make go-unit-tests
+```
+
+### Node.js register.js unit tests (fast, no containers)
+
+Unit tests for the routing logic in `packaging/common/nodejs/register.js` (the declarative-configuration branch, the degrade-to-a-warning behavior, and the resolution of the upstream entry points through the published `exports` map).
+They stage fake `@opentelemetry` packages in a temporary directory and load `register.js` with `node --require`, so they need neither npm registry access nor a built package.
+
+```sh
+make nodejs-unit-tests
 ```
 
 ### Python sitecustomize unit tests (fast, no containers)

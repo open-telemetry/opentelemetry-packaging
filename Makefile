@@ -400,6 +400,13 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 go-unit-tests:
 	go test -v ./cmd/...
 
+# Unit tests for register.js, the Node.js entry point. They stage fake
+# @opentelemetry packages in a temporary directory, so they need no npm
+# registry access and nothing from build/.
+.PHONY: nodejs-unit-tests
+nodejs-unit-tests:
+	node --test packaging/common/nodejs/register.test.js
+
 # Unit tests for sitecustomize.py. They need the `packaging` module (a runtime
 # dependency of sitecustomize.py itself); a throwaway virtualenv keeps the
 # host Python untouched.
