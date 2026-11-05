@@ -79,9 +79,8 @@ func Load(packagingDir string) (Config, error) {
 // CheckPins reports configured components that have no upstream version pin.
 // Load cannot do this: it runs against configuration alone, while the pins
 // live in the packaging tree. Without it a component the builder knows but
-// that has no release.txt -- python, whose pins live in requirements.txt, or
-// meta, which has no directory at all -- passes validation and then fans out
-// CI jobs that every one of them fails.
+// that has no release.txt -- python, whose pins live in requirements.txt --
+// passes validation and then fans out CI jobs that every one of them fails.
 func (c Config) CheckPins(packagingDir string) error {
 	for _, pkg := range c.Packages {
 		pin := filepath.Join(packagingDir, "common", pkg.Component, "release.txt")
