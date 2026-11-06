@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -146,6 +147,36 @@ func isOwnedDir(dst string) bool {
 		return true
 	}
 	return false
+}
+
+// ownParents returns contents with a directory entry for every parent that
+// isOwnedDir claims and contents does not declare. nfpm writes each parent of
+// a file into a deb but leaves implicit parents out of an rpm, so without
+// these rpm removes the files and leaves their directories behind. Stage
+// claims the same set through %dir, so both rpm producers own the same
+// directories.
+func ownParents(contents files.Contents) files.Contents {
+	declared := make(map[string]bool, len(contents))
+	for _, c := range contents {
+		declared[path.Clean(c.Destination)] = true
+	}
+
+	var dirs []string
+	for _, c := range contents {
+		for dir := path.Dir(path.Clean(c.Destination)); dir != "/" && !declared[dir]; dir = path.Dir(dir) {
+			declared[dir] = true
+			if isOwnedDir(dir) {
+				dirs = append(dirs, dir)
+			}
+		}
+	}
+
+	sort.Strings(dirs)
+	owned := slices.Clip(contents)
+	for _, dir := range dirs {
+		owned = append(owned, directory(dir))
+	}
+	return owned
 }
 
 func dirLine(content *files.Content) string {

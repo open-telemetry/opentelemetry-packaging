@@ -50,6 +50,7 @@ Validate that packages contain the expected files at the expected paths with cor
 | .NET contains native profiler for glibc and musl | Both libc flavors |
 | .NET contains `conf.d/dotnet.conf` with correct path prefix | Drop-in references correct prefix |
 | Man pages are present and gzipped | Documentation |
+| Every RPM owns the project directories it installs into | `dnf remove` leaves no unowned directories behind |
 
 **Implementation:** List package contents natively in Go with `pault.ag/go/debian` and `cavaliergopher/rpm` (no `dpkg-deb` or `rpm` CLI tools).
 No containers needed.
