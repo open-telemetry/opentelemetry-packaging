@@ -27,7 +27,9 @@ Every `make` invocation in this document is then `gmake` instead.
 .copr/Makefile               COPR "make srpm" entry point (installs the tooling, then calls make srpm)
 cmd/build-packages/          CLI entry point for building .deb and .rpm packages
 cmd/build-spec/rpm/          CLI entry point for generating and staging the source RPM spec
-cmd/image-metadata/          Package-image metadata and build plans
+cmd/build-spec/deb/          CLI entry point for writing the debbuild specs and source archives built on OBS
+cmd/package-metadata/        Per-component package metadata and build plans for CI (package images, OBS)
+cmd/obs-publish/             CLI entry point for uploading, building, and releasing one package on OBS
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
 packaging/
   builder/                   Go library that drives nfpm to create packages
@@ -35,7 +37,9 @@ packaging/
     components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
     download.go              Upstream artifact download helpers
     spec.go                  RPM spec generation for the COPR build (projection of components.go)
-    stage.go                 Payload staging into an rpmbuild buildroot, with generated %files lists
+    debspec.go               debbuild spec generation for the OBS build, one spec per component
+    debsources.go            OBS source archives: the payload staged for every architecture
+    stage.go                 Payload staging into a buildroot, with generated %files lists
   common/                    Shared assets referenced by the builder
     <lang>/otel-config.yaml   Language-specific declarative configuration file, shipped by that language package (valid as shipped)
     scripts/                 POSIX lifecycle scripts (postinstall, preuninstall)
@@ -45,9 +49,12 @@ packaging/
     dotnet/                  "
     python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py (plus its unit tests)
       vendor/                The pyproto exporter chain, developed here with its test suites (unpublished pure-Python packages; see its README)
+    meta/                    release.txt: the metapackage's own version, bumped by hand (not Renovate-managed)
+  changes/                   Selects the components a set of changed paths affects, for CI
   images/                    Package-image tooling
     config.json              Supported packages and architectures
     Dockerfile               Shared package extraction and image definition
+  obs/                       Minimal OBS API client in place of osc: commit sources, wait for the builds, release (see its README)
   repo/                      APT and YUM repository generation scripts
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
@@ -110,7 +117,7 @@ Each component in `components.go` declares its identity and lifecycle metadata a
 That separation has one purpose: the metadata alone is enough to generate an RPM spec, so `spec.go` can render one without downloading a single upstream artifact.
 
 Add or change a package relationship in `components.go` and nothing else.
-Both producers read it from there: nfpm through `Component.Info`, and rpmbuild through the generated spec.
+Every producer reads it from there: nfpm through `Component.Info`, and rpmbuild and debbuild through the specs generated from it.
 
 ### Building RPMs with rpmbuild instead of nfpm
 
@@ -195,6 +202,58 @@ copr-cli buildscm opentelemetry/opentelemetry-packaging \
 
 To try a change before it is merged, point `--clone-url` and `--commit` at a fork and a branch, or submit the same command to a COPR project of your own with the same chroots.
 
+### Building DEBs with debbuild on the Open Build Service
+
+DEBs have a second producer too, used by the [Open Build Service](https://build.opensuse.org/) (OBS), which builds, signs, and publishes the Debian and Ubuntu repositories.
+OBS builds have no network access, and the Debian releases do not ship the Go version `go.mod` asks for, so nothing is compiled or downloaded there.
+The payload is staged beforehand, by the same builder as every other path, and committed to OBS in the source archive.
+
+Each component is its own OBS package, so a component can be built and released on its own.
+Each is versioned by the upstream agent it ships, the version in its pin (see "Upstream version pins"), not by the packaging tag.
+Write the sources of every component:
+
+```sh
+make deb-sources
+```
+
+Or of a single one:
+
+```sh
+make deb-sources-injector
+```
+
+Both write `build/deb-sources/<package>/`, the content of the OBS package of the same name, by running:
+
+```sh
+go run ./cmd/build-spec/deb -output build/deb-sources
+```
+
+`-version` overrides every component's version, for testing.
+
+Each directory holds two files.
+`<package>.spec` is a [debbuild](https://github.com/debbuild/debbuild) spec rendered from `components.go`, with nothing to build.
+`<package>-<version>.tar.gz` holds the payload staged for each DEB architecture under `<arch>/root`, or once under `all/root` for an architecture-independent component, with the `%files` list for it alongside.
+The spec picks the tree debbuild's `%{_arch}` names and copies it into the buildroot.
+The archive entries, and the date in the man pages, carry the time in [`SOURCE_DATE_EPOCH`](https://reproducible-builds.org/specs/source-date-epoch/), so identical payloads give identical archives and an unchanged component is no change to commit.
+Without it the archive records the current time, and the command warns.
+
+Some properties of the result differ from the nfpm packages, and are worth knowing:
+
+- The DEB version is the upstream version written the way nfpm would (`1.0.0~rc.1` for `1.0.0-rc.1`), followed by a revision that OBS sets from its own commit and build counters (`-2.1`). A packaging-only change keeps the version and gets a higher revision, so it still upgrades.
+- The spec sets `AutoReq: no`, so the dependencies are exactly those in `components.go`, as with nfpm.
+- The file lists declare no `%attr`: debbuild would turn each one into a `chown` and `chmod` in the `postinst`. The modes come from the source archive instead, and the spec sets umask 022 for the directories and man pages debbuild creates itself.
+- debbuild writes no `md5sums` and no `Section`, and repeats the summary as the long description.
+- The compression follows the build distribution's `dpkg` default: xz on Debian, zstd on Ubuntu.
+
+An OBS repository builds with debbuild when its first path is the debbuild project for that release, for example `Debian:debbuild/Debian_12` before `Debian:12/standard`.
+That project's configuration sets `BuildEngine: debbuild`; it has to come first because some base projects, such as `Debian:13`, reset everything configured before them.
+
+To check the result, download the binaries with `osc getbinaries` and point the metadata tests at them:
+
+```sh
+PACKAGES_DIR=<dir> go test -run TestDeb ./packaging/tests/metadata/
+```
+
 ### Upstream version pins
 
 Each upstream artifact version is pinned in a `packaging/common/<component>/release.txt` file (Python instead pins its packages in `packaging/common/python/requirements.txt`):
@@ -205,6 +264,8 @@ v2.16.0
 ```
 
 [Renovate](https://docs.renovatebot.com/) automatically opens PRs when upstream releases are published.
+The metapackage ships no upstream artifact, so `packaging/common/meta/release.txt` has no `# renovate:` annotation and Renovate leaves it alone.
+Bump it by hand when the metapackage's own relations or contents change, not when a package it pulls in is updated.
 
 ## Building packages
 

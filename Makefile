@@ -59,8 +59,8 @@ COMPONENTS := injector java nodejs dotnet python meta
 # Languages that have integration tests (meta is excluded).
 TEST_LANGUAGES := java nodejs dotnet python
 
-IMAGE_VERSION = $(shell go run ./cmd/image-metadata -component $* -field version)
-IMAGE_PACKAGE = $(shell go run ./cmd/image-metadata -component $* -field package)
+IMAGE_VERSION = $(shell go run ./cmd/package-metadata -component $* -field version)
+IMAGE_PACKAGE = $(shell go run ./cmd/package-metadata -component $* -field package)
 IMAGE_REF = ghcr.io/open-telemetry/opentelemetry-packaging/$(IMAGE_PACKAGE):$(IMAGE_VERSION)
 IMAGE_CONTEXT = build/images/$*
 
@@ -103,13 +103,13 @@ packages: otel-config-check
 .PHONY: images
 .PRECIOUS: image-packages-% image-%
 images:
-	@set -e; components="$$(go run ./cmd/image-metadata -field components)"; \
+	@set -e; components="$$(go run ./cmd/package-metadata -field components)"; \
 	for component in $$components; do \
 		$(MAKE) image-$$component; \
 	done
 
 image-packages-%: otel-config-check
-	go run ./cmd/image-metadata -component $*
+	go run ./cmd/package-metadata -component $*
 	rm -rf "$(IMAGE_CONTEXT)/$(ARCH)"
 	go run ./cmd/build-packages -version $(IMAGE_VERSION) -arch "$(ARCH)" -format deb \
 		-component $* -output "$(IMAGE_CONTEXT)/$(ARCH)"
@@ -240,6 +240,36 @@ rpm-rebuild-container:
 	@ls -1 $(REBUILD_OUTPUT_DIR)/*.rpm
 
 # ============================================================================
+# DEB sources for the Open Build Service (debbuild path)
+# ============================================================================
+
+# The Open Build Service builds the DEB packages with debbuild, one OBS package
+# per component, and its builds have no network access. So the payload is
+# staged here, for every architecture, into each component's source archive,
+# and the generated spec only copies it into place.
+DEB_SOURCES_DIR ?= build/deb-sources
+
+# Cross-compiles otel-config-check for every supported architecture. Source
+# packages carry the payload of all of them, and the Python payload bundles the
+# binary, so they need it for both whatever ARCH says.
+.PHONY: otel-config-check-all
+otel-config-check-all:
+	$(MAKE) --no-print-directory otel-config-check ARCH=amd64
+	$(MAKE) --no-print-directory otel-config-check ARCH=arm64
+
+# Writes $(DEB_SOURCES_DIR)/<package>/ with the debbuild spec and source archive
+# of every component; deb-sources-<component> writes one. Each package takes the
+# version of the upstream agent it ships, not $(VERSION): on OBS every package
+# is versioned and released on its own.
+.PHONY: deb-sources
+deb-sources: otel-config-check-all
+	go run ./cmd/build-spec/deb -output $(DEB_SOURCES_DIR)
+
+.PHONY: deb-sources-%
+deb-sources-%: otel-config-check-all
+	go run ./cmd/build-spec/deb -component $* -output $(DEB_SOURCES_DIR)
+
+# ============================================================================
 # Local Package Repositories for Testing
 # ============================================================================
 
@@ -361,7 +391,7 @@ integration-test-metadata: packages
 
 .PHONY: integration-test-images
 integration-test-images:
-	@set -e; components="$$(go run ./cmd/image-metadata -field components)"; \
+	@set -e; components="$$(go run ./cmd/package-metadata -field components)"; \
 	for component in $$components; do \
 		$(MAKE) integration-test-image-$$component; \
 	done
@@ -437,11 +467,11 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 # ============================================================================
 
 # Unit tests for Go commands, the package builder, and package-image
-# configuration. The image-metadata tests construct git histories, so git must
+# configuration. The package-metadata tests construct git histories, so git must
 # be on PATH; no containers or network access are needed.
 .PHONY: go-unit-tests
 go-unit-tests:
-	go test -v ./cmd/... ./packaging/builder/ ./packaging/images/
+	go test -v ./cmd/... ./packaging/builder/ ./packaging/images/ ./packaging/changes/ ./packaging/obs/
 
 # Unit tests for register.js, the Node.js entry point. They stage fake
 # @opentelemetry packages in a temporary directory, so they need no npm

@@ -63,6 +63,40 @@ The component is then selected through the ordinary path, and its tag is publish
 Publishing is restricted to the official repository’s `main` branch; pull requests and forks build and test without registry writes.
 The repository’s Actions token needs permission to create or update its GHCR packages; maintainers should also verify package visibility and anonymous pull access when first enabling publication.
 
+## Building on the Open Build Service
+
+The Debian and Ubuntu packages on the [Open Build Service](https://build.opensuse.org/) (OBS) do not wait for a release tag either.
+Each package is versioned by the upstream agent it ships, and released on its own when its inputs change.
+The [Build on OBS workflow](.github/workflows/obs.yml) runs on every push to `main` and selects the packages the push changed, with the same rules as the package images: a pin under `packaging/common/<component>/` selects that component, and shared builder, lifecycle, or DEB-generation changes select all of them.
+Changes to the workflow itself, or to the tools that plan and upload, select nothing.
+
+For each selected package it generates the sources, commits them to [`home:opentelemetry:stable:build`](https://build.opensuse.org/project/show/home:opentelemetry:stable:build), and waits for that revision to build in every repository and architecture.
+It releases the package to [`home:opentelemetry:stable`](https://build.opensuse.org/project/show/home:opentelemetry:stable), which publishes and signs the repositories, only once every build has succeeded.
+Released versions accumulate there, so earlier versions stay installable.
+A package whose regenerated sources are identical to what OBS already holds is neither committed nor released again.
+
+The workflow can be dispatched to build packages without a change to them: the first upload, a single package, or another ref.
+
+```sh
+gh workflow run obs.yml -f packages=all
+```
+
+```sh
+gh workflow run obs.yml -f packages=java,injector -f ref=main
+```
+
+Dispatched with `project=sandbox`, it builds in `home:opentelemetry:sandbox` and releases nothing, which is how a change is tried before it reaches users.
+
+```sh
+gh workflow run obs.yml -f project=sandbox -f packages=injector -f ref=my-branch
+```
+
+A run that committed a package but failed before releasing it, for example because OBS took longer than the job allows, leaves sources a re-run sees as unchanged.
+Dispatch with `release_unchanged=true` to wait for those builds and release them.
+
+The workflow authenticates as the release bot with the `OBS_USERNAME` and `OBS_PASSWORD` repository secrets.
+Runs in forks always build in the sandbox, and pushes to a fork's `main` do not run it at all.
+
 ## Building in Fedora COPR
 
 Publishing the release also triggers the [Build in COPR workflow](.github/workflows/copr-build.yml), which builds the release tag in the [`opentelemetry/opentelemetry-packaging`](https://copr.fedorainfracloud.org/coprs/opentelemetry/opentelemetry-packaging/) COPR project.
