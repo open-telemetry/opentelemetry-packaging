@@ -12,6 +12,16 @@
 # echo for file content: dash's echo interprets backslash escapes and
 # could corrupt foreign preload entries.
 
+PRELOAD_PATH="/etc/ld.so.preload"
+
+# No trap runs on SIGKILL, so a killed run leaves its tmpfile behind. PIDs are
+# reused, so a later run with the same PID would append to that leftover and
+# move it over /etc/ld.so.preload. Clear leftovers first, on upgrades too, so a
+# host that only ever upgrades is cleaned as well. The package manager's lock
+# rules out a concurrent run, and an unmatched glob stays literal, which rm -f
+# ignores.
+rm -f "${PRELOAD_PATH}".tmp.*
+
 # Keep the preload entry on every non-removal transition. dpkg invokes prerm
 # with "upgrade", "failed-upgrade", or "deconfigure" (each optionally followed
 # by version/package arguments) when the package is not actually going away;
@@ -35,14 +45,7 @@ esac
 # for non-root processes — killing the remaining foreign entries.
 umask 022
 
-PRELOAD_PATH="/etc/ld.so.preload"
 LIBOTELINJECT_PATH="/usr/lib/opentelemetry/injector/libotelinject.so"
-
-# No trap runs on SIGKILL, so a killed removal leaves its tmpfile behind, and
-# the tmpfile below is named for this run's PID, not that one. Clear any
-# leftovers; the package manager's lock rules out a concurrent run. An
-# unmatched glob stays literal, which rm -f ignores.
-rm -f "${PRELOAD_PATH}".tmp.*
 
 if [ ! -f "$PRELOAD_PATH" ]; then
     echo "No $PRELOAD_PATH file found; nothing to do."
