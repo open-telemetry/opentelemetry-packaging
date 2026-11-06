@@ -28,6 +28,21 @@
       "datasourceTemplate": "github-runners",
       // Docker versioning preserves compatibility suffixes such as "-arm".
       "versioningTemplate": "docker"
+    },
+    {
+      // Track the uv version the workflows install. The github-actions
+      // manager pins the setup-uv action itself, but the version of the uv
+      // binary that action downloads is an input it does not read, and an
+      // absent input resolves to "latest" on every run. That is the
+      // unpinned-tooling failure the Python test pins exist to prevent, with
+      // the uv binary in place of pytest.
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/\\.github/workflows/[^/]+\\.yml$/"
+      ],
+      "matchStrings": [
+        "# renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)\\s+version:\\s*\"(?<currentValue>[^\"]+)\""
+      ]
     }
   ],
   "packageRules": [

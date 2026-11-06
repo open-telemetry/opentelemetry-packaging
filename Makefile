@@ -454,9 +454,9 @@ nodejs-unit-tests:
 # dependency of sitecustomize.py itself); a throwaway virtualenv keeps the
 # host Python untouched.
 .PHONY: python-unit-tests
-python-unit-tests:
-	python3 -m venv build/python-unit-tests-venv
-	build/python-unit-tests-venv/bin/pip install --quiet packaging
+python-unit-tests: check-uv-installed
+	uv venv --quiet --clear build/python-unit-tests-venv
+	uv pip install --quiet --python build/python-unit-tests-venv/bin/python packaging
 	build/python-unit-tests-venv/bin/python -m unittest discover \
 		--start-directory packaging/common/python --pattern 'test_*.py' --verbose
 
@@ -492,13 +492,14 @@ PYPROTO_SDK_VERSION = $(shell sed -n \
 	's/^opentelemetry-sdk\(\[[^]]*\]\)\{0,1\}==\([^[:space:]]*\)[[:space:]]*$$/\2/p' \
 	packaging/common/python/requirements.txt)
 .PHONY: pyproto-unit-tests
-pyproto-unit-tests:
+pyproto-unit-tests: check-uv-installed
 	@test -n "$(PYPROTO_SDK_VERSION)" || \
 		{ echo "cannot read the opentelemetry-sdk pin from packaging/common/python/requirements.txt"; exit 1; }
-	python3 -m venv $(PYPROTO_DROPIN_VENV)
-	$(PYPROTO_DROPIN_VENV)/bin/pip install --quiet pytest \
-		opentelemetry-sdk==$(PYPROTO_SDK_VERSION) hpack
-	$(PYPROTO_DROPIN_VENV)/bin/pip install --quiet --no-deps \
+	uv venv --quiet --clear --python ">=3.10" $(PYPROTO_DROPIN_VENV)
+	uv pip install --quiet --python $(PYPROTO_DROPIN_VENV)/bin/python \
+		--requirement packaging/common/python/test-requirements-dropin.txt \
+		opentelemetry-sdk==$(PYPROTO_SDK_VERSION)
+	uv pip install --quiet --python $(PYPROTO_DROPIN_VENV)/bin/python --no-deps \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-pyproto \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-common \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-http \
@@ -512,19 +513,15 @@ pyproto-unit-tests:
 			--rootdir $(PYPROTO_VENDOR_DIR)/$${suite%%/*} \
 			$(PYPROTO_VENDOR_DIR)/$$suite; \
 	done
-	python3 -m venv $(PYPROTO_EQUIV_VENV)
-# pytest-benchmark needs a floor, not a ceiling. pytest 9.2.0 dropped the
-# private Node._nodeid that pytest-benchmark read in its benchmark fixture, so
-# every benchmark-fixture test errored at setup with an AttributeError until
-# 5.3.1 switched to the public node.nodeid. Without the floor a fresh venv can
-# resolve that broken pair again, and the failure reads as a bug in the
-# vendored encoder rather than in the test tooling.
-	$(PYPROTO_EQUIV_VENV)/bin/pip install --quiet pytest 'pytest-benchmark>=5.3.1' \
+	uv venv --quiet --clear --python ">=3.10" $(PYPROTO_EQUIV_VENV)
+	uv pip install --quiet --python $(PYPROTO_EQUIV_VENV)/bin/python \
+		--requirement packaging/common/python/test-requirements-equivalence.txt \
 		opentelemetry-sdk==1.43.0 \
 		opentelemetry-proto==1.43.0 \
 		opentelemetry-exporter-otlp-proto-http==1.43.0 \
-		opentelemetry-exporter-otlp-proto-grpc==1.43.0
-	$(PYPROTO_EQUIV_VENV)/bin/pip install --quiet --no-deps \
+		opentelemetry-exporter-otlp-proto-grpc==1.43.0 \
+		protobuf==7.36.2
+	uv pip install --quiet --python $(PYPROTO_EQUIV_VENV)/bin/python --no-deps \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-pyproto \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-common \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-http \
@@ -541,8 +538,15 @@ pyproto-unit-tests:
 	done
 
 # ============================================================================
-# Lint
+# Lint and tooling
 # ============================================================================
+
+.PHONY: check-uv-installed
+check-uv-installed:
+	@if ! uv --version > /dev/null 2>&1; then \
+		echo "error: uv is not installed. See https://docs.astral.sh/uv/getting-started/installation/ for installation instructions."; \
+		exit 1; \
+	fi
 
 .PHONY: check-shellcheck-installed
 check-shellcheck-installed:

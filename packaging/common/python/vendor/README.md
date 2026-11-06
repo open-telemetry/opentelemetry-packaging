@@ -51,6 +51,21 @@ Two venvs, because the suites' `conftest.py` guards make opposing demands:
 
 The guards detect which side owns a path by looking for "pyproto" in resolved file paths, which is also why the venv directory names must not contain that substring, and why the packages install editable.
 
+Each venv installs its test tooling from a pinned requirements file, `../test-requirements-dropin.txt` and `../test-requirements-equivalence.txt`, so that a rebuild installs the versions the suites were last run against instead of whatever is newest on PyPI.
+Renovate manages both files, which moves an incompatible release of the test tooling onto a Renovate branch instead of onto every open branch at once.
+A patch release arrives in the shared "all patch versions" branch and a minor or major release in a branch of its own, both configured in `.github/renovate.json5`.
+
+Both files sit in `packaging/common/python/` and not in this directory, which is the only reason Renovate sees them.
+`config:best-practices` pulls in the `:ignoreModulesAndTests` preset, whose `ignorePaths` includes `**/vendor/**`, and a file removed by `ignorePaths` never reaches a manager at all.
+Moving either file back under `vendor/` would leave its pins frozen with nothing to report them, which is worse than not pinning them, because the staleness would be silent.
+
+The opentelemetry versions are passed on the `uv pip install` command line in the Makefile rather than written into either file, because the four the equivalence venv installs constrain each other and have to move together.
+`protobuf` is passed the same way and for the same reason: `opentelemetry-proto` 1.43.0 requires `protobuf>=5.0,<8.0`, so the two cannot be raised independently.
+Renovate reads a requirements file and does not read the Makefile recipe, so a pin placed in the file would be raised on its own and leave the file unresolvable.
+The consequence is that nothing raises the five command-line pins: they move by hand, when the vendored chain is rebased onto a newer opentelemetry release, and that rebase is what has to retest the equivalence suites against the new pair.
+Automating them needs the five raised in a single branch, and that branch is red today for a reason none of the pins can fix: raising the four opentelemetry versions to 1.45.2 fails `opentelemetry-exporter-otlp-pyproto-http/equivalence_tests`, which patches `requests.Session.post` while the real exporter no longer uses `requests`.
+The drop-in venv reads its `opentelemetry-sdk` version from `packaging/common/python/requirements.txt` at run time, for the reason given above the `PYPROTO_SDK_VERSION` assignment in the Makefile.
+
 Benchmarks in `opentelemetry-pyproto/tests` run through `pytest-benchmark` with `--benchmark-disable`, executing each benchmark once as a plain test.
 
 The `_pygrpc` transport is additionally exercised end to end against `testutil/otelsink`, whose grpc-go server is the same stack as the Collector's OTLP receiver:
@@ -64,6 +79,8 @@ The shipped-bundle scenario — the shims owning the public paths — is covered
 ## Rules
 
 - Keep the versions self-consistent: the four packages pin each other at their common development version (currently `1.44.0.dev`).
+  That version is published nowhere, so `uv sync` and `uv run` cannot resolve it and fail in the three packages that depend on a sibling.
+  Install them the way the Makefile does, with `uv pip install --no-deps --editable`, which is also why the test targets pass `--no-deps`.
 - Preserve the drop-in property: the public shims and the entry points must keep matching the standard protobuf-based packages' surface, or environment-variable and declarative configuration silently break.
 - Keep changes upstreamable: OpenTelemetry Authors copyright, Apache-2.0, no dependencies beyond `opentelemetry-api`/`opentelemetry-sdk` and the standard library.
 - Run all three test layers before shipping changes: `make pyproto-unit-tests`, `make pyproto-grpc-integration-tests`, and `make integration-test-deb-python`.

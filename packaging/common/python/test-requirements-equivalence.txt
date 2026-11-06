@@ -1,0 +1,10 @@
+# pytest and pytest-benchmark must be raised together, and the pair must be
+# tried before either pin lands. pytest 9.2.0 dropped the private Node._nodeid
+# that pytest-benchmark read in its benchmark fixture, so every
+# benchmark-fixture test errored at setup with an AttributeError until
+# pytest-benchmark 5.3.1 switched to the public node.nodeid. While both were
+# installed unpinned, a fresh venv resolved that broken pair on its own, and
+# the failure read as a bug in the vendored encoder rather than in the test
+# tooling.
+pytest==9.2.0
+pytest-benchmark==5.3.1
