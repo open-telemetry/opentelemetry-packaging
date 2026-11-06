@@ -240,6 +240,34 @@ rpm-rebuild-container:
 	@ls -1 $(REBUILD_OUTPUT_DIR)/*.rpm
 
 # ============================================================================
+# DEB sources for the Open Build Service (debbuild path)
+# ============================================================================
+
+# The Open Build Service builds the DEB packages with debbuild, one OBS package
+# per component, and its builds have no network access. So the payload is
+# staged here, for every architecture, into each component's source archive,
+# and the generated spec only copies it into place.
+DEB_SOURCES_DIR ?= build/deb-sources
+
+# Cross-compiles otel-config-check for every supported architecture. Source
+# packages carry the payload of all of them, and the Python payload bundles the
+# binary, so they need it for both whatever ARCH says.
+.PHONY: otel-config-check-all
+otel-config-check-all:
+	$(MAKE) --no-print-directory otel-config-check ARCH=amd64
+	$(MAKE) --no-print-directory otel-config-check ARCH=arm64
+
+# Writes $(DEB_SOURCES_DIR)/<package>/ with the debbuild spec and source archive
+# of every component; deb-sources-<component> writes one.
+.PHONY: deb-sources
+deb-sources: otel-config-check-all
+	go run ./cmd/build-spec/deb -version $(VERSION) -output $(DEB_SOURCES_DIR)
+
+.PHONY: deb-sources-%
+deb-sources-%: otel-config-check-all
+	go run ./cmd/build-spec/deb -version $(VERSION) -component $* -output $(DEB_SOURCES_DIR)
+
+# ============================================================================
 # Local Package Repositories for Testing
 # ============================================================================
 
