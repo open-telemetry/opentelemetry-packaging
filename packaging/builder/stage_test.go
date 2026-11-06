@@ -118,6 +118,48 @@ func TestStageOwnsOnlyItsOwnDirectories(t *testing.T) {
 	}
 }
 
+// The nfpm rpm and the rpmbuild rpm must own the same directories, or removing
+// one leaves directories behind that removing the other does not.
+func TestInfoOwnsTheDirectoriesStageOwns(t *testing.T) {
+	src := writeSource(t, "README.md", "docs\n")
+	contents := files.Contents{
+		regularFile(src, javaInstallDir+"/opentelemetry-javaagent.jar", 0o644),
+		configFile(src, configDir+"/java/otel-config.yaml"),
+		regularFile(src, injectorConfigDir+"/conf.d/java.conf", 0o644),
+		regularFile(src, "/usr/share/man/man8/opentelemetry-java.8.gz", 0o644),
+		regularFile(src, "/usr/share/doc/opentelemetry-java-autoinstrumentation/README.md", 0o644),
+	}
+
+	_, lines := stageFixture(t, contents)
+	var staged []string
+	for _, line := range lines {
+		if after, ok := strings.CutPrefix(line, "%dir "); ok {
+			staged = append(staged, after[strings.LastIndex(after, " ")+1:])
+		}
+	}
+
+	comp := Component{
+		Name:        "fixture",
+		PackageName: "opentelemetry-fixture",
+		ContentsFunc: func(Config) (files.Contents, func(), error) {
+			return contents, func() {}, nil
+		},
+	}
+	info, cleanup, err := comp.Info(testConfig(t, "1.2.3"), "rpm")
+	require.NoError(t, err)
+	defer cleanup()
+	var declared []string
+	for _, c := range info.Contents {
+		if c.Type == files.TypeDir {
+			declared = append(declared, c.Destination)
+		}
+	}
+
+	assert.ElementsMatch(t, staged, declared)
+	assert.Contains(t, declared, injectorConfigDir+"/conf.d",
+		"a language package must own the conf.d its drop-in lives in")
+}
+
 func TestIsOwnedDir(t *testing.T) {
 	owned := []string{
 		installDir,

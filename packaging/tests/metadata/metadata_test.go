@@ -10,6 +10,7 @@ package metadata_test
 import (
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -713,6 +714,54 @@ func TestRpmMetapackageRecommendsLanguagePackages(t *testing.T) {
 	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-nodejs-autoinstrumentation1"))
 	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-dotnet-autoinstrumentation1"))
 	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-python-autoinstrumentation1"))
+}
+
+// --------------------------------------------------------------------------
+// RPM directory ownership
+// --------------------------------------------------------------------------
+
+// projectDir reports whether dir belongs to this project rather than to the
+// distribution: the installation and configuration trees, and the
+// per-package documentation directories.
+func projectDir(dir string) bool {
+	for _, root := range []string{"/usr/lib/opentelemetry", "/etc/opentelemetry"} {
+		if dir == root || strings.HasPrefix(dir, root+"/") {
+			return true
+		}
+	}
+	return path.Dir(dir) == "/usr/share/doc" && strings.HasPrefix(path.Base(dir), "opentelemetry")
+}
+
+// rpm removes only the directories a package lists, so a project directory an
+// rpm creates without listing stays on disk after dnf remove, owned by
+// nothing. A deb needs no such check: dpkg owns every parent of every file.
+func TestRpmOwnsItsDirectories(t *testing.T) {
+	skipIfNoRpmPackages(t)
+
+	matches, err := filepath.Glob(filepath.Join(packagesDir(t), "*.rpm"))
+	require.NoError(t, err)
+	for _, m := range matches {
+		if strings.HasSuffix(m, ".src.rpm") {
+			continue
+		}
+		t.Run(filepath.Base(m), func(t *testing.T) {
+			p := openRpm(t, m)
+			owned := map[string]bool{}
+			for _, f := range p.Files() {
+				if f.IsDir() {
+					owned[f.Name()] = true
+				}
+			}
+			for _, f := range p.Files() {
+				for dir := path.Dir(f.Name()); dir != "/"; dir = path.Dir(dir) {
+					if projectDir(dir) && !owned[dir] {
+						t.Errorf("%s is under %s, which the package does not own", f.Name(), dir)
+						owned[dir] = true // report each directory once
+					}
+				}
+			}
+		})
+	}
 }
 
 // --------------------------------------------------------------------------
