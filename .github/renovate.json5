@@ -28,6 +28,16 @@
       "datasourceTemplate": "github-runners",
       // Docker versioning preserves compatibility suffixes such as "-arm".
       "versioningTemplate": "docker"
+    },
+    {
+      // Track the Tomcat version used by the Java E2E test images. Each
+      // Dockerfile carries a "# renovate: datasource=... depName=..."
+      // annotation on the line above the ARG holding the version.
+      "customType": "regex",
+      "managerFilePatterns": ["/^packaging/tests/java/Dockerfile\\.[a-z]+$/"],
+      "matchStrings": [
+        "# renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(?:\\s+versioning=(?<versioning>\\S+))?\\s+ARG \\w+=(?<currentValue>\\S+)"
+      ]
     }
   ],
   "packageRules": [
@@ -70,6 +80,12 @@
         "/^opentelemetry-instrumentation-/"
       ],
       "ignoreUnstable": false
+    },
+    {
+      // The test images fetch Tomcat from dlcdn.apache.org, which only serves
+      // current releases; stay on the 10.1 line the tests are written for.
+      "matchPackageNames": ["apache/tomcat"],
+      "allowedVersions": "/^10\\.1\\./"
     }
   ],
   "labels": [
