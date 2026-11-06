@@ -33,6 +33,11 @@ Use this to configure common settings like:
 - `OTEL_SERVICE_NAME`: Service name for telemetry
 - `OTEL_EXPORTER_OTLP_ENDPOINT`: Endpoint for the OTLP exporter
 
+On an RPM host, removing the package renames an edited `injector.conf` or `default_env.conf` to `<name>.rpmsave`, and installing it again writes the defaults beside it.
+The injector then runs without your settings.
+The install prints a warning naming each `.rpmsave` file it finds, but `dnf -q` on dnf4 hides it, so check for these files after reinstalling: merge your edits back, then delete them.
+A DEB host keeps the edited files through removal.
+
 ## Files
 
 - `/usr/lib/opentelemetry/injector/libotelinject.so`: The injector shared library

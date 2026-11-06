@@ -63,3 +63,18 @@ else
         echo "WARNING: add $LIBOTELINJECT_PATH to $PRELOAD_PATH manually to activate it." >&2
     fi
 fi
+
+# rpm saves an edited configuration file as .rpmsave when the package is
+# removed, and a later install writes the default beside it. The injector then
+# runs without the operator's settings and nothing else reports it, so name
+# each saved file. dpkg keeps an edited conffile through removal, so on a deb
+# host these never exist.
+for conf in /etc/opentelemetry/injector/injector.conf /etc/opentelemetry/injector/default_env.conf; do
+    if [ -f "$conf.rpmsave" ]; then
+        # Short lines: dnf5 cuts scriptlet output at 80 columns when it is
+        # not writing to a terminal.
+        echo "WARNING: found $conf.rpmsave" >&2
+        echo "WARNING: it holds your edits from before the package was removed." >&2
+        echo "WARNING: merge them into ${conf##*/}, then delete the .rpmsave." >&2
+    fi
+done
