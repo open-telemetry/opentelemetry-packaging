@@ -151,6 +151,20 @@ For each package, `make deb-sources` (or `make deb-sources-<component>`) writes 
 OBS builds the spec with `debbuild`.
 This keeps a single spec format for DEB and RPM instead of a separate `debian/` tree.
 
+`debbuild` is not part of Debian or Ubuntu, so the build roots take it from `Debian:debbuild` and `Ubuntu:debbuild`, the OBS projects that package it.
+Every repository of the build project and the sandbox lists the matching debbuild repository as its first build path, ahead of the distribution itself.
+
+```xml
+<repository name="Debian_12">
+  <path project="Debian:debbuild" repository="Debian_12"/>
+  <path project="Debian:12" repository="standard"/>
+</repository>
+```
+
+That ordering is what makes OBS choose the debbuild recipe for a spec with no `debian/` tree.
+It also means everything those projects publish enters the build root ahead of the distribution's own package of the same name, and that the build root takes whatever version they publish at the time of the build.
+They are therefore a build dependency of every package, on a par with the base distribution, and maintained outside this project.
+
 ## Versioning
 
 This scheme applies to the packages on OBS only.
@@ -332,6 +346,15 @@ That costs every user a manual step: an installed system has to trust the new si
 The mirror bounds that step to the key alone.
 Users are instructed to point their package managers at the project domain, so a change of build service does not also make them change the repository address they configured.
 
+### The build root depends on projects outside this one
+
+`debbuild` reaches the build roots from `Debian:debbuild` and `Ubuntu:debbuild`, at whatever version those projects publish at the time of the build.
+They are maintained outside this project, so a break in them, or an end to their support for a Debian or Ubuntu release, stops the pipeline until it is worked around.
+The fallback is the `debian/` tree that [Alternatives considered](#a-native-debian-directory) rejects, which is a larger change than the situation would warrant.
+
+Linking the debbuild packages into `home:opentelemetry` and building against that copy would bound this, because the build root would then change when this project decides to and not when the upstream projects publish.
+That has not been done, and it trades the exposure for a package to maintain.
+
 ## Future work
 
 - **RPMs on OBS and retiring COPR** (phase 2).
@@ -358,6 +381,7 @@ Each package is versioned by the agent it bundles, not by a shared release versi
 
 Generate a `debian/` tree (`control`, `rules`, maintainer scripts) next to the RPM spec.
 Rejected because it is a second metadata projection in a different format to keep in sync, while `debbuild` builds DEBs from the spec format the RPM path already uses.
+The cost of that choice is the dependency on `Debian:debbuild` and `Ubuntu:debbuild` described in [Sources](#sources), which a `debian/` tree would not need.
 
 ### Building on OBS from source
 
