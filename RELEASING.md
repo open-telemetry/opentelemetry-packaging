@@ -97,6 +97,9 @@ Dispatch with `release_unchanged=true` to wait for those builds and release them
 The workflow authenticates as the release bot with the `OBS_USERNAME` and `OBS_PASSWORD` repository secrets.
 Runs in forks always build in the sandbox, and pushes to a fork's `main` do not run it at all.
 
+It builds with the Go toolchain pinned in `.go-version`, which Renovate bumps in a PR of its own.
+That PR changes the `otel-config-check` binary the Python package ships, so expect the packages it is an input of to be released again after it merges.
+
 ## Building in Fedora COPR
 
 Publishing the release also triggers the [Build in COPR workflow](.github/workflows/copr-build.yml), which builds the release tag in the [`opentelemetry/opentelemetry-packaging`](https://copr.fedorainfracloud.org/coprs/opentelemetry/opentelemetry-packaging/) COPR project.

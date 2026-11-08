@@ -23,6 +23,7 @@ func TestSelect(t *testing.T) {
 		{"package input", []string{"packaging/builder/components.go"}, components},
 		{"target input", []string{"cmd/tool/main.go"}, components},
 		{"notice", []string{"NOTICE"}, components},
+		{"go toolchain", []string{".go-version"}, components},
 		{"unknown component", []string{"packaging/common/dotnet/release.txt", "README.md"}, []string{}},
 		{"prefix collision", []string{"packaging/common/java-other/release.txt", "cmd/toolbox/main.go"}, []string{}},
 	} {

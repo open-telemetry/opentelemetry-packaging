@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - **GNU Make 4.0+** (the Makefile uses constructs that GNU Make 3.81 cannot parse)
-- **Go 1.26+** (package builds and tests are pure Go)
+- **Go 1.26+** (package builds and tests are pure Go; `.go-version` holds the toolchain CI builds the OBS sources with, which `goenv`, `mise`, and `actions/setup-go` all read)
 - **git** (needed by the package-image metadata unit tests, which construct git histories to exercise build-plan selection)
 - **npm** (needed to fetch the Node.js auto-instrumentation agent from the npm registry)
 - **Python 3 with pip** (needed to fetch the Python auto-instrumentation packages; invoked as `python3 -m pip`)
@@ -238,6 +238,8 @@ The spec picks the tree debbuild's `%{_arch}` names and copies it into the build
 The archive entries, and the date in the man pages, carry the time in [`SOURCE_DATE_EPOCH`](https://reproducible-builds.org/specs/source-date-epoch/), so identical payloads give identical archives and an unchanged component is no change to commit.
 Without it the archive records the current time, and the command warns.
 The `otel-config-check` binary the Python payload bundles is the only compiled part of an archive, and it is built with `-buildvcs=false`: a binary stamped with the commit it was built from would make that archive differ at every commit, whatever its inputs did.
+Which compiler builds it is an input too, so the [Build on OBS workflow](.github/workflows/obs.yml) pins the toolchain to `.go-version` and runs with `GOTOOLCHAIN=local`, rather than taking whatever the runner image ships that week.
+Renovate bumps that pin on its own, in a PR of its own: the next upload then rebuilds and releases every package, which is why it is not grouped with the other dependency updates.
 
 Some properties of the result differ from the nfpm packages, and are worth knowing:
 

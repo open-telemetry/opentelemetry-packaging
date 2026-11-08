@@ -15,9 +15,13 @@ import "strings"
 // and the attribution NOTICE. Without them a commit that only fixes the
 // validator selects nothing, and the published package keeps serving the
 // previous one with no signal.
+//
+// .go-version is the toolchain that compiles the validator, as much an input
+// of the binary as go.mod and go.sum are: a build with another compiler is
+// another binary.
 var PackageInputs = []string{
 	"packaging/builder", "packaging/common/scripts",
-	"Makefile", "go.mod", "go.sum",
+	"Makefile", "go.mod", "go.sum", ".go-version",
 	"cmd/otel-config-check", "NOTICE",
 }
 

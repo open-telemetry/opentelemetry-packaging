@@ -37,6 +37,14 @@ on:
 
 permissions: {}
 
+env:
+  # Never leave the toolchain .go-version pins for a newer one a go.mod
+  # directive asks for: the compiler's output is committed as a package
+  # source here, so changing it changes what is uploaded. A go.mod that
+  # outgrows the pin fails this workflow, which is the point; bump
+  # .go-version with it.
+  GOTOOLCHAIN: local
+
 jobs:
   # The packages a push changed, or the dispatched selection, each with its
   # version and the source date that makes an unchanged package reproduce its
@@ -60,6 +68,11 @@ jobs:
           # The source dates come from the history of each component's inputs.
           fetch-depth: 0
           persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .go-version
+          check-latest: false
 
       - name: Choose the OBS project
         id: target
@@ -127,6 +140,16 @@ jobs:
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
+
+      # The sources must come out byte-identical when their inputs have not
+      # changed, or every run commits a new OBS revision and releases an
+      # identical package. The otel-config-check binary the Python payload
+      # bundles is compiled here, so which compiler builds it is an input:
+      # pin it rather than take whatever the runner image ships this week.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .go-version
+          check-latest: false
 
       - name: Generate the sources
         env:
