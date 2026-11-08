@@ -251,11 +251,14 @@ DEB_SOURCES_DIR ?= build/deb-sources
 
 # Cross-compiles otel-config-check for every supported architecture. Source
 # packages carry the payload of all of them, and the Python payload bundles the
-# binary, so they need it for both whatever ARCH says.
+# binary, so they need it for all of them whatever ARCH says. The list comes
+# from the generator rather than being spelled out here, so that adding an
+# architecture to builder.Architectures is the only edit it takes.
 .PHONY: otel-config-check-all
 otel-config-check-all:
-	$(MAKE) --no-print-directory otel-config-check ARCH=amd64
-	$(MAKE) --no-print-directory otel-config-check ARCH=arm64
+	@set -e; for arch in $$(go run ./cmd/build-spec/deb -print-architectures); do \
+		$(MAKE) --no-print-directory otel-config-check ARCH=$$arch; \
+	done
 
 # Writes $(DEB_SOURCES_DIR)/<package>/ with the debbuild spec and source archive
 # of every component; deb-sources-<component> writes one.

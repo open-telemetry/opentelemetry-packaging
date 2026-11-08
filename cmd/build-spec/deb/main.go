@@ -28,6 +28,8 @@ import (
 func main() {
 	log.SetFlags(0)
 
+	printArchs := flag.Bool("print-architectures", false,
+		"Print the architectures the source archives are staged for, one per line, and exit")
 	version := flag.String("version", "", "Package version (required)")
 	release := flag.String("release", "", "Packaging revision (defaults to 1)")
 	outputDir := flag.String("output", "build/deb-sources", "Output directory; each component gets a subdirectory named after its package")
@@ -37,6 +39,15 @@ func main() {
 		"Directory holding the prebuilt otel-config-check-<arch> binaries, one per architecture")
 
 	flag.Parse()
+
+	// The Makefile cross-compiles otel-config-check for each of these before
+	// writing the sources, so that the list lives in one place.
+	if *printArchs {
+		for _, arch := range builder.Architectures {
+			fmt.Println(arch)
+		}
+		return
+	}
 
 	if *version == "" {
 		log.Fatal("error: -version is required")
