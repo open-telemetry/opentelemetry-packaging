@@ -72,9 +72,16 @@ IMAGE_CONTEXT = build/images/$*
 # package. Pure Go with CGO disabled, so any build host produces the
 # linux/$(ARCH) binary; go build is incremental, so running this before every
 # package build is cheap.
+#
+# -trimpath keeps the build directory out of the binary, and -buildvcs=false
+# keeps the commit out of it: go build stamps vcs.revision and vcs.time into a
+# main package built from a git clone, which would make the binary, and so the
+# Python source archive that bundles it, differ at every commit. The OBS
+# sources must be byte-identical when their inputs have not changed, or every
+# upload commits a new revision and releases an identical package.
 .PHONY: otel-config-check
 otel-config-check:
-	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -trimpath -o build/bin/otel-config-check-$(ARCH) ./cmd/otel-config-check
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -trimpath -buildvcs=false -o build/bin/otel-config-check-$(ARCH) ./cmd/otel-config-check
 
 .PHONY: deb-package-%
 deb-package-%: otel-config-check

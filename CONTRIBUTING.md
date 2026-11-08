@@ -237,6 +237,7 @@ Each directory holds two files.
 The spec picks the tree debbuild's `%{_arch}` names and copies it into the buildroot.
 The archive entries, and the date in the man pages, carry the time in [`SOURCE_DATE_EPOCH`](https://reproducible-builds.org/specs/source-date-epoch/), so identical payloads give identical archives and an unchanged component is no change to commit.
 Without it the archive records the current time, and the command warns.
+The `otel-config-check` binary the Python payload bundles is the only compiled part of an archive, and it is built with `-buildvcs=false`: a binary stamped with the commit it was built from would make that archive differ at every commit, whatever its inputs did.
 
 Some properties of the result differ from the nfpm packages, and are worth knowing:
 
