@@ -41,7 +41,7 @@ packaging/
   images/                    Package-image tooling
     config.json              Supported packages and architectures
     Dockerfile               Shared package extraction and image definition
-  repo/                      APT and YUM repository generation scripts
+  repo/                      APT and YUM repository generation scripts, and the debbuild rebuild
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
     images/                         Package-image contents and copy tests
@@ -225,9 +225,38 @@ Some properties of the result differ from the nfpm packages, and are worth knowi
 - The DEB version is the one nfpm writes (`1.0.0~rc.1` for `1.0.0-rc.1`), followed by a revision that OBS sets from its own commit and build counters (`-2.1`), so an OBS package sorts above the identically versioned nfpm one.
 - The spec sets `AutoReq: no`, so the dependencies are exactly those in `components.go`, as with nfpm.
 - The file lists declare no `%attr`: debbuild would turn each one into a `chown` and `chmod` in the `postinst`. The modes come from the source archive instead, and the spec sets umask 022 for the directories and man pages debbuild creates itself.
-- debbuild repeats the summary as the long description.
 - debbuild writes no `md5sums` control file. dpkg generates the equivalent at unpack time, so `dpkg --verify` and `debsums` work on an installed package either way; what remains is the advisory lintian `no-md5sums-control-file` tag.
 - The compression follows the build distribution's `dpkg` default: xz on Debian, zstd on Ubuntu.
+- The packages are not byte-reproducible: debbuild stamps the directories it creates, and the man page it recompresses, with the time of the build. The source archives are, which is what matters for OBS, where a changed archive is a rebuild.
+
+### Building the DEB sources locally
+
+`make deb-rebuild-container` builds every generated spec with debbuild in a container, the way OBS does, and `make integration-test-deb-rebuild` runs the metadata tests over the result:
+
+```sh
+make integration-test-deb-rebuild
+```
+
+`DEB_REBUILD_IMAGE` selects the build distribution, `debian:12` by default; CI runs it against `ubuntu:24.04` as well.
+`DEBBUILD_VERSION` pins debbuild itself, which is built from its release tarball because the project publishes no package of its own.
+Keep it pinned: the specs set `%global __mkdir_p` and `%global __gzip`, macros internal to debbuild, and an upstream rename should fail on the commit that moves the pin rather than on an unrelated one.
+
+That is also why the rebuild is worth running at all.
+Every other assertion about this path reads the text of the generated spec, and a spec that is wrong in a way debbuild agrees with passes all of them.
+
+To run debbuild by hand instead, create the `_topdir` skeleton first:
+
+```sh
+mkdir -p "$PWD"/top/{BUILD,BUILDROOT,DEBS,SDEBS,SOURCES,SPECS}
+```
+
+debbuild creates none of those itself, and without them fails with only `Exec of /var/tmp/deb-tmp.prep.NNN failed (%prep): 512` to go on.
+That is the general shape of a debbuild failure: it discards the output of every section it runs unless given `-vv`, so the exit status is all that reaches the log.
+Reach for `-vv` first when a build fails for no stated reason.
+
+```sh
+debbuild --define "_sourcedir $PWD" --define "_topdir $PWD/top" -bb <package>.spec
+```
 
 An OBS repository builds with debbuild when its first path is the debbuild project for that release, for example `Debian:debbuild/Debian_12` before `Debian:12/standard`.
 That project's configuration sets `BuildEngine: debbuild`; it has to come first because some base projects, such as `Debian:13`, reset everything configured before them.

@@ -270,6 +270,45 @@ deb-sources: otel-config-check-all
 deb-sources-%: otel-config-check-all
 	go run ./cmd/build-spec/deb -version $(VERSION) -component $* -output $(DEB_SOURCES_DIR)
 
+# Builds the generated specs with debbuild in a container, the way OBS does.
+#
+# Everything else about the DEB source path is asserted against the text of the
+# generated spec, which cannot catch the spec being wrong in a way debbuild
+# agrees with: the umask overrides name macros internal to debbuild, and a
+# release that renamed one would leave the assertions passing and the packages
+# shipping group-writable directories. This builds the spec instead, and
+# integration-test-deb-rebuild runs the metadata tests over the result.
+#
+# DEB_REBUILD_IMAGE selects the build distribution. Debian and Ubuntu differ in
+# the compression dpkg-deb defaults to, and in little else here.
+DEB_REBUILD_IMAGE ?= debian:12
+DEB_REBUILD_OUTPUT_DIR ?= $(CURDIR)/build/deb-rebuild
+
+# Pinned, so that an upstream change to the macros the specs rely on fails on a
+# commit that moves it rather than on an unrelated one.
+DEBBUILD_VERSION ?= 24.12.0
+
+.PHONY: deb-rebuild-container
+deb-rebuild-container:
+	@if [ -z "$$(ls $(DEB_SOURCES_DIR)/*/*.spec 2>/dev/null)" ]; then \
+		echo "error: no spec found in $(DEB_SOURCES_DIR). Run \`make deb-sources\` first."; \
+		exit 1; \
+	fi
+	@rm -rf $(DEB_REBUILD_OUTPUT_DIR)
+	@mkdir -p $(DEB_REBUILD_OUTPUT_DIR)
+	$(CONTAINER_ENGINE) run --rm --platform linux/$(ARCH) \
+		-v $(abspath $(DEB_SOURCES_DIR)):/sources:ro \
+		-v $(DEB_REBUILD_OUTPUT_DIR):/out \
+		-v $(CURDIR)/packaging/repo:/scripts:ro \
+		$(DEB_REBUILD_IMAGE) \
+		/scripts/debbuild-rebuild.sh /sources /out $(DEBBUILD_VERSION)
+
+# Runs the metadata tests over the debbuild output, the same assertions the
+# nfpm packages answer, so that the two producers cannot drift apart unnoticed.
+.PHONY: integration-test-deb-rebuild
+integration-test-deb-rebuild: deb-rebuild-container
+	PACKAGES_DIR=$(DEB_REBUILD_OUTPUT_DIR) go test -v -timeout 5m -run TestDeb ./packaging/tests/metadata/
+
 # ============================================================================
 # Local Package Repositories for Testing
 # ============================================================================
