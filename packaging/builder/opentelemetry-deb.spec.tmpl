@@ -76,7 +76,14 @@ Source0:        %{name}-%{version}.tar.gz
 {{ .Description }}
 
 %prep
-%setup -q
+# Creates the build directory without unpacking into it, and takes only the
+# file list from the archive. The payload does not belong here: the install
+# section extracts it straight from the archive, and the build directory is
+# only where the files section reads its list from. Unpacking the archive whole
+# would write out every architecture's payload to use one.
+%setup -q -c -T
+tar -xzf %{SOURCE0} --strip-components=1 \
+    %{name}-%{version}/{{ .PayloadDir }}/{{ .Component }}.files
 
 %build
 # Nothing to build: the payload in the source archive is already staged.
