@@ -357,6 +357,44 @@ func TestPublishFailsWithoutReleasing(t *testing.T) {
 	}
 }
 
+// A package no repository builds would otherwise be waited for, found to
+// have nothing pending, and released: the release copies whatever the
+// targets already hold, and the run reports success without having built
+// anything. A package just created in a project whose repositories are not
+// enabled for it arrives here.
+func TestADisabledPackageIsNotReleased(t *testing.T) {
+	f, c := newFakeOBS(t)
+	f.build = func(string, string, int) (string, bool, *Job) {
+		return "disabled", false, nil
+	}
+
+	outcome, err := Publish(context.Background(), c, options(sourcesDir(t, map[string]string{"pkg.spec": "spec"})))
+	require.ErrorContains(t, err, "disabled in every repository")
+	require.True(t, outcome.Changed)
+	require.False(t, outcome.Released)
+	require.Equal(t, 0, f.released)
+}
+
+// One repository left building is still a build to wait for, whatever the
+// others are set to.
+func TestADisabledRepositoryIsOnlySkipped(t *testing.T) {
+	f, c := newFakeOBS(t)
+	f.build = func(target, srcmd5 string, poll int) (string, bool, *Job) {
+		if target == "debian/x86_64" {
+			return "disabled", false, nil
+		}
+		if poll < 2 {
+			return "building", false, &Job{SrcMD5: "previous", Code: "succeeded"}
+		}
+		return "succeeded", false, &Job{SrcMD5: srcmd5, Code: "succeeded"}
+	}
+
+	outcome, err := Publish(context.Background(), c, options(sourcesDir(t, map[string]string{"pkg.spec": "spec"})))
+	require.NoError(t, err)
+	require.True(t, outcome.Released)
+	require.Equal(t, 0, f.requests["GET jobhistory debian/x86_64"], "the disabled repository is not asked about")
+}
+
 // Right after a commit the results still describe the previous revision. A
 // failure there must not fail the new one before it has had a chance to build.
 func TestWaitIgnoresThePreviousRevisionsFailure(t *testing.T) {

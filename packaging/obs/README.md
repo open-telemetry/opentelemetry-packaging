@@ -23,7 +23,7 @@ The `osc` sources remain the reference for the requests below.
 1. It lists the package's current sources, and creates the package if it does not exist.
 2. If the local files have the same names and MD5 sums, it stops: there is nothing to commit or release. Regenerated sources of an unchanged package are byte-identical, because their timestamps come from `SOURCE_DATE_EPOCH`.
 3. Otherwise it commits the directory the way `osc commit` does. It posts the file list with `cmd=commitfilelist`, uploads the files the server reports missing, and posts the list again. Files the package held that are not in the list are removed, such as the archive of the previous version.
-4. It waits until the new revision has built in every repository and architecture. It checks each one's job history (`_jobhistory`) for a job with the committed `srcmd5`, and fails at once on `excluded`, or on a lasting `failed`, `broken`, or `unresolvable` status.
+4. It waits until the new revision has built in every repository and architecture. It checks each one's job history (`_jobhistory`) for a job with the committed `srcmd5`, and fails at once on `excluded`, or on a lasting `failed`, `broken`, or `unresolvable` status. A repository where the package is `disabled` is skipped, but a package disabled everywhere fails: there would be nothing built to release.
 5. If asked, it releases the package with `cmd=release`, as `osc release` does, which copies it to the project's release targets.
 
 A run that committed but failed before releasing leaves sources the next run sees as unchanged.

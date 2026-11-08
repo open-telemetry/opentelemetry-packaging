@@ -202,6 +202,7 @@ func (w *buildWatch) poll(ctx context.Context) (int, error) {
 	}
 
 	pending := 0
+	enabled := 0
 	for _, r := range results {
 		where := r.Repository + "/" + r.Arch
 		code := r.Code(w.opts.Package)
@@ -211,6 +212,7 @@ func (w *buildWatch) poll(ctx context.Context) (int, error) {
 		case "excluded":
 			return 0, fmt.Errorf("%s is excluded on %s: check the repository's build configuration", w.opts.Package, where)
 		}
+		enabled++
 		if w.built[where] {
 			continue
 		}
@@ -230,6 +232,16 @@ func (w *buildWatch) poll(ctx context.Context) (int, error) {
 			return 0, fmt.Errorf("%s is %s on %s", w.opts.Package, code, where)
 		}
 		pending++
+	}
+
+	// Every repository skipped means nothing is building the revision, and
+	// nothing would come of waiting: releasing then copies whatever the
+	// release targets already hold and calls the run a success. A package
+	// just created in a project whose repositories are not enabled for it
+	// arrives here.
+	if enabled == 0 {
+		return 0, fmt.Errorf("%s is disabled in every repository of %s: nothing would be built to release",
+			w.opts.Package, w.opts.Project)
 	}
 
 	if summary := fmt.Sprintf("waiting for %d of %d builds of %s", pending, len(results), w.opts.Package); pending > 0 && summary != w.last {
