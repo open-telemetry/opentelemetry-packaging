@@ -8,6 +8,7 @@
 package metadata_test
 
 import (
+	"archive/tar"
 	"io"
 	"os"
 	"path/filepath"
@@ -388,6 +389,54 @@ func TestDebPythonContents(t *testing.T) {
 		"should contain the otel-config-check validator")
 	assert.True(t, pathsContain(paths, "/etc/opentelemetry/injector/conf.d/python.conf"),
 		"should contain Python conf.d drop-in")
+}
+
+// Nothing a package ships may be writable by anyone but its owner.
+//
+// This is the assertion the debbuild path most needs, and the one its specs
+// work hardest for. Package managers build under a umask the packager does not
+// choose, 002 on the Open Build Service, and debbuild creates the package's
+// directories and recompresses its man pages itself, under that umask. The
+// specs override %__mkdir_p and %__gzip to force 022, which are macros
+// internal to debbuild: an upstream release that renamed either would leave
+// every assertion on the generated spec passing, and ship directories the
+// group can write to. Only a built package shows it.
+//
+// Run over the nfpm packages too, which get this from nfpm's own staging, so
+// that the two producers are held to the same standard.
+func TestDebPackagesAreNotGroupWritable(t *testing.T) {
+	skipIfNoDebPackages(t)
+
+	matches, err := filepath.Glob(filepath.Join(packagesDir(t), "*.deb"))
+	require.NoError(t, err)
+	require.NotEmpty(t, matches)
+
+	for _, pkg := range matches {
+		t.Run(filepath.Base(pkg), func(t *testing.T) {
+			d, closer, err := deb.LoadFile(pkg)
+			require.NoError(t, err)
+			defer closer()
+
+			entries := 0
+			for {
+				hdr, err := d.Data.Next()
+				if err == io.EOF {
+					break
+				}
+				require.NoError(t, err)
+				entries++
+
+				// Symlink modes are not meaningful: dpkg recreates them from
+				// the target, and tar records them inconsistently.
+				if hdr.Typeflag == tar.TypeSymlink {
+					continue
+				}
+				assert.Zero(t, hdr.FileInfo().Mode().Perm()&0o022,
+					"%s is writable beyond its owner (mode %04o)", hdr.Name, hdr.FileInfo().Mode().Perm())
+			}
+			require.NotZero(t, entries, "package has no data entries")
+		})
+	}
 }
 
 func TestDebMetapackageMetadata(t *testing.T) {
