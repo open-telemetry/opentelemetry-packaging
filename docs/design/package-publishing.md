@@ -306,14 +306,28 @@ In phase 3, the published repositories are mirrored to blob storage and served f
 After a release publishes, a mirror job copies the repository contents and metadata exactly as OBS generated them: the packages, the indexes, the signed `Release` and `InRelease` files, and the public key.
 Because the files are copied unchanged, the OBS signatures stay valid and the mirror never needs a signing key.
 
-The mirror becomes the address users configure, and the promise that the build service can change without user action starts with it.
-After that, a change of build service, or of the project layout on OBS, needs no change on installed systems.
+Once the mirror exists, the installation instructions name the project domain and nothing else, so that is the address every user configures.
+The promise that the build service can change without user action starts there.
+After that, a change of build service, or of the project layout on OBS, needs no change to the apt sources on installed systems.
+It can still need a change to the keys they trust, as described in [Risks](#the-signing-key-cannot-be-ported-to-a-different-build-service).
 The mirror carries the RPM repositories as well, so DEB and RPM are served from a single place.
 
 Until the mirror exists, users install from `download.opensuse.org` directly, and those URLs should be documented as provisional.
 Users who configured them change their apt source once, to the mirror address, when it launches.
 Users of the COPR repository likewise switch once, when COPR is retired.
 The storage provider, domain, bucket layout, and the trigger for the mirror job are not decided yet.
+
+## Risks
+
+### The signing key cannot be ported to a different build service
+
+OBS generates the signing key and keeps it on its signing server, and the project cannot export it.
+Everything users install is signed by a key that belongs to the build service rather than to the project.
+If the project leaves OBS, or OBS rotates or retires the key, the packages and the repository metadata are signed by a different key.
+That costs every user a manual step: an installed system has to trust the new signing key before it can install or upgrade the packages again.
+
+The mirror bounds that step to the key alone.
+Users are instructed to point their package managers at the project domain, so a change of build service does not also make them change the repository address they configured.
 
 ## Future work
 
