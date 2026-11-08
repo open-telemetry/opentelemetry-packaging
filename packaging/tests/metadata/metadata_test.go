@@ -141,6 +141,37 @@ func debExtractFile(t *testing.T, path, target string) string {
 }
 
 // pathsContain checks if any path in the list contains the given substring.
+// assertPerInterpreterManifests checks that every bundled interpreter carries
+// the dependency manifest sitecustomize.py reads to detect version conflicts.
+//
+// The manifest is per interpreter because the wheels are: the bundle ships one
+// directory per supported CPython ABI tag, and sitecustomize.py reads the
+// manifest from the one matching the running interpreter. A manifest at the
+// bundle root would be read by nothing.
+func assertPerInterpreterManifests(t *testing.T, paths []string) {
+	t.Helper()
+
+	const bundle = "/usr/lib/opentelemetry/python/glibc/"
+	interpreters := map[string]bool{}
+	for _, p := range paths {
+		i := strings.Index(p, bundle)
+		if i < 0 {
+			continue
+		}
+		rest := strings.TrimPrefix(p[i:], bundle)
+		tag, _, found := strings.Cut(rest, "/")
+		if found && strings.HasPrefix(tag, "cp3") {
+			interpreters[tag] = true
+		}
+	}
+	require.NotEmpty(t, interpreters, "no bundled interpreter directory found under %s", bundle)
+
+	for tag := range interpreters {
+		assert.True(t, pathsContain(paths, bundle+tag+"/all-dependencies.txt"),
+			"interpreter %s should carry the all-dependencies.txt conflict manifest", tag)
+	}
+}
+
 func pathsContain(paths []string, substr string) bool {
 	for _, p := range paths {
 		if strings.Contains(p, substr) {
@@ -352,8 +383,7 @@ func TestDebPythonContents(t *testing.T) {
 
 	assert.True(t, pathsContain(paths, "/usr/lib/opentelemetry/python/glibc/sitecustomize.py"),
 		"should contain sitecustomize.py under the glibc/ prefix")
-	assert.True(t, pathsContain(paths, "/usr/lib/opentelemetry/python/glibc/all-dependencies.txt"),
-		"should contain the all-dependencies.txt conflict manifest")
+	assertPerInterpreterManifests(t, paths)
 	assert.True(t, pathsContain(paths, "/usr/lib/opentelemetry/python/otel-config-check"),
 		"should contain the otel-config-check validator")
 	assert.True(t, pathsContain(paths, "/etc/opentelemetry/injector/conf.d/python.conf"),
@@ -632,7 +662,7 @@ func TestRpmPythonContents(t *testing.T) {
 	names := rpmFileNames(p)
 
 	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/python/glibc/sitecustomize.py"))
-	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/python/glibc/all-dependencies.txt"))
+	assertPerInterpreterManifests(t, names)
 	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/python/otel-config-check"))
 	assert.True(t, pathsContain(names, "/etc/opentelemetry/injector/conf.d/python.conf"))
 }
