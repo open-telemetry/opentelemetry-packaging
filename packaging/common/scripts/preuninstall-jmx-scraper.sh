@@ -7,7 +7,7 @@
 # removal; RPM passes "0" when no package instance remains.
 case "${1:-}" in
     remove|0)
-        if [ -d /run/systemd/system ] && systemctl is-active --quiet opentelemetry-jmx-scraper.service; then
+        if [ -d /run/systemd/system ] && systemctl is-enabled --quiet opentelemetry-jmx-scraper.service; then
             systemctl disable --now opentelemetry-jmx-scraper.service
         fi
         ;;
