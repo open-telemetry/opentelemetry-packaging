@@ -62,6 +62,14 @@ debbuild --version
 
 mkdir -p "$output_dir"
 
+# The Open Build Service builds under umask 002, and the container defaults to
+# 022. Without this the build is not the one being reproduced: debbuild creates
+# the package's directories and recompresses its man pages under the umask it
+# inherits, which is the whole reason the specs override %__mkdir_p and
+# %__gzip. Under 022 those overrides change nothing, and a package that lost
+# them would pass every assertion.
+umask 002
+
 built=0
 for spec in "$sources_dir"/*/*.spec; do
     [ -e "$spec" ] || continue
