@@ -11,6 +11,7 @@ import (
 	"archive/tar"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -429,6 +430,16 @@ func TestDebPackagesAreNotGroupWritable(t *testing.T) {
 				// Symlink modes are not meaningful: dpkg recreates them from
 				// the target, and tar records them inconsistently.
 				if hdr.Typeflag == tar.TypeSymlink {
+					continue
+				}
+				// The archive root stands for "/", which dpkg owns and never
+				// chmods from a package: installing one that carries "./" at
+				// 0775 leaves "/" at 0755. debbuild creates the directory the
+				// package is built from with Perl's mkdir, outside the mkdir
+				// macro the specs override, so under the umask the Open Build
+				// Service runs with it is group-writable and nothing in a spec
+				// can reach it. It is the one entry here that is inert.
+				if path.Clean(hdr.Name) == "." {
 					continue
 				}
 				assert.Zero(t, hdr.FileInfo().Mode().Perm()&0o022,
