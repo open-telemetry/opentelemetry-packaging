@@ -7,15 +7,25 @@ Proposed
 ## Context
 
 The system packages need to reach users as signed DEB and RPM repositories that `apt` and `dnf` can install from and upgrade against.
-Today the Debian and Ubuntu packages come from nfpm (`make deb-packages`) and never pass through a build service, so nothing signs them or generates repository metadata for them.
+As of the beginning of November 2026, the Debian and Ubuntu packages come from nfpm (`make deb-packages`) and never pass through a build service, so nothing signs them or generates repository metadata for them.
 The Fedora and EPEL RPMs build in [Fedora COPR](https://copr.fedorainfracloud.org/coprs/opentelemetry/opentelemetry-packaging/), which signs them and serves a repository.
 COPR, however, only builds RPMs, and it builds every component at once from a release tag.
 
-The packages also release at different paces.
-Each one bundles an upstream agent (the injector, or the Java, Node.js, .NET, or Python auto-instrumentation) that ships on its own schedule.
-A new Java agent should reach users without rebuilding or re-releasing the other packages.
+This document specifies how the packages are built, versioned, signed, and published.
 
-This document describes how the packages are built, versioned, signed, and published, and what the CI pipeline does.
+### COPR
+
+[COPR](https://copr.fedorainfracloud.org/coprs/) is a build system for RPM provided by the Fedora project.
+
+### Open Build Service
+
+[OBS](https://build.opensuse.org) is a hosted build farm run by openSUSE.
+Like COPR, it builds packages, signs them, and publishes them as repositories.
+Unlike COPR, it builds for many distributions, including Debian and Ubuntu, so a single service can cover every target currently in scope for system packages (Debian, Ubuntu, Fedora, and RHEL).
+
+## Release schedule
+
+Packages release at different paces, when the upstream agents (the injector, or the Java, Node.js, .NET, or Python auto-instrumentation) ship.
 
 ### Scope
 
@@ -28,13 +38,14 @@ The work is split into phases.
    This document covers that phase only in outline; its details are added when it starts.
 3. **Blob storage mirror.** Mirror the published repositories to blob storage behind a project domain.
    Its provider, domain, and trigger are not decided yet.
+4. **Retire GitHub Pages.**
 
 ### Goals
 
 - Build the DEB packages, and then the RPMs, on a single hosted build service that signs them and generates repository metadata.
-- Release each package on its own, when its upstream agent or its packaging changes.
+- Release each package independently from the others, when its upstream agent or its packaging changes.
 - Keep previously released versions installable.
-- Later, serve the repositories from storage and a domain the project controls, so the build service can change without users reconfiguring their systems.
+- Serve the repositories from object storage and a domain the project controls, so the build service can change with limited impact on the users.
 
 ### Non-goals
 
@@ -43,27 +54,43 @@ The work is split into phases.
 - Changing how COPR builds the RPMs before it is retired.
 - Changing how the GitHub release assets are versioned.
 
-## Open Build Service
-
-[OBS](https://build.opensuse.org) is a hosted build farm run by openSUSE.
-Like COPR, it builds packages, signs them, and publishes them as repositories.
-Unlike COPR, it builds for many distributions, including Debian and Ubuntu, so a single service can cover every target.
-
 ### Vocabulary
 
 OBS gives common words specific meanings, and this document uses them in the OBS sense.
 A **project** (for example `home:opentelemetry:stable`) is a namespace that holds packages, build settings, and a signing key; projects nest with `:`.
-An OBS **package** is a directory of source files inside a project, from which OBS builds one or more binary `.deb` files.
+An OBS **package** is a directory of source files inside a project, from which OBS builds one or more binary `.deb` or `.rpm` files.
 An OBS **repository** is a build target inside a project: a base distribution plus a list of architectures.
 When a project publishes, each of its repositories becomes an apt repository that users can add.
 
 A **source commit** stores a new set of files in an OBS package and creates a new **source revision**, much like a Git commit.
 OBS then builds that revision for every repository and architecture of the project.
-"Git commit" in this document always means a commit in this GitHub repository, and "source revision" always means the OBS one.
+“Git commit” in this document always means a commit in this GitHub repository, and “source revision” always means the OBS one.
 
-## Overview
+## Component versioning
 
-CI prepares the complete contents of each package and the recipe to assemble them, and uploads both to OBS.
+The version of the agents to install is tracked in dedicated files in the GitHub repository, and updated by Renovate.
+
+| Package | Version source |
+| --- | --- |
+| injector, Java, Node.js, .NET | `packaging/common/<component>/release.txt`, bumped by Renovate |
+| Python | the `opentelemetry-distro` pin in `packaging/common/python/requirements.txt`, bumped by Renovate |
+| metapackage | `packaging/common/meta/release.txt`, bumped by hand |
+
+## Package versioning
+
+A package version has the form `<component version>-<package release>`.
+The component version says which agent the package ships, and the package release says which packaging of that agent it is.
+
+This scheme applies to the packages on OBS only.
+The GitHub release assets, and COPR until it is retired, keep the repository release tag version.
+
+The metapackage declares its relations without versions and ships only a README, so it does not change when other packages do.
+Its version is bumped by hand when its relations or contents change, for example when a new package joins the suite.
+New versions of the `opentelemetry` metapackage are expected to be rare.
+
+## Build process
+
+CI prepares the complete contents of each package from `main` and the recipe to assemble them, and uploads both to OBS.
 OBS compiles nothing: it assembles the prepared contents into DEBs with [`debbuild`](https://github.com/debbuild/debbuild), a tool that builds DEBs from an RPM-style spec.
 Once every build has succeeded, CI asks OBS to release the package, and OBS copies the binaries into the project users install from.
 
@@ -94,98 +121,12 @@ Subprojects inherit the key of `home:opentelemetry`, and users fetch the public 
 
 ## OBS setup
 
-### Project layout
-
-```text
-home:opentelemetry                 owns the signing key; no packages, no repositories
-├── :sandbox                       disposable; trying changes before they reach users
-└── :stable                        what users install: published, builds disabled, keeps old versions
-    └── :build                     CI commits here; a release copies the results into :stable
-```
-
-CI commits sources to `home:opentelemetry:stable:build`, which builds them but publishes nothing.
-After the builds succeed, CI asks OBS to release the package, and OBS copies its binaries into `home:opentelemetry:stable`.
-Each release lands there as a separate entry named `<package>.<timestamp>`, so earlier versions stay in the published repository.
-
-In OBS terms, each repository of the build project has a release target pointing at `home:opentelemetry:stable`, triggered manually, which is what the release request uses.
-`home:opentelemetry:stable` is a maintenance release project, the OBS project kind that keeps every release instead of replacing the previous one.
-`home:opentelemetry:sandbox` is a separate project for trying changes, and it never releases.
-
-### Repositories and targets
-
-The stable build project has 2 repositories, both for `x86_64` and `aarch64`.
-
-| Repository | Built against | Serves |
-| --- | --- | --- |
-| `debian` | Debian 12 | Debian 12 and newer |
-| `ubuntu` | Ubuntu 22.04 | Ubuntu 22.04 and newer |
-
-The package contents do not depend on the release they are built against, so packages built against these baselines are expected to install on newer releases of the same distribution.
-So far this has been tested on Debian 12 and 13, and on Ubuntu 22.04, 24.04, and 26.04.
-Debian and Ubuntu get separate repositories, so a difference between them can be handled when one appears.
-
-The sandbox instead has a repository per release (Debian 12 and 13, Ubuntu 22.04, 24.04, and 26.04), each for both architectures.
-That makes it possible to compare the same package across releases before it reaches users.
-
 ### Packages
 
 Each component is a separate OBS package with its own sources: `opentelemetry-injector`, the 4 `opentelemetry-*-autoinstrumentation` packages, and the `opentelemetry` metapackage.
 The packages have no build dependencies on each other, so committing to one rebuilds only that one.
 They depend on each other only through unversioned virtual names (see [Linux system packages meta architecture](packages-meta-architecture.md)), so packages at different versions install together.
 The `opentelemetry-jmx-scraper` package from that document is not implemented yet; it becomes another OBS package once it is.
-
-### Sources
-
-Nothing is compiled on OBS.
-Its build roots have no network access, so a build could not fetch the upstream agents.
-Debian 12 also cannot supply the Go version this repository needs, so a build could not compile the tools either.
-
-Instead, CI prepares everything a build needs, as Kubernetes does (see [Prior art](#prior-art)).
-For each package, `make deb-sources` (or `make deb-sources-<component>`) writes the 2 files that make up its OBS sources.
-
-- `<package>-<version>.tar.gz` holds the prepared package contents for every architecture, a directory per architecture, plus the file lists.
-  It is prepared with the same code as the nfpm packages, so the contents cannot drift between the two.
-- `<package>.spec` is the packaging recipe, rendered from the same component metadata.
-  It has no build step: its install step only copies the directory for the build architecture.
-
-OBS builds the spec with `debbuild`.
-This keeps a single spec format for DEB and RPM instead of a separate `debian/` tree.
-
-`debbuild` is not part of Debian or Ubuntu, so the build roots take it from `Debian:debbuild` and `Ubuntu:debbuild`, the OBS projects that package it.
-Every repository of the build project and the sandbox lists the matching debbuild repository as its first build path, ahead of the distribution itself.
-
-```xml
-<repository name="Debian_12">
-  <path project="Debian:debbuild" repository="Debian_12"/>
-  <path project="Debian:12" repository="standard"/>
-</repository>
-```
-
-That ordering is what makes OBS choose the debbuild recipe for a spec with no `debian/` tree.
-It also means everything those projects publish enters the build root ahead of the distribution's own package of the same name, and that the build root takes whatever version they publish at the time of the build.
-They are therefore a build dependency of every package, on a par with the base distribution, and maintained outside this project.
-
-## Versioning
-
-This scheme applies to the packages on OBS only.
-The GitHub release assets, and COPR until it is retired, keep the repository release tag version.
-
-A package version has the form `<component version>-<package release>`.
-The component version says which agent the package ships, and the package release says which packaging of that agent it is.
-
-### Component version
-
-The component version is the version of the agent the package ships.
-It is read from the checked-out tree, never from a workflow input, so building the same Git commit always gives the same component version.
-
-| Package | Version source |
-| --- | --- |
-| injector, Java, Node.js, .NET | `packaging/common/<component>/release.txt`, bumped by Renovate |
-| Python | the `opentelemetry-distro` pin in `packaging/common/python/requirements.txt`, bumped by Renovate |
-| metapackage | `packaging/common/meta/release.txt`, bumped by hand |
-
-The metapackage declares its relations without versions and ships only a README, so it does not change when another package does.
-Its version is bumped by hand when its relations or contents change, for example when a new package joins the suite.
 
 ### Package release
 
@@ -204,115 +145,92 @@ OBS sets the release to `<commits>.<builds>`.
 | Same version, packaging changed | `1.0.0-2.1` | `1.0.0-2.1` |
 | Next version, `1.1.0` | `1.1.0-1.1` | `1.1.0-1.1` |
 
-A rebuild OBS starts on its own stays in the build project, because releases happen only when CI requests them.
+A rebuild that OBS starts on its own stays in the build project, because releases happen only when CI requests them.
 The next push sees that package's sources as unchanged and skips it.
-To publish such a rebuild, a maintainer dispatches the workflow for that package with `release_unchanged=true`; otherwise it is superseded by the next source change.
+
+### Project layout
+
+```text
+home:opentelemetry                 owns the signing key; no packages, no repositories
+├── :sandbox                       disposable; trying changes before they reach users
+└── :stable                        what users install: published, builds disabled, keeps old versions
+    └── :build                     CI commits here; a release copies the results into :stable
+```
+
+CI commits sources to `home:opentelemetry:stable:build`, which builds them but publishes nothing.
+After the builds succeed, CI asks OBS to release the package, and OBS copies its binaries into `home:opentelemetry:stable`.
+Each release lands there as a separate entry named `<package>.<timestamp>`, so earlier versions stay in the published repository.
+
+In OBS terms, each repository of the build project has a release target pointing at `home:opentelemetry:stable`, triggered manually, which is what the release request uses.
+`home:opentelemetry:stable` is a maintenance release project, the OBS project kind that keeps every release instead of replacing the previous one.
+`home:opentelemetry:sandbox` is a separate project for trying changes, and it never releases.
+
+### Credentials
+
+CI authenticates to OBS as a dedicated bot account, with a password held as a repository secret.
+OBS scoped tokens can only trigger actions on sources OBS already holds, so they cannot make source commits, which is what this pipeline needs.
+
+The bot is a maintainer of the subprojects only, and not of `home:opentelemetry`, which holds the signing key.
+A compromise of the CI credentials reaches the sources and the builds, but not the key.
+
+### Repositories and targets
+
+In phase 1, the stable build project has 2 repositories, both built for the `x86_64` and `aarch64` architectures.
+
+| Repository | Built against | Serves |
+| --- | --- | --- |
+| `debian` | Debian 12 | Debian 12 and newer |
+| `ubuntu` | Ubuntu 22.04 | Ubuntu 22.04 and newer |
+
+The package contents do not depend on the distribution release they are built against, so the packages are expected to install on newer releases of the same distribution.
+Debian and Ubuntu get separate repositories in case the content of the packages needs to diverge.
+
+The sandbox instead has a repository per release (Debian 12 and 13, Ubuntu 22.04, 24.04, and 26.04), each for both architectures so that it is possible to compare the same package across releases before it reaches users.
+
+### Sources
+
+Nothing is compiled on OBS: its build roots have no network access.
+Debian 12 also cannot supply the Go version this repository needs, so a build cannot compile the tools either.
+
+Instead, CI prepares everything a build needs, as Kubernetes does (see [Prior art](#prior-art)).
+For each package, `make deb-sources` (or `make deb-sources-<component>`) writes the 2 files that make up its OBS sources.
+
+- `<package>-<version>.tar.gz` holds the prepared package contents for every architecture, a directory per architecture, plus the file lists.
+  It is prepared with the same code as the nfpm packages, so the contents cannot drift between the two.
+- `<package>.spec` is the packaging recipe, rendered from the same component metadata.
+  It has no build step: its install step only copies the directory for the build architecture.
+
+OBS builds the spec with `debbuild`.
+This keeps a single spec format for DEB and RPM instead of a separate `debian/` tree.
+
+`debbuild` is not part of Debian or Ubuntu, so the build roots take it from `Debian:debbuild` and `Ubuntu:debbuild`, the OBS projects that package it.
+Every repository lists the matching debbuild project ahead of the distribution itself, which is what makes OBS choose the `debbuild` recipe for a spec with no `debian/` tree.
 
 ### Reproducible sources
 
-The release counter only stays meaningful if CI makes a source commit only when the sources really changed.
-CI therefore dates each package by its **source date**: the time of the last Git commit that touched that package's inputs, passed to the generator as [`SOURCE_DATE_EPOCH`](https://reproducible-builds.org/specs/source-date-epoch/).
+The release counter is meaningful only if CI makes source commits when the sources really changed.
+CI dates each package by its **source date**: the time of the last Git commit that touched that package's inputs, passed to the generator as [`SOURCE_DATE_EPOCH`](https://reproducible-builds.org/specs/source-date-epoch/).
 The archive entries are sorted, owned by root, and dated with the source date, and so are the man pages.
 
-An unchanged package therefore regenerates byte-identical sources.
+An unchanged package regenerates byte-identical sources.
 CI compares their file names and MD5 sums with the sources stored on OBS, and skips the upload when they match.
 
 ## Rebuild triggers
 
-Changes to the paths below select packages on a push to `main`.
-CI uploads, rebuilds, and releases a selected package only when its generated sources differ from those on OBS.
+CI uploads, rebuilds, and releases a selected package only when the following paths change on a push to `main`, and the generated sources differ from those on OBS:
 
 | Change | Selects |
 | --- | --- |
 | Anything under `packaging/common/<component>/`, such as a `release.txt` bump | that component |
 | Shared packaging code, lifecycle scripts, the tools built into packages, or build configuration | every component |
-| The workflow, the tools that plan and upload, or documentation | nothing |
 
-The shared inputs are `packaging/builder/`, `packaging/common/scripts/`, `cmd/build-spec/deb/`, `cmd/otel-config-check/`, `NOTICE`, `Makefile`, `go.mod`, and `go.sum`.
-The planning and upload tools (`cmd/package-metadata`, `cmd/obs-publish`) are not inputs, because they change how sources are uploaded, not what is in them.
-The change-detection rules are implemented in `packaging/changes`.
+The tools that plan the work and upload the sources are not inputs, because they change how sources reach OBS, not what is in them.
 
-A typical update is a Renovate PR that bumps the pin of a single agent.
+The typical update trigger is merging a Renovate PR that bumps the pin of a single agent.
 Once it merges, only that package is rebuilt, gets the new component version with release `1.1`, and is released.
 A builder change selects every package: those whose regenerated sources are unchanged are skipped, and the others get a new release counter at the same component version.
 
-The workflow can also be dispatched by hand: for the first upload, for a single package, for another Git ref, or to try a change in the sandbox.
-See [Dispatch inputs](#dispatch-inputs).
-
-## CI pipeline
-
-The `Build on OBS` workflow (`.github/workflows/obs.yml`) runs on every push to `main` of the official repository, and on manual dispatch.
-It has a `plan` job that decides what to build, and a `publish` job that runs once per selected package.
-
-### Dispatch inputs
-
-| Input | Default | Purpose |
-| --- | --- | --- |
-| `ref` | the Git commit the run is on | Git branch, tag, or commit to build |
-| `packages` | `all` | `all`, or a comma-separated list of components |
-| `project` | `stable` | where to build; see the table below |
-| `release` | `true` | `false` stops once the build project has built the packages |
-| `release_unchanged` | `false` | also release packages whose sources are already on OBS |
-
-| `project` | Commits sources to | Releases to |
-| --- | --- | --- |
-| `stable` | `home:opentelemetry:stable:build` | `home:opentelemetry:stable`, unless `release=false` |
-| `sandbox` | `home:opentelemetry:sandbox` | nothing |
-
-With `release=false`, the sources stay committed and built in `home:opentelemetry:stable:build`, and nothing is published.
-A later dispatch with `release_unchanged=true` releases them.
-Runs in forks always use the sandbox, whatever the input says.
-
-### Plan
-
-The `plan` job checks out the Git ref with its full history and runs `cmd/package-metadata -target obs -plan`.
-On a push, it lists the files changed between the commit `main` pointed to before the push and the pushed commit, and selects packages with the rules above.
-If the earlier commit is not in the history, as after a force-push, it selects every package.
-On a dispatch, it takes the `packages` input instead.
-
-For each selected package, the job outputs the component, the OBS package name, the component version, and the source date.
-It also resolves the OBS project and whether to release, as in the tables above.
-
-### Publish
-
-The `publish` job runs once per selected package, in parallel, and a failing package does not stop the others.
-Runs for the same package and project are serialized, and a run in progress is never cancelled, so a source commit and its release do not interleave with those of another run.
-A run that is still waiting to start is superseded when a later one reaches the same package.
-On a push that is the intended behaviour, because the later run regenerates the sources from a tree that already contains the commit of the superseded run.
-A dispatch that is waiting to start is superseded in the same way, so a release requested by hand while another run holds the package has to be dispatched again.
-
-For each package, it:
-
-1. Generates the sources with the planned source date.
-2. Compares them with the sources of the package on OBS, and creates the package if it does not exist yet.
-   If they are identical, it stops, unless `release_unchanged=true`, in which case it skips to step 4 with the current source revision.
-3. Makes a source commit to the build project, creating a new source revision.
-   Files OBS holds that are not in the new set, such as the archive of the previous version, are removed.
-4. Waits until that source revision has built in every repository and architecture.
-5. Requests a release to `home:opentelemetry:stable`, only if every build succeeded and releasing is enabled for this run.
-
-The wait in step 4 checks the last finished build job of each repository and architecture against the source revision, so the results of the previous revision are never mistaken for this one.
-It fails at once on `excluded`, which means OBS will not build the package for that target at all.
-It also fails on `failed` (the build ran and failed), `broken` (OBS cannot process the sources), or `unresolvable` (OBS cannot satisfy the build environment), but only once OBS has no pending work for the package and 10 minutes have passed since the source commit, because until then the state can still belong to the previous revision.
-The whole wait gives up after 200 minutes.
-
-A successful job means every build succeeded and OBS accepted the release request.
-OBS then copies, signs, and publishes the binaries on its own, so the apt repository updates shortly after the job ends rather than when it ends.
-
-A run that made a source commit but failed before releasing, for example because the builds took longer than the job allows, leaves sources the next run sees as unchanged.
-Dispatching with `release_unchanged=true` waits for those builds and releases them.
-
-### OBS client
-
-The upload, wait, and release steps use `cmd/obs-publish`, a minimal OBS API client in this repository, instead of [`osc`](https://github.com/openSUSE/osc), the official OBS command-line client.
-The client sends the same requests `osc` sends for these steps, and nothing else.
-The reasons for not using `osc` are in [Alternatives considered](#using-osc-in-ci).
-
-### Credentials
-
-CI authenticates as a dedicated bot account, `otel-release-bot`, with the `OBS_USERNAME` and `OBS_PASSWORD` repository secrets.
-OBS scoped tokens can only trigger actions on sources OBS already has, so they cannot make source commits.
-The bot is a maintainer of the subprojects only, not of `home:opentelemetry`, which holds the signing key.
+The workflow must also be dispatchable by hand: for the first upload, for a single package, for another Git ref, or to try a change in the sandbox.
 
 ## Blob storage mirror
 
@@ -322,12 +240,9 @@ Those URLs name the build service and the project, so pointing users at them tie
 In phase 3, the published repositories are mirrored to blob storage and served from a domain the project controls.
 After a release publishes, a mirror job copies the repository contents and metadata exactly as OBS generated them: the packages, the indexes, the signed `Release` and `InRelease` files, and the public key.
 Because the files are copied unchanged, the OBS signatures stay valid and the mirror never needs a signing key.
+The mirror will be the only documented URL for package managers.
 
-Once the mirror exists, the installation instructions name the project domain and nothing else, so that is the address every user configures.
-The promise that the build service can change without user action starts there.
-After that, a change of build service, or of the project layout on OBS, needs no change to the apt sources on installed systems.
-It can still need a change to the keys they trust, as described in [Risks](#the-signing-key-cannot-be-ported-to-a-different-build-service).
-The mirror carries the RPM repositories as well, so DEB and RPM are served from a single place.
+Note that, if the build system changes, users will need to change which keys they trust, as described in [Risks](#the-signing-key-cannot-be-ported-to-a-different-build-service).
 
 Until the mirror exists, users install from `download.opensuse.org` directly, and those URLs should be documented as provisional.
 Users who configured them change their apt source once, to the mirror address, when it launches.
@@ -346,23 +261,11 @@ That costs every user a manual step: an installed system has to trust the new si
 The mirror bounds that step to the key alone.
 Users are instructed to point their package managers at the project domain, so a change of build service does not also make them change the repository address they configured.
 
-### The build root depends on projects outside this one
+### The build root depends on outside projects
 
 `debbuild` reaches the build roots from `Debian:debbuild` and `Ubuntu:debbuild`, at whatever version those projects publish at the time of the build.
-They are maintained outside this project, so a break in them, or an end to their support for a Debian or Ubuntu release, stops the pipeline until it is worked around.
+They are maintained outside this project: a break in them, or an end to their support for a Debian or Ubuntu release, stops the pipeline until it is worked around.
 The fallback is the `debian/` tree that [Alternatives considered](#a-native-debian-directory) rejects, which is a larger change than the situation would warrant.
-
-Linking the debbuild packages into `home:opentelemetry` and building against that copy would bound this, because the build root would then change when this project decides to and not when the upstream projects publish.
-That has not been done, and it trades the exposure for a package to maintain.
-
-## Future work
-
-- **RPMs on OBS and retiring COPR** (phase 2).
-  CI prepares the RPM contents the same way, OBS builds them with `rpmbuild` in Fedora and EPEL repositories, and every package gets a single build, signing, and versioning path.
-  Once the OBS RPMs are published, COPR is retired; the repositories to add and the migration for COPR users are detailed when the phase starts.
-- **Blob storage mirror** (phase 3), as described above.
-- **Aligning versions across channels.** The GitHub release assets use the repository tag version, as COPR does until it is retired, while OBS uses the version of each component.
-  It is an open question whether the per-component versions should replace the tag version in those channels too.
 
 ## Prior art
 
