@@ -43,9 +43,10 @@ const (
 
 // Injector is the opentelemetry-injector package component.
 var Injector = Component{
-	Name:        "injector",
-	PackageName: "opentelemetry-injector",
-	Description: injectorDescription,
+	Name:            "injector",
+	PackageName:     "opentelemetry-injector",
+	Description:     injectorDescription,
+	LongDescription: injectorLongDescription,
 	Relations: Relations{
 		Provides: []string{"opentelemetry-injector1"},
 	},
@@ -56,10 +57,11 @@ var Injector = Component{
 
 // Java is the opentelemetry-java-autoinstrumentation package component.
 var Java = Component{
-	Name:        "java",
-	PackageName: "opentelemetry-java-autoinstrumentation",
-	Description: javaDescription,
-	Noarch:      true,
+	Name:            "java",
+	PackageName:     "opentelemetry-java-autoinstrumentation",
+	Description:     javaDescription,
+	LongDescription: javaLongDescription,
+	Noarch:          true,
 	Relations: Relations{
 		Provides: []string{"opentelemetry-java-autoinstrumentation1"},
 		Suggests: []string{"opentelemetry-injector1"},
@@ -69,10 +71,11 @@ var Java = Component{
 
 // Nodejs is the opentelemetry-nodejs-autoinstrumentation package component.
 var Nodejs = Component{
-	Name:        "nodejs",
-	PackageName: "opentelemetry-nodejs-autoinstrumentation",
-	Description: nodejsDescription,
-	Noarch:      true,
+	Name:            "nodejs",
+	PackageName:     "opentelemetry-nodejs-autoinstrumentation",
+	Description:     nodejsDescription,
+	LongDescription: nodejsLongDescription,
+	Noarch:          true,
 	Relations: Relations{
 		Provides: []string{"opentelemetry-nodejs-autoinstrumentation1"},
 		Suggests: []string{"opentelemetry-injector1"},
@@ -82,9 +85,10 @@ var Nodejs = Component{
 
 // Dotnet is the opentelemetry-dotnet-autoinstrumentation package component.
 var Dotnet = Component{
-	Name:        "dotnet",
-	PackageName: "opentelemetry-dotnet-autoinstrumentation",
-	Description: dotnetDescription,
+	Name:            "dotnet",
+	PackageName:     "opentelemetry-dotnet-autoinstrumentation",
+	Description:     dotnetDescription,
+	LongDescription: dotnetLongDescription,
 	Relations: Relations{
 		Provides: []string{"opentelemetry-dotnet-autoinstrumentation1"},
 		Suggests: []string{"opentelemetry-injector1"},
@@ -94,9 +98,10 @@ var Dotnet = Component{
 
 // Python is the opentelemetry-python-autoinstrumentation package component.
 var Python = Component{
-	Name:        "python",
-	PackageName: "opentelemetry-python-autoinstrumentation",
-	Description: pythonDescription,
+	Name:            "python",
+	PackageName:     "opentelemetry-python-autoinstrumentation",
+	Description:     pythonDescription,
+	LongDescription: pythonLongDescription,
 	// Not Noarch: the bundled wheels may carry compiled C extensions, so the
 	// package is architecture-specific.
 	Relations: Relations{
@@ -108,10 +113,11 @@ var Python = Component{
 
 // Meta is the opentelemetry metapackage component.
 var Meta = Component{
-	Name:        "meta",
-	PackageName: "opentelemetry",
-	Description: metaDescription,
-	Noarch:      true,
+	Name:            "meta",
+	PackageName:     "opentelemetry",
+	Description:     metaDescription,
+	LongDescription: metaLongDescription,
+	Noarch:          true,
 	Relations: Relations{
 		Depends: []string{"opentelemetry-injector1"},
 		Recommends: []string{
@@ -124,6 +130,11 @@ var Meta = Component{
 	ContentsFunc: metaContents,
 }
 
+// Each component carries a one-line summary and the paragraphs below it. The
+// package formats keep the two apart: the summary is the DEB Description's
+// first line and the RPM Summary tag, the rest is the DEB extended description
+// and the RPM %description. Repeating the summary in both is what lintian
+// reports as description-synopsis-is-duplicated.
 const (
 	injectorDescription = "OpenTelemetry LD_PRELOAD-based automatic instrumentation injector"
 	javaDescription     = "OpenTelemetry Java Auto-Instrumentation Agent"
@@ -131,6 +142,63 @@ const (
 	dotnetDescription   = "OpenTelemetry .NET Automatic Instrumentation"
 	pythonDescription   = "OpenTelemetry Python Auto-Instrumentation"
 	metaDescription     = "OpenTelemetry Auto-Instrumentation Suite (metapackage)"
+)
+
+const (
+	injectorLongDescription = `Injects the OpenTelemetry auto-instrumentation agents into processes as they
+start, by way of a shared library listed in /etc/ld.so.preload. The library
+detects the runtime of each process and loads the agent for it, so that
+applications report traces, metrics, and logs without being rebuilt or
+reconfigured.
+
+Which runtimes are covered depends on the language packages installed
+alongside it: each one registers its agent in a drop-in file under
+/etc/opentelemetry/injector/conf.d/. The injector on its own instruments
+nothing.`
+
+	javaLongDescription = `The OpenTelemetry Java agent, instrumenting Java applications to collect
+distributed traces, metrics, and logs without code changes.
+
+Installed alongside the opentelemetry-injector package, the agent is attached
+to every Java process on the host automatically. Without it, the agent is
+still usable by passing -javaagent to a JVM directly.`
+
+	nodejsLongDescription = `The OpenTelemetry Node.js instrumentations, collecting distributed traces,
+metrics, and logs from Node.js applications without code changes.
+
+Installed alongside the opentelemetry-injector package, the instrumentations
+are loaded into every Node.js process on the host automatically. Without it,
+they are still usable through the --require flag.`
+
+	dotnetLongDescription = `The OpenTelemetry .NET automatic instrumentation, collecting distributed
+traces, metrics, and logs from .NET applications without code changes.
+
+Installed alongside the opentelemetry-injector package, the instrumentation is
+attached to every .NET process on the host automatically.
+
+Only the glibc build is bundled. Instrumenting a musl-based distribution such
+as Alpine Linux means installing the upstream release directly, this project
+building no apk packages.`
+
+	pythonLongDescription = `The OpenTelemetry Python instrumentations, collecting distributed traces,
+metrics, and logs from Python applications without code changes.
+
+Installed alongside the opentelemetry-injector package, the injector puts the
+bundled interpreter path on PYTHONPATH for every process, and the
+sitecustomize module found there starts instrumentation before the application
+does. That module first checks that the interpreter version is supported, that
+the configuration is valid, and that no conflicting instrumentation or
+dependency is already present; instrumentation stays off when any check fails,
+so a misconfigured host runs its applications unchanged rather than breaking
+them.`
+
+	metaLongDescription = `Installs the OpenTelemetry injector and, by recommendation, the
+auto-instrumentation for every supported language, so that applications on the
+host report traces, metrics, and logs without being rebuilt or reconfigured.
+
+This package contains no instrumentation of its own. Install the individual
+opentelemetry-*-autoinstrumentation packages instead to cover only the
+languages a host actually runs.`
 )
 
 func injectorContents(cfg Config) (files.Contents, func(), error) {

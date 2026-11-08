@@ -120,8 +120,14 @@ type Component struct {
 	Name string
 	// PackageName is the name of the produced package.
 	PackageName string
-	// Description is used as the package description, and as the RPM summary.
+	// Description is the one-line summary: the first line of the DEB
+	// Description field, and the RPM Summary tag.
 	Description string
+	// LongDescription is the prose below the summary: the DEB extended
+	// description, and the RPM %description. It must not repeat the summary,
+	// which lintian reports as description-synopsis-is-duplicated. Empty
+	// leaves the package with the summary alone.
+	LongDescription string
 	// Noarch marks a package whose payload is architecture independent. It
 	// selects the "all" DEB architecture and the "noarch" RPM one.
 	Noarch    bool
@@ -153,6 +159,22 @@ func (c Component) Arch(cfg Config, format string) string {
 	return "all"
 }
 
+// formatDescription returns what the format's description field holds.
+//
+// The two formats divide summary from prose differently. RPM has a Summary tag
+// of its own, so its %description is the prose alone. DEB has one field whose
+// first line is the summary, so nfpm takes both joined, and writes the blank
+// line between them as the " ." continuation the control format wants.
+func (c Component) formatDescription(format string) string {
+	if c.LongDescription == "" {
+		return c.Description
+	}
+	if format == "rpm" {
+		return c.LongDescription
+	}
+	return c.Description + "\n\n" + c.LongDescription
+}
+
 // Info stages the component's payload and returns a complete nfpm.Info for it.
 // The returned cleanup function must be called once packaging completes.
 func (c Component) Info(cfg Config, format string) (*nfpm.Info, func(), error) {
@@ -168,7 +190,7 @@ func (c Component) Info(cfg Config, format string) (*nfpm.Info, func(), error) {
 		Arch:        c.Arch(cfg, format),
 		Platform:    "linux",
 		Section:     cfg.section(),
-		Description: c.Description,
+		Description: c.formatDescription(format),
 		Vendor:      cfg.vendor(),
 		Maintainer:  cfg.maintainer(),
 		License:     cfg.license(),

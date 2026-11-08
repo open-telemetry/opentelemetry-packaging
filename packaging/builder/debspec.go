@@ -122,11 +122,13 @@ func WriteDebSpec(cfg Config, comp Component, w io.Writer) error {
 	}
 
 	data := &debSpecData{
-		Name:         comp.PackageName,
-		Version:      version,
-		Release:      release,
-		Summary:      comp.Description,
-		Description:  comp.Description,
+		Name:    comp.PackageName,
+		Version: version,
+		Release: release,
+		Summary: comp.Description,
+		// debbuild has a Summary tag of its own, as rpm does, so the
+		// description section holds the prose alone.
+		Description:  comp.formatDescription("rpm"),
 		License:      cfg.license(),
 		URL:          cfg.homepage(),
 		Packager:     cfg.maintainer(),
