@@ -262,7 +262,10 @@ It also resolves the OBS project and whether to release, as in the tables above.
 ### Publish
 
 The `publish` job runs once per selected package, in parallel, and a failing package does not stop the others.
-Runs for the same package and project are serialized and never cancelled, so a source commit and its release do not interleave with those of another run.
+Runs for the same package and project are serialized, and a run in progress is never cancelled, so a source commit and its release do not interleave with those of another run.
+A run that is still waiting to start is superseded when a later one reaches the same package.
+On a push that is the intended behaviour, because the later run regenerates the sources from a tree that already contains the commit of the superseded run.
+A dispatch that is waiting to start is superseded in the same way, so a release requested by hand while another run holds the package has to be dispatched again.
 
 For each package, it:
 
