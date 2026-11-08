@@ -39,10 +39,14 @@ type fileListFormat struct {
 	// into a chown and chmod command in the postinst, so its lists leave them
 	// out and carry the modes in the staged tree instead.
 	attrs bool
+	// configQualifiers writes the noreplace and missingok qualifiers after a
+	// %config directive. Only rpm has them: dpkg treats every conffile as
+	// noreplace already, and debbuild recognizes no qualifier at all.
+	configQualifiers bool
 }
 
 var (
-	rpmFileList = fileListFormat{packager: "rpm", attrs: true}
+	rpmFileList = fileListFormat{packager: "rpm", attrs: true, configQualifiers: true}
 	debFileList = fileListFormat{packager: "deb"}
 )
 
@@ -193,9 +197,7 @@ func fileLine(content *files.Content, format fileListFormat, directive string) s
 }
 
 func configDirective(contentType string, format fileListFormat) string {
-	// dpkg treats every conffile as noreplace, and debbuild recognizes no
-	// other qualifier, so the DEB list marks configuration files only.
-	if format.packager == "deb" {
+	if !format.configQualifiers {
 		return "%config"
 	}
 	switch contentType {
