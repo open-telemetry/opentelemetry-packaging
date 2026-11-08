@@ -49,15 +49,19 @@ type Config struct {
 	// (see the otel-config-check Makefile target).
 	ConfigCheckBinary string
 
-	// Vendor, Maintainer, License and Homepage set the package identity
-	// fields. Each falls back to the OpenTelemetry default when empty, so a
-	// vendor building its own components (see the vendor package recipe in
-	// docs/design/packages-meta-architecture.md) can brand them without
-	// reimplementing the packaging rules.
+	// Vendor, Maintainer, License, Homepage and Section set the package
+	// identity fields. Each falls back to the OpenTelemetry default when
+	// empty, so a vendor building its own components (see the vendor package
+	// recipe in docs/design/packages-meta-architecture.md) can brand them
+	// without reimplementing the packaging rules.
 	Vendor     string
 	Maintainer string
 	License    string
 	Homepage   string
+	// Section is the DEB archive section. It has no RPM counterpart, so it
+	// reaches the DEB packagers only: nfpm's Section field, and the Group tag
+	// debbuild writes out as Section.
+	Section string
 
 	// NoticeFile is the NOTICE shipped in the documentation directory of the
 	// components that bundle third-party code. Empty resolves to the NOTICE
@@ -70,6 +74,7 @@ func (c Config) vendor() string     { return orDefault(c.Vendor, pkgVendor) }
 func (c Config) maintainer() string { return orDefault(c.Maintainer, pkgMaintainer) }
 func (c Config) license() string    { return orDefault(c.License, pkgLicense) }
 func (c Config) homepage() string   { return orDefault(c.Homepage, pkgHomepage) }
+func (c Config) section() string    { return orDefault(c.Section, pkgSection) }
 
 // noticeFile resolves the NOTICE path, defaulting to the file next to
 // PackagingDir.
@@ -162,6 +167,7 @@ func (c Component) Info(cfg Config, format string) (*nfpm.Info, func(), error) {
 		Release:     cfg.Release,
 		Arch:        c.Arch(cfg, format),
 		Platform:    "linux",
+		Section:     cfg.section(),
 		Description: c.Description,
 		Vendor:      cfg.vendor(),
 		Maintainer:  cfg.maintainer(),
@@ -258,6 +264,11 @@ const (
 	pkgMaintainer = "The OpenTelemetry Authors"
 	pkgLicense    = "Apache-2.0"
 	pkgHomepage   = "https://github.com/open-telemetry/opentelemetry-packaging"
+	// pkgSection is the DEB archive section, one of the values Debian Policy
+	// 2.4 defines. These packages are host-installed monitoring agents, which
+	// is what collectd and its kind are filed under. RPM has no equivalent:
+	// the Group tag it corresponds to was deprecated and carries no meaning.
+	pkgSection = "utils"
 )
 
 // The exported helpers below are the vocabulary for writing a ContentsFunc

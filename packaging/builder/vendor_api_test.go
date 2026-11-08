@@ -50,6 +50,7 @@ func TestIdentityDefaults(t *testing.T) {
 	assert.Equal(t, pkgMaintainer, cfg.maintainer())
 	assert.Equal(t, pkgLicense, cfg.license())
 	assert.Equal(t, pkgHomepage, cfg.homepage())
+	assert.Equal(t, pkgSection, cfg.section())
 
 	info, cleanup, err := fixtureComponent(t, Relations{}).Info(cfg, "deb")
 	if cleanup != nil {
@@ -60,6 +61,9 @@ func TestIdentityDefaults(t *testing.T) {
 	assert.Equal(t, "The OpenTelemetry Authors", info.Maintainer)
 	assert.Equal(t, "Apache-2.0", info.License)
 	assert.Equal(t, pkgHomepage, info.Homepage)
+	// Left empty, nfpm writes an empty Section field, which lintian reports as
+	// both empty-field and unknown-section.
+	assert.Equal(t, "utils", info.Section)
 }
 
 // TestIdentityOverride covers the vendor case: branding the package without
@@ -72,6 +76,7 @@ func TestIdentityOverride(t *testing.T) {
 		Maintainer: "The ACME Company",
 		License:    "MIT",
 		Homepage:   "https://acme.example",
+		Section:    "net",
 	}
 
 	info, cleanup, err := fixtureComponent(t, Relations{}).Info(cfg, "deb")
@@ -83,6 +88,7 @@ func TestIdentityOverride(t *testing.T) {
 	assert.Equal(t, "The ACME Company", info.Maintainer)
 	assert.Equal(t, "MIT", info.License)
 	assert.Equal(t, "https://acme.example", info.Homepage)
+	assert.Equal(t, "net", info.Section)
 }
 
 // TestRelationsConflictsReplaces is the core of the vendor recipe: the virtual

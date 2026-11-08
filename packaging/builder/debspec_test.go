@@ -88,6 +88,9 @@ func TestWriteDebSpecPreamble(t *testing.T) {
 	assert.Contains(t, spec, "Release:        1\n")
 	assert.Contains(t, spec, "License:        Apache-2.0\n")
 	assert.Contains(t, spec, "Packager:       The OpenTelemetry Authors\n")
+	// debbuild writes Group out as the DEB Section field, and omits the field
+	// altogether when the tag is absent.
+	assert.Contains(t, spec, "Group:          utils\n")
 	assert.Contains(t, spec, "Source0:        %{name}-%{version}.tar.gz\n")
 	// The dependencies are the declared ones only, as in the nfpm packages.
 	assert.Contains(t, spec, "AutoReq:        no\n")

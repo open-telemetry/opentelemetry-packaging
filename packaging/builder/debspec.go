@@ -35,6 +35,7 @@ type debSpecData struct {
 	License     string
 	URL         string
 	Packager    string
+	Section     string
 	Noarch      bool
 	// PayloadDir is the source archive directory that holds this build's
 	// payload: a literal for noarch packages, the arch macro otherwise.
@@ -123,6 +124,7 @@ func WriteDebSpec(cfg Config, comp Component, w io.Writer) error {
 		License:     cfg.license(),
 		URL:         cfg.homepage(),
 		Packager:    cfg.maintainer(),
+		Section:     cfg.section(),
 		Noarch:      comp.Noarch,
 		PayloadDir:  payloadDir,
 		Component:   comp.Name,

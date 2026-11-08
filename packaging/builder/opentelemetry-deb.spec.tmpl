@@ -39,6 +39,9 @@ Name:           {{ .Name }}
 Version:        {{ .Version }}
 Release:        {{ .Release }}
 Summary:        {{ .Summary }}
+# debbuild writes the Group tag out as the DEB Section field, and omits the
+# field entirely when the tag is absent.
+Group:          {{ .Section }}
 License:        {{ .License }}
 URL:            {{ .URL }}
 Packager:       {{ .Packager }}
