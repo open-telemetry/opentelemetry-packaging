@@ -45,12 +45,38 @@ type fakeOBS struct {
 	// the committed srcmd5 and how many times results were requested.
 	build func(target, srcmd5 string, poll int) (code string, dirty bool, job *Job)
 	polls int
+
+	// requests counts the requests served and refused, by kind.
+	requests map[string]int
+	// fail, when set, answers a request with an HTTP status instead of
+	// serving it. Returning 0 serves it.
+	fail func(kind string, seen int) int
+}
+
+// kind names a request the way the tests talk about it: the method, and what
+// the path or the cmd says it does.
+func kind(r *http.Request) string {
+	if cmd := r.URL.Query().Get("cmd"); cmd != "" {
+		return r.Method + " " + cmd
+	}
+	switch {
+	case strings.HasSuffix(r.URL.Path, "/_result"):
+		return "GET results"
+	case strings.HasSuffix(r.URL.Path, "/_jobhistory"):
+		parts := strings.Split(r.URL.Path, "/")
+		return "GET jobhistory " + parts[len(parts)-3] + "/" + parts[len(parts)-2]
+	case strings.HasSuffix(r.URL.Path, "/_meta"):
+		return "PUT meta"
+	case r.Method == http.MethodPut:
+		return "PUT file"
+	}
+	return r.Method + " sources"
 }
 
 var targets = []string{"debian/x86_64", "ubuntu/aarch64"}
 
 func newFakeOBS(t *testing.T) (*fakeOBS, *Client) {
-	f := &fakeOBS{t: t, files: map[string][]byte{}, uploaded: map[string][]byte{}}
+	f := &fakeOBS{t: t, files: map[string][]byte{}, uploaded: map[string][]byte{}, requests: map[string]int{}}
 	// By default each build finishes on the second poll after a commit.
 	f.build = func(_, srcmd5 string, poll int) (string, bool, *Job) {
 		if poll < 2 {
@@ -60,7 +86,9 @@ func newFakeOBS(t *testing.T) (*fakeOBS, *Client) {
 	}
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
-	return f, NewClient(srv.URL, "bot", "s3cret")
+	c := NewClient(srv.URL, "bot", "s3cret")
+	c.Backoff = time.Millisecond
+	return f, c
 }
 
 func (f *fakeOBS) srcmd5() string {
@@ -91,6 +119,15 @@ func (f *fakeOBS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if user, pass, ok := r.BasicAuth(); !ok || user != "bot" || pass != "s3cret" {
 		http.Error(w, `<status code="authentication_required"><summary>Authentication required</summary></status>`, http.StatusUnauthorized)
 		return
+	}
+
+	what := kind(r)
+	f.requests[what]++
+	if f.fail != nil {
+		if status := f.fail(what, f.requests[what]); status != 0 {
+			http.Error(w, `<status code="service_unavailable"><summary>try again later</summary></status>`, status)
+			return
+		}
 	}
 	reply := func(v any) {
 		data, err := xml.Marshal(v)
@@ -348,6 +385,87 @@ func TestWaitTimesOut(t *testing.T) {
 	_, err := Publish(ctx, c, options(sourcesDir(t, map[string]string{"pkg.spec": "spec"})))
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Equal(t, 0, f.released)
+}
+
+// api.opensuse.org is briefly unavailable now and then, and a run asks it
+// thousands of times while it waits for the builds. None of that may fail a
+// run that has already committed its sources.
+func TestTransientFailuresAreSentAgain(t *testing.T) {
+	f, c := newFakeOBS(t)
+	// Every kind of request that is safe to repeat fails the first two times
+	// it is made. The commit is not one of them; TestACommitIsNotSentAgain
+	// covers it.
+	f.fail = func(what string, seen int) int {
+		if what != "POST commitfilelist" && seen <= 2 {
+			return http.StatusServiceUnavailable
+		}
+		return 0
+	}
+
+	outcome, err := Publish(context.Background(), c, options(sourcesDir(t, map[string]string{
+		"pkg.spec": "spec", "pkg-2.33.1.tar.gz": "archive",
+	})))
+	require.NoError(t, err)
+	require.Equal(t, &Outcome{Changed: true, Revision: "1", Released: true}, outcome)
+	// The upload was sent again from the start of the file, not from where
+	// the failed attempt left it.
+	require.Equal(t, map[string][]byte{"pkg.spec": []byte("spec"), "pkg-2.33.1.tar.gz": []byte("archive")}, f.files)
+	require.Equal(t, 1, f.released)
+}
+
+// An outage that outlasts the retries still fails, rather than waiting out the
+// job's whole deadline, and it fails without releasing.
+func TestPollingGivesUpOnALastingOutage(t *testing.T) {
+	f, c := newFakeOBS(t)
+	c.Retries = 0
+	f.fail = func(what string, _ int) int {
+		if what == "GET results" {
+			return http.StatusBadGateway
+		}
+		return 0
+	}
+
+	outcome, err := Publish(context.Background(), c, options(sourcesDir(t, map[string]string{"pkg.spec": "spec"})))
+	require.ErrorContains(t, err, "times in a row")
+	require.ErrorContains(t, err, "502")
+	require.True(t, outcome.Changed, "the sources were committed before the outage")
+	require.Equal(t, 0, f.released)
+	require.Equal(t, maxPollFailures+1, f.requests["GET results"])
+}
+
+// The job history of every target, asked for on every check, is most of what
+// waiting makes OBS serve. A target that has built the revision is not asked
+// about again.
+func TestBuiltTargetsAreNotAskedAboutAgain(t *testing.T) {
+	f, c := newFakeOBS(t)
+	f.build = func(target, srcmd5 string, poll int) (string, bool, *Job) {
+		if target == "debian/x86_64" || poll >= 5 {
+			return "succeeded", false, &Job{SrcMD5: srcmd5, Code: "succeeded"}
+		}
+		return "building", false, &Job{SrcMD5: "previous", Code: "succeeded"}
+	}
+
+	_, err := Publish(context.Background(), c, options(sourcesDir(t, map[string]string{"pkg.spec": "spec"})))
+	require.NoError(t, err)
+	require.Equal(t, 1, f.requests["GET jobhistory debian/x86_64"], "the target that built first")
+	require.Greater(t, f.requests["GET jobhistory ubuntu/aarch64"], 1, "the target still building")
+}
+
+// A commit is the one request that is not repeated: OBS may have carried out
+// the one whose answer was lost, and a second would make a needless revision.
+func TestACommitIsNotSentAgain(t *testing.T) {
+	f, c := newFakeOBS(t)
+	f.fail = func(what string, _ int) int {
+		if what == "POST commitfilelist" {
+			return http.StatusServiceUnavailable
+		}
+		return 0
+	}
+
+	_, err := Publish(context.Background(), c, options(sourcesDir(t, map[string]string{"pkg.spec": "spec"})))
+	require.ErrorContains(t, err, "503")
+	require.Equal(t, 1, f.requests["POST commitfilelist"])
+	require.Equal(t, 0, f.rev)
 }
 
 func TestErrorsCarryTheServersSummaryButNotTheCredentials(t *testing.T) {

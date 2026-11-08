@@ -113,6 +113,13 @@ var buildSucceeded = []string{"succeeded", "unchanged"}
 // someone changing it or its project.
 var buildBlocked = []string{"failed", "broken", "unresolvable"}
 
+// maxPollFailures is how many checks in a row may fail before waiting for the
+// builds gives up. The client retries each request already; this covers an
+// outage that outlasts those retries. Giving up here fails a run that has
+// committed its sources, which then has to be released by hand, so the wait
+// sits it out for as long as the run's own deadline allows.
+const maxPollFailures = 10
+
 // WaitForBuilds waits until the sources with srcmd5 have built in every
 // repository and architecture of the project, and fails as soon as one of them
 // fails or cannot build.
@@ -121,63 +128,115 @@ var buildBlocked = []string{"failed", "broken", "unresolvable"}
 // after a commit the status still describes the previous revision until the
 // scheduler marks the repository dirty, and a status of succeeded then would
 // release the old binaries.
+//
+// A check that cannot reach the API is not a build that failed: it is tried
+// again until maxPollFailures in a row have failed, or the context is done.
 func WaitForBuilds(ctx context.Context, c *Client, opts Options, srcmd5 string) error {
 	logf := opts.Logf
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	start := time.Now()
-	last := ""
+	w := &buildWatch{
+		c:      c,
+		opts:   opts,
+		srcmd5: srcmd5,
+		logf:   logf,
+		start:  time.Now(),
+		built:  map[string]bool{},
+	}
+
+	failures := 0
 	for {
-		results, err := c.Results(ctx, opts.Project, opts.Package)
-		if err != nil {
+		pending, err := w.poll(ctx)
+		switch {
+		case err == nil:
+			failures = 0
+			if pending == 0 {
+				logf("%s built in every repository", opts.Package)
+				return nil
+			}
+		case ctx.Err() != nil:
+			return fmt.Errorf("waiting for %s to build: %w", opts.Package, ctx.Err())
+		case !isTransient(err):
 			return err
-		}
-		if len(results) == 0 {
-			return fmt.Errorf("%s has no repositories building %s", opts.Project, opts.Package)
+		default:
+			failures++
+			if failures > maxPollFailures {
+				return fmt.Errorf("checking the builds of %s failed %d times in a row: %w", opts.Package, failures, err)
+			}
+			logf("checking the builds of %s failed, trying again: %v", opts.Package, err)
 		}
 
-		pending := 0
-		for _, r := range results {
-			where := r.Repository + "/" + r.Arch
-			code := r.Code(opts.Package)
-			switch code {
-			case "disabled":
-				continue
-			case "excluded":
-				return fmt.Errorf("%s is excluded on %s: check the repository's build configuration", opts.Package, where)
-			}
-
-			job, err := c.LastJob(ctx, opts.Project, r.Repository, r.Arch, opts.Package)
-			if err != nil {
-				return err
-			}
-			if job != nil && job.SrcMD5 == srcmd5 {
-				if slices.Contains(buildSucceeded, job.Code) {
-					continue
-				}
-				return fmt.Errorf("%s %s on %s", opts.Package, job.Code, where)
-			}
-			if slices.Contains(buildBlocked, code) && !r.Dirty && time.Since(start) > opts.Grace {
-				return fmt.Errorf("%s is %s on %s", opts.Package, code, where)
-			}
-			pending++
-		}
-		if pending == 0 {
-			logf("%s built in every repository", opts.Package)
-			return nil
-		}
-
-		if summary := fmt.Sprintf("waiting for %d of %d builds of %s", pending, len(results), opts.Package); summary != last {
-			logf("%s", summary)
-			last = summary
-		}
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("waiting for %s to build: %w", opts.Package, ctx.Err())
 		case <-time.After(opts.Interval):
 		}
 	}
+}
+
+// buildWatch is one wait for the builds of a revision.
+type buildWatch struct {
+	c      *Client
+	opts   Options
+	srcmd5 string
+	logf   func(format string, args ...any)
+	start  time.Time
+	// built are the repository/architecture pairs that have built the
+	// revision. A finished build does not come undone, so they are not asked
+	// about again: the job history of every target, on every check, is most
+	// of what this makes OBS serve.
+	built map[string]bool
+	last  string
+}
+
+// poll checks every repository and architecture once and returns how many have
+// yet to build the revision.
+func (w *buildWatch) poll(ctx context.Context) (int, error) {
+	results, err := w.c.Results(ctx, w.opts.Project, w.opts.Package)
+	if err != nil {
+		return 0, err
+	}
+	if len(results) == 0 {
+		return 0, fmt.Errorf("%s has no repositories building %s", w.opts.Project, w.opts.Package)
+	}
+
+	pending := 0
+	for _, r := range results {
+		where := r.Repository + "/" + r.Arch
+		code := r.Code(w.opts.Package)
+		switch code {
+		case "disabled":
+			continue
+		case "excluded":
+			return 0, fmt.Errorf("%s is excluded on %s: check the repository's build configuration", w.opts.Package, where)
+		}
+		if w.built[where] {
+			continue
+		}
+
+		job, err := w.c.LastJob(ctx, w.opts.Project, r.Repository, r.Arch, w.opts.Package)
+		if err != nil {
+			return 0, err
+		}
+		if job != nil && job.SrcMD5 == w.srcmd5 {
+			if slices.Contains(buildSucceeded, job.Code) {
+				w.built[where] = true
+				continue
+			}
+			return 0, fmt.Errorf("%s %s on %s", w.opts.Package, job.Code, where)
+		}
+		if slices.Contains(buildBlocked, code) && !r.Dirty && time.Since(w.start) > w.opts.Grace {
+			return 0, fmt.Errorf("%s is %s on %s", w.opts.Package, code, where)
+		}
+		pending++
+	}
+
+	if summary := fmt.Sprintf("waiting for %d of %d builds of %s", pending, len(results), w.opts.Package); pending > 0 && summary != w.last {
+		w.logf("%s", summary)
+		w.last = summary
+	}
+	return pending, nil
 }
 
 // localFiles lists the regular files in dir with their MD5 sums, which is how

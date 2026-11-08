@@ -55,7 +55,10 @@ func main() {
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
 
-	outcome, err := obs.Publish(ctx, obs.NewClient(*apiURL, username, password), obs.Options{
+	client := obs.NewClient(*apiURL, username, password)
+	client.Logf = log.Printf
+
+	outcome, err := obs.Publish(ctx, client, obs.Options{
 		Project:          *project,
 		Package:          *pkg,
 		Dir:              *dir,

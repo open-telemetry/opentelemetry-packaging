@@ -29,6 +29,16 @@ The `osc` sources remain the reference for the requests below.
 A run that committed but failed before releasing leaves sources the next run sees as unchanged.
 `ReleaseUnchanged` (`-release-unchanged`) covers that case: it waits for the builds of the current sources and releases them.
 
+## Transient failures
+
+Waiting for one package asks the API thousands of times over several hours, and `api.opensuse.org` is a shared service that is unreachable or answers `503` now and then.
+A request that fails that way, rather than because the request itself was wrong, is sent again up to four times with a growing wait, and a check of the builds that still fails is repeated until ten in a row have failed.
+What bounds the wait is the run's own deadline, `-timeout`.
+
+Committing is the one request that is never repeated: OBS may have carried out the commit whose answer was lost, and a second one would make another revision of the same sources, which is a rebuild and a release for nothing.
+A failed commit therefore fails the run before anything has been built, which is the harmless side to fail on.
+Releasing is repeated, because releasing a revision twice copies the same binaries again, which is what `-release-unchanged` does deliberately.
+
 ## Endpoints
 
 | Step                  | Request                                                                          |

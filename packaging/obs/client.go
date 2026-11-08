@@ -7,6 +7,7 @@
 package obs
 
 import (
+	"bytes"
 	"context"
 	"encoding/xml"
 	"errors"
@@ -22,12 +23,30 @@ import (
 // DefaultAPIURL is the API of the public Open Build Service instance.
 const DefaultAPIURL = "https://api.opensuse.org"
 
+const (
+	// defaultRetries is how many times a repeatable request is sent again
+	// after a transient failure. Waiting for the builds of one package asks
+	// the API thousands of times over several hours, and api.opensuse.org is
+	// a shared service that is briefly unavailable now and then.
+	defaultRetries = 4
+	defaultBackoff = 2 * time.Second
+	maxBackoff     = 30 * time.Second
+)
+
 // Client talks to an OBS API with HTTP basic authentication.
 type Client struct {
 	APIURL   string
 	Username string
 	Password string
 	HTTP     *http.Client
+	// Retries is how many times a request that is safe to repeat is sent
+	// again after a transient failure.
+	Retries int
+	// Backoff is the wait before the first retry; it doubles for each further
+	// one, up to half a minute.
+	Backoff time.Duration
+	// Logf, when set, reports retries, which are otherwise invisible.
+	Logf func(format string, args ...any)
 }
 
 // NewClient returns a client for apiURL. Uploads of the larger source archives
@@ -38,7 +57,30 @@ func NewClient(apiURL, username, password string) *Client {
 		Username: username,
 		Password: password,
 		HTTP:     &http.Client{Timeout: 15 * time.Minute},
+		Retries:  defaultRetries,
+		Backoff:  defaultBackoff,
 	}
+}
+
+func (c *Client) logf(format string, args ...any) {
+	if c.Logf != nil {
+		c.Logf(format, args...)
+	}
+}
+
+// transientError is a failure that may well not happen again: the API was
+// unreachable, or answered that it could not serve the request right now. It
+// is the opposite of a package that failed to build or a project that does not
+// exist, which no amount of asking again will change.
+type transientError struct{ err error }
+
+func (e transientError) Error() string { return e.err.Error() }
+func (e transientError) Unwrap() error { return e.err }
+
+// isTransient reports whether err is worth retrying.
+func isTransient(err error) bool {
+	var t transientError
+	return errors.As(err, &t)
 }
 
 // Entry is a file in a package's sources.
@@ -196,8 +238,12 @@ func (c *Client) LastJob(ctx context.Context, project, repository, arch, pkg str
 
 // Release copies a package's sources and built binaries to the release
 // targets of its project's repositories, as osc release does.
+//
+// Unlike a commit, it is retried: releasing the same revision twice copies the
+// same binaries again, which is what -release-unchanged does on purpose, and
+// it is the last step of a run, where failing means releasing by hand.
 func (c *Client) Release(ctx context.Context, project, pkg string) error {
-	return c.do(ctx, http.MethodPost, c.url(url.Values{"cmd": {"release"}}, "source", project, pkg), nil, nil)
+	return c.send(ctx, http.MethodPost, c.url(url.Values{"cmd": {"release"}}, "source", project, pkg), nil, nil, true)
 }
 
 func (c *Client) url(query url.Values, segments ...string) string {
@@ -212,18 +258,121 @@ func (c *Client) url(query url.Values, segments ...string) string {
 	return u
 }
 
-// do sends a request and decodes an XML response into out, when given. Errors
-// carry the summary OBS puts in its status document, never the credentials.
+// do sends a request and decodes an XML response into out, when given,
+// retrying it while it fails transiently and is safe to repeat.
 func (c *Client) do(ctx context.Context, method, u string, body io.Reader, out any) error {
-	req, err := http.NewRequestWithContext(ctx, method, u, body)
+	return c.send(ctx, method, u, body, out, repeatable(method))
+}
+
+// repeatable reports whether sending a request again is safe. Reading and
+// uploading a file are. Committing is not: a repeat of a commit the server did
+// carry out, but whose answer was lost, would make a second revision of the
+// same sources and so a needless rebuild and release.
+func repeatable(method string) bool {
+	return method == http.MethodGet || method == http.MethodPut
+}
+
+// send sends a request, retrying a transient failure when retry allows it. The
+// error it returns is the last failure, so a run that gives up still reports
+// what went wrong rather than that it ran out of attempts.
+func (c *Client) send(ctx context.Context, method, u string, body io.Reader, out any, retry bool) error {
+	attempts := 1
+	if retry {
+		attempts += c.Retries
+	}
+	backoff := c.Backoff
+	if backoff <= 0 {
+		backoff = defaultBackoff
+	}
+
+	for attempt := 1; ; attempt++ {
+		err := c.sendOnce(ctx, method, u, body, out)
+		if !isTransient(err) || attempt >= attempts {
+			return err
+		}
+		// A body that cannot be wound back cannot be sent again, so the
+		// failure stands.
+		if rewindErr := rewind(body); rewindErr != nil {
+			return err
+		}
+		c.logf("%v; trying again in %s (attempt %d of %d)", err, backoff, attempt+1, attempts)
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(backoff):
+		}
+		if backoff *= 2; backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+	}
+}
+
+// unavailable reports whether a status code says the API could not serve the
+// request now, rather than that the request was wrong. OBS answers 502 and 503
+// while it is restarting or overloaded, and 429 when a client asks too often.
+func unavailable(status int) bool {
+	switch status {
+	case http.StatusRequestTimeout, http.StatusTooManyRequests:
+		return true
+	}
+	return status >= 500
+}
+
+// rewind returns a request body to its start, so the request can be sent
+// again.
+func rewind(body io.Reader) error {
+	if body == nil {
+		return nil
+	}
+	seeker, ok := body.(io.Seeker)
+	if !ok {
+		return fmt.Errorf("a %T body cannot be sent again", body)
+	}
+	_, err := seeker.Seek(0, io.SeekStart)
+	return err
+}
+
+// bodyLength returns how many bytes a request body still holds, or -1 when
+// that cannot be known, which has the request sent in chunks.
+func bodyLength(body io.Reader) int64 {
+	switch b := body.(type) {
+	case nil:
+		return 0
+	case *os.File:
+		info, err := b.Stat()
+		if err != nil {
+			return -1
+		}
+		at, err := b.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return -1
+		}
+		return info.Size() - at
+	case *strings.Reader:
+		return int64(b.Len())
+	case *bytes.Reader:
+		return int64(b.Len())
+	}
+	return -1
+}
+
+// sendOnce sends a request and decodes an XML response into out, when given.
+// Errors carry the summary OBS puts in its status document, never the
+// credentials.
+func (c *Client) sendOnce(ctx context.Context, method, u string, body io.Reader, out any) error {
+	// The transport closes a body that is a ReadCloser, such as the open file
+	// of an upload, and a closed file cannot be wound back and sent again.
+	// Hiding the body behind a NopCloser keeps it the caller's to close, at
+	// the cost of the length net/http would otherwise work out itself.
+	var reqBody io.Reader
+	if body != nil {
+		reqBody = io.NopCloser(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u, reqBody)
 	if err != nil {
 		return err
 	}
-	if f, ok := body.(*os.File); ok {
-		if info, err := f.Stat(); err == nil {
-			req.ContentLength = info.Size()
-		}
-	}
+	req.ContentLength = bodyLength(body)
 	req.SetBasicAuth(c.Username, c.Password)
 	req.Header.Set("Accept", "application/xml")
 	if body != nil {
@@ -232,12 +381,20 @@ func (c *Client) do(ctx context.Context, method, u string, body io.Reader, out a
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return err
+		// The request never got an answer: the network, or the API, was in
+		// the way. Unless it is this run that is over.
+		if ctx.Err() != nil {
+			return err
+		}
+		return transientError{err}
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		if ctx.Err() != nil {
+			return err
+		}
+		return transientError{fmt.Errorf("%s %s: reading the response: %w", method, req.URL.Path, err)}
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
@@ -252,7 +409,11 @@ func (c *Client) do(ctx context.Context, method, u string, body io.Reader, out a
 		if xml.Unmarshal(data, &status) == nil && status.Summary != "" {
 			detail = status.Code + ": " + status.Summary
 		}
-		return fmt.Errorf("%s %s: %s: %s", method, req.URL.Path, resp.Status, detail)
+		err := fmt.Errorf("%s %s: %s: %s", method, req.URL.Path, resp.Status, detail)
+		if unavailable(resp.StatusCode) {
+			return transientError{err}
+		}
+		return err
 	}
 	if out == nil {
 		return nil
