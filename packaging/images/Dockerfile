@@ -6,7 +6,7 @@
 # 1.33, and 1.43 were checked directly, and all three pin this stage to the
 # host either way. The fallback only covers an unset or empty value, where the
 # flag would otherwise resolve to the target platform and emulate silently.
-FROM --platform=${BUILDPLATFORM:-$TARGETPLATFORM} debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS extract
+FROM --platform=${BUILDPLATFORM:-$TARGETPLATFORM} debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS extract
 ARG TARGETARCH
 ARG PACKAGE
 # Copy the architecture's whole directory rather than a glob: COPY resolves a
@@ -21,5 +21,5 @@ RUN set -eu; \
     fi; \
     dpkg-deb --extract "$(find /tmp/packages -maxdepth 1 -name "${PACKAGE}_*.deb")" /payload
 
-FROM busybox@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616
+FROM busybox@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
 COPY --from=extract /payload/ /

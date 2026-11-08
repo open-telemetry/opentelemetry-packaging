@@ -25,8 +25,8 @@ RUN apt-get update && apt-get install -y \
 
 # Download and install Apache Tomcat.
 # renovate: datasource=github-tags depName=apache/tomcat versioning=semver
-ARG TOMCAT_VERSION=10.1.41
-ADD https://archive.apache.org/dist/tomcat/tomcat-10/v${TOMCAT_VERSION}/bin/apache-tomcat-${TOMCAT_VERSION}.tar.gz /tmp/apache-tomcat.tar.gz
+ARG TOMCAT_VERSION=10.1.61
+ADD https://dlcdn.apache.org/tomcat/tomcat-10/v${TOMCAT_VERSION}/bin/apache-tomcat-${TOMCAT_VERSION}.tar.gz /tmp/apache-tomcat.tar.gz
 RUN tar xzf /tmp/apache-tomcat.tar.gz -C / \
     && mv /apache-tomcat-${TOMCAT_VERSION} /apache-tomcat \
     && rm /tmp/apache-tomcat.tar.gz \

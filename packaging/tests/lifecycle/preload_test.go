@@ -60,6 +60,17 @@ var preloadScenarios = []scenario{
 				"removal must succeed when %s is already gone", preloadPath)
 		},
 	},
+	staleTmpfileScenario("preload-remove-clears-stale-tmpfiles",
+		func(t *testing.T, ctx context.Context, h *harness) {
+			h.remove(t, ctx, "opentelemetry-injector")
+		}),
+	staleTmpfileScenario("preload-upgrade-clears-stale-tmpfiles",
+		func(t *testing.T, ctx context.Context, h *harness) {
+			h.enableNextRepo(t, ctx)
+			h.upgradeInjector(t, ctx)
+			require.Equal(t, 1, h.preloadEntryCount(t, ctx),
+				"upgrade must keep the preload entry")
+		}),
 	{
 		name: "preload-whitespace-only-file-deleted-on-remove",
 		run: func(t *testing.T, ctx context.Context, h *harness) {
@@ -147,6 +158,28 @@ func immutablePreloadScenario(name, foreignEntry, wantWarning string) scenario {
 				"must not report success while the entry remains")
 			require.Equal(t, before, h.fileContent(t, ctx, preloadPath),
 				"%s should be left unchanged", preloadPath)
+		},
+	}
+}
+
+// staleTmpfileScenario installs the injector, plants the tmpfiles a SIGKILLed
+// preuninstall run would leave behind, runs act, and asserts they are gone.
+func staleTmpfileScenario(name string, act func(t *testing.T, ctx context.Context, h *harness)) scenario {
+	return scenario{
+		name: name,
+		run: func(t *testing.T, ctx context.Context, h *harness) {
+			h.install(t, ctx, "opentelemetry-injector")
+			stale := []string{preloadPath + ".tmp.48", preloadPath + ".tmp.12345"}
+			for _, path := range stale {
+				h.exec(t, ctx, "sh", "-c", "echo partial > "+path)
+			}
+
+			act(t, ctx, h)
+
+			for _, path := range stale {
+				require.False(t, h.fileExists(t, ctx, path),
+					"%s left by an earlier killed run should be removed", path)
+			}
 		},
 	}
 }
