@@ -40,14 +40,18 @@ type debSpecData struct {
 	// PayloadDir is the source archive directory that holds this build's
 	// payload: a literal for noarch packages, the arch macro otherwise.
 	PayloadDir string
-	Component  string
-	Provides   []string
-	Requires   []string
-	Recommends []string
-	Suggests   []string
-	Conflicts  []string
-	Replaces   []string
-	Scriptlets []specScriptlet
+	// PayloadArchs lists the architectures the source archive was staged for,
+	// space separated for the ifnarch guard. Empty for a noarch package, whose
+	// single payload serves every architecture.
+	PayloadArchs string
+	Component    string
+	Provides     []string
+	Requires     []string
+	Recommends   []string
+	Suggests     []string
+	Conflicts    []string
+	Replaces     []string
+	Scriptlets   []specScriptlet
 }
 
 // DebVersionRelease returns the Version and Release fields of a debbuild spec.
@@ -106,8 +110,10 @@ func WriteDebSpec(cfg Config, comp Component, w io.Writer) error {
 	}
 
 	payloadDir := "%{_arch}"
+	payloadArchs := strings.Join(debPayloadArchs(comp), " ")
 	if comp.Noarch {
 		payloadDir = DebNoarchDir
+		payloadArchs = ""
 	}
 
 	scriptlets, err := componentScriptlets(cfg, comp)
@@ -116,25 +122,26 @@ func WriteDebSpec(cfg Config, comp Component, w io.Writer) error {
 	}
 
 	data := &debSpecData{
-		Name:        comp.PackageName,
-		Version:     version,
-		Release:     release,
-		Summary:     comp.Description,
-		Description: comp.Description,
-		License:     cfg.license(),
-		URL:         cfg.homepage(),
-		Packager:    cfg.maintainer(),
-		Section:     cfg.section(),
-		Noarch:      comp.Noarch,
-		PayloadDir:  payloadDir,
-		Component:   comp.Name,
-		Provides:    comp.Relations.Provides,
-		Requires:    comp.Relations.Depends,
-		Recommends:  comp.Relations.Recommends,
-		Suggests:    comp.Relations.Suggests,
-		Conflicts:   comp.Relations.Conflicts,
-		Replaces:    comp.Relations.Replaces,
-		Scriptlets:  scriptlets,
+		Name:         comp.PackageName,
+		Version:      version,
+		Release:      release,
+		Summary:      comp.Description,
+		Description:  comp.Description,
+		License:      cfg.license(),
+		URL:          cfg.homepage(),
+		Packager:     cfg.maintainer(),
+		Section:      cfg.section(),
+		Noarch:       comp.Noarch,
+		PayloadDir:   payloadDir,
+		PayloadArchs: payloadArchs,
+		Component:    comp.Name,
+		Provides:     comp.Relations.Provides,
+		Requires:     comp.Relations.Depends,
+		Recommends:   comp.Relations.Recommends,
+		Suggests:     comp.Relations.Suggests,
+		Conflicts:    comp.Relations.Conflicts,
+		Replaces:     comp.Relations.Replaces,
+		Scriptlets:   scriptlets,
 	}
 
 	return debSpecTemplate.Execute(w, data)

@@ -157,6 +157,19 @@ func TestWriteDebSpecSelectsThePayloadByArchitecture(t *testing.T) {
 	assert.NotContains(t, noarch, "%{_arch}")
 }
 
+// An architecture the archive carries no payload for would otherwise fail in
+// the install section, whose output debbuild discards, leaving nothing to go
+// on but the exit status. The guard reports it while the spec is read.
+func TestWriteDebSpecGuardsUnstagedArchitectures(t *testing.T) {
+	spec := renderDebSpec(t, "1.2.3", Injector)
+	archs := strings.Join(Architectures, " ")
+	assert.Contains(t, spec, "%ifnarch "+archs+"\n")
+	assert.Contains(t, spec, "%{error:this package is built for "+archs+", not %{_arch}}\n")
+
+	// A noarch payload serves every architecture, so there is nothing to guard.
+	assert.NotContains(t, renderDebSpec(t, "1.2.3", Java), "%ifnarch")
+}
+
 func TestWriteDebSpecInlinesLifecycleScripts(t *testing.T) {
 	spec := renderDebSpec(t, "1.2.3", Injector)
 

@@ -60,6 +60,18 @@ Source0:        %{name}-%{version}.tar.gz
 {{ end -}}
 {{ range .Replaces }}Replaces:       {{ . }}
 {{ end }}
+{{ if .PayloadArchs -}}
+# The source archive carries a payload for the architectures below, and the
+# install and files sections below pick the one the arch macro names. A build
+# for any other architecture fails in the install section, where debbuild
+# discards the output of every section it runs, leaving only "Exec of
+# /var/tmp/deb-tmp.install.NNN failed (%install): 512" to go on. Catching it
+# here instead fails while the spec is read, where the message is printed.
+%ifnarch {{ .PayloadArchs }}
+%{error:this package is built for {{ .PayloadArchs }}, not %{_arch}}
+%endif
+
+{{ end -}}
 %description
 {{ .Description }}
 
