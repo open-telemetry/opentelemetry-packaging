@@ -17,7 +17,7 @@ SHELL = /bin/bash
 
 # Package version. Derived from the latest git tag if available, otherwise
 # falls back to a development placeholder.
-VERSION ?= $(shell v=`git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null` && echo "$${v#v}" || echo "0.0.0-dev")
+VERSION ?= $(patsubst v%,%,$(shell git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null || echo "0.0.0-dev"))
 
 # Target CPU architecture (amd64 or arm64).
 ARCH ?= amd64
@@ -520,7 +520,7 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 # be on PATH; no containers or network access are needed.
 .PHONY: go-unit-tests
 go-unit-tests:
-	go test -v ./cmd/... ./packaging/builder/... ./packaging/images/ ./packaging/changes/ ./packaging/obs/
+	go test -v ./cmd/... ./packaging/builder/... ./packaging/images/... ./packaging/changes/ ./packaging/obs/
 
 # Unit tests for register.js, the Node.js entry point. They stage fake
 # @opentelemetry packages in a temporary directory, so they need no npm
