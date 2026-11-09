@@ -17,7 +17,7 @@ SHELL = /bin/bash
 
 # Package version. Derived from the latest git tag if available, otherwise
 # falls back to a development placeholder.
-VERSION ?= $(shell v=`git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null` && echo "$${v#v}" || echo "0.0.0-dev")
+VERSION ?= $(patsubst v%,%,$(shell git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null || echo "0.0.0-dev"))
 
 # Target CPU architecture (amd64 or arm64).
 ARCH ?= amd64
@@ -441,8 +441,7 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 # be on PATH; no containers or network access are needed.
 .PHONY: go-unit-tests
 go-unit-tests:
-<<<<<<< HEAD
-	go test -v ./cmd/... ./packaging/builder/ ./packaging/images/
+	go test -v ./cmd/... ./packaging/builder/... ./packaging/images/...
 
 # Unit tests for register.js, the Node.js entry point. They stage fake
 # @opentelemetry packages in a temporary directory, so they need no npm
@@ -450,9 +449,6 @@ go-unit-tests:
 .PHONY: nodejs-unit-tests
 nodejs-unit-tests:
 	node --test packaging/common/nodejs/register.test.js
-=======
-	go test -v ./cmd/... ./packaging/builder/...
->>>>>>> 4541653 (docs(jmx-scraper): generate the documented target systems from the pinned JAR)
 
 # Unit tests for sitecustomize.py. They need the `packaging` module (a runtime
 # dependency of sitecustomize.py itself); a throwaway virtualenv keeps the
