@@ -7,6 +7,7 @@
 - **git** (needed by the package-image metadata unit tests, which construct git histories to exercise build-plan selection)
 - **npm** (needed to fetch the Node.js auto-instrumentation agent from the npm registry)
 - **Python 3 with pip** (needed to fetch the Python auto-instrumentation packages; invoked as `python3 -m pip`)
+- **[uv](https://docs.astral.sh/uv/)** (needed by the Python test targets, which build their virtualenvs with it; `make python-unit-tests` and `make pyproto-unit-tests` stop with an installation hint if it is missing)
 - **A container engine** (Podman or Docker, needed for package-image builds, local repository generation, and integration tests).
 - **`rpmbuild`** (optional — only for building the source RPM natively; `make srpm-container` runs it in a container instead)
 
@@ -43,7 +44,7 @@ packaging/
     java/                    "
     nodejs/                  " (plus register.js, the --require entry point with declarative-config support, and its unit tests)
     dotnet/                  "
-    python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py (plus its unit tests)
+    python/                  Config, man page template, README, requirements.txt (bundle version pins), test-requirements-*.txt (pyproto test tooling pins, kept out of vendor/ so Renovate sees them), sitecustomize.py (plus its unit tests)
       vendor/                The pyproto exporter chain, developed here with its test suites (unpublished pure-Python packages; see its README)
   images/                    Package-image tooling
     config.json              Supported packages and architectures

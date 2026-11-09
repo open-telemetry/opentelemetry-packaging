@@ -47,7 +47,7 @@ make clean                     # Remove build/
 - `packaging/tests/{java,nodejs,dotnet,python}/` — Testcontainers-based E2E telemetry tests; `python/` also hosts the sitecustomize.py interpreter compatibility tests (unit tests live next to the script)
 - `packaging/tests/lifecycle/` — Package lifecycle tests (preload scripts, config handling, install/remove)
 - `packaging/tests/vendor/` — Vendor replacement tests; `mkvendor/` builds the mock acme package
-- `packaging/common/<component>/release.txt` — Renovate-managed upstream version pins (Python pins live in `packaging/common/python/requirements.txt`)
+- `packaging/common/<component>/release.txt` — Renovate-managed upstream version pins (Python pins live in `packaging/common/python/requirements.txt`, and the test tooling pins in `packaging/common/python/test-requirements-*.txt`)
 
 ## Coding conventions
 

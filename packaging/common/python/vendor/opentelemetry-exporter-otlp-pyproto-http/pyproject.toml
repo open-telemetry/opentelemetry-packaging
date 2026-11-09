@@ -26,15 +26,10 @@ otlp_proto_http = "opentelemetry.exporter.otlp.proto.http._log_exporter:OTLPLogE
 
 [dependency-groups]
 dev = [
-    "opentelemetry-proto == 1.44.0.dev",
-    "opentelemetry-test-utils == 0.65b0.dev",
+    "opentelemetry-proto == 1.43.0",
     "protobuf>=5.0",
     "pytest>=7.0",
 ]
-
-[tool.uv.sources]
-opentelemetry-proto = { workspace = true }
-opentelemetry-test-utils = { workspace = true }
 
 [tool.hatch.version]
 path = "src/opentelemetry/exporter/otlp/_proto/http/version/__init__.py"
