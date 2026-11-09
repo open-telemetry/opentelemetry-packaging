@@ -28,6 +28,8 @@ otlp_proto_grpc = "opentelemetry.exporter.otlp.proto.grpc._log_exporter:OTLPLogE
 
 [dependency-groups]
 dev = [
+    "opentelemetry-exporter-otlp-proto-grpc == 1.43.0",
+    "hpack>=4.0",
     "pytest>=7.0",
 ]
 
