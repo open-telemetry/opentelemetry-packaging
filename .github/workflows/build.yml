@@ -107,7 +107,8 @@ jobs:
         SYS_PACKAGE: [ "deb", "rpm" ]
         lang: [ "java", "nodejs", "dotnet", "python", "lifecycle", "vendor" ]
         arch: [ "amd64", "arm64" ]
-    runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
+        ubuntu: [ "24.04", "26.04" ]
+    runs-on: ${{ format('ubuntu-{0}{1}', matrix.ubuntu, matrix.arch == 'arm64' && '-arm' || '') }}
     steps:
       - name: Check out the codebase.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -121,7 +122,7 @@ jobs:
           name: opentelemetry-packages-${{ matrix.arch }}-${{ matrix.SYS_PACKAGE }}
           path: ./build/packages
 
-      - name: Run packaging integration tests for ${{ matrix.SYS_PACKAGE }}/${{ matrix.lang }}/${{ matrix.arch }}
+      - name: Run packaging integration tests for ${{ matrix.SYS_PACKAGE }}/${{ matrix.lang }}/${{ matrix.arch }} on Ubuntu ${{ matrix.ubuntu }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: make integration-test-${{ matrix.SYS_PACKAGE }}-${{ matrix.lang }} ARCH=${{ matrix.arch }}

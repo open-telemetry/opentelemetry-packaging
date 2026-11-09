@@ -86,6 +86,15 @@
       // current releases; stay on the 10.1 line the tests are written for.
       "matchPackageNames": ["apache/tomcat"],
       "allowedVersions": "/^10\\.1\\./"
+    },
+    {
+      // Keep the image build runners on Ubuntu 24.04. Newer Ubuntu releases
+      // are covered by the integration-test matrix in build.yml instead, so
+      // a runner bump here would only drop 24.04 coverage.
+      "matchFileNames": ["packaging/images/config.json"],
+      "matchDatasources": ["github-runners"],
+      "matchPackageNames": ["ubuntu"],
+      "allowedVersions": "/^24\\.04(-arm)?$/"
     }
   ],
   "labels": [
