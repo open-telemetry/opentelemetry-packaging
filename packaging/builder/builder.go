@@ -155,6 +155,9 @@ func (c Component) Info(cfg Config, format string) (*nfpm.Info, func(), error) {
 	if err != nil {
 		return nil, cleanup, err
 	}
+	if format == "rpm" {
+		contents = ownParents(contents)
+	}
 
 	info := &nfpm.Info{
 		Name:        c.PackageName,
