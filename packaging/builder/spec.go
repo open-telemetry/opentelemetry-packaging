@@ -140,7 +140,7 @@ func WriteSpec(cfg Config, w io.Writer) error {
 			Component:   comp.Name,
 			Name:        comp.PackageName,
 			Summary:     comp.Description,
-			Description: comp.Description,
+			Description: comp.formatDescription("rpm"),
 			Noarch:      comp.Noarch,
 			Provides:    comp.Relations.Provides,
 			Requires:    comp.Relations.Depends,

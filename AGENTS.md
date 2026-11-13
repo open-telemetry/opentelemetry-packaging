@@ -19,11 +19,16 @@ make srpm-container            # Same, running rpmbuild in a container instead
 make srpm-sources              # Generated spec + vendored source tarball only
 make rpm-rebuild-container     # Rebuild the SRPM into binary RPMs the way COPR does
                                #   REBUILD_IMAGE=almalinux:9 to exercise the EL rpm
+make deb-sources               # debbuild specs + staged source archives for OBS (build/deb-sources/<package>/)
+make deb-sources-<component>   # Same, for one component
+make deb-rebuild-container     # Build those specs with debbuild the way OBS does
+                               #   DEB_REBUILD_IMAGE=ubuntu:24.04 to exercise the Ubuntu dpkg
 
 make go-unit-tests             # Go command unit tests (otel-config-check)
 make python-unit-tests         # sitecustomize.py unit tests (throwaway venv, no containers)
 make pyproto-unit-tests        # Vendored pyproto exporter test suites (throwaway venvs, no containers)
 make integration-test-metadata # Fast metadata tests (no containers)
+make integration-test-deb-rebuild   # Same metadata tests over the debbuild output
 make integration-tests         # Full E2E tests (requires Podman/Docker)
 make integration-test-deb-java # Single E2E test
 make integration-test-deb-lifecycle # Package lifecycle tests (preload, config, install/remove)
@@ -39,6 +44,7 @@ make clean                     # Remove build/
 - `.copr/Makefile` — COPR "make srpm" entry point; installs the tooling and delegates to `make srpm`
 - `cmd/build-packages/` — CLI entry point; calls `packaging/builder/`
 - `cmd/build-spec/rpm/` — source RPM spec generation and rpmbuild payload staging
+- `cmd/build-spec/deb/` — debbuild spec and pre-staged source archive per component, for the OBS DEB build
 - `cmd/otel-config-check/` — declarative-config validator, cross-compiled into the Python package and invoked by sitecustomize.py
 - `packaging/builder/` — Go package that constructs nfpm.Info per component and writes .deb/.rpm
 - `packaging/common/` — Config files, POSIX lifecycle scripts, man page templates (referenced by builder)

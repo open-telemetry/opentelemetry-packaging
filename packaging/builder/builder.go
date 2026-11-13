@@ -49,15 +49,19 @@ type Config struct {
 	// (see the otel-config-check Makefile target).
 	ConfigCheckBinary string
 
-	// Vendor, Maintainer, License and Homepage set the package identity
-	// fields. Each falls back to the OpenTelemetry default when empty, so a
-	// vendor building its own components (see the vendor package recipe in
-	// docs/design/packages-meta-architecture.md) can brand them without
-	// reimplementing the packaging rules.
+	// Vendor, Maintainer, License, Homepage and Section set the package
+	// identity fields. Each falls back to the OpenTelemetry default when
+	// empty, so a vendor building its own components (see the vendor package
+	// recipe in docs/design/packages-meta-architecture.md) can brand them
+	// without reimplementing the packaging rules.
 	Vendor     string
 	Maintainer string
 	License    string
 	Homepage   string
+	// Section is the DEB archive section. It has no RPM counterpart, so it
+	// reaches the DEB packagers only: nfpm's Section field, and the Group tag
+	// debbuild writes out as Section.
+	Section string
 
 	// NoticeFile is the NOTICE shipped in the documentation directory of the
 	// components that bundle third-party code. Empty resolves to the NOTICE
@@ -70,6 +74,7 @@ func (c Config) vendor() string     { return orDefault(c.Vendor, pkgVendor) }
 func (c Config) maintainer() string { return orDefault(c.Maintainer, pkgMaintainer) }
 func (c Config) license() string    { return orDefault(c.License, pkgLicense) }
 func (c Config) homepage() string   { return orDefault(c.Homepage, pkgHomepage) }
+func (c Config) section() string    { return orDefault(c.Section, pkgSection) }
 
 // noticeFile resolves the NOTICE path, defaulting to the file next to
 // PackagingDir.
@@ -115,8 +120,14 @@ type Component struct {
 	Name string
 	// PackageName is the name of the produced package.
 	PackageName string
-	// Description is used as the package description, and as the RPM summary.
+	// Description is the one-line summary: the first line of the DEB
+	// Description field, and the RPM Summary tag.
 	Description string
+	// LongDescription is the prose below the summary: the DEB extended
+	// description, and the RPM %description. It must not repeat the summary,
+	// which lintian reports as description-synopsis-is-duplicated. Empty
+	// leaves the package with the summary alone.
+	LongDescription string
 	// Noarch marks a package whose payload is architecture independent. It
 	// selects the "all" DEB architecture and the "noarch" RPM one.
 	Noarch    bool
@@ -148,6 +159,22 @@ func (c Component) Arch(cfg Config, format string) string {
 	return "all"
 }
 
+// formatDescription returns what the format's description field holds.
+//
+// The two formats divide summary from prose differently. RPM has a Summary tag
+// of its own, so its %description is the prose alone. DEB has one field whose
+// first line is the summary, so nfpm takes both joined, and writes the blank
+// line between them as the " ." continuation the control format wants.
+func (c Component) formatDescription(format string) string {
+	if c.LongDescription == "" {
+		return c.Description
+	}
+	if format == "rpm" {
+		return c.LongDescription
+	}
+	return c.Description + "\n\n" + c.LongDescription
+}
+
 // Info stages the component's payload and returns a complete nfpm.Info for it.
 // The returned cleanup function must be called once packaging completes.
 func (c Component) Info(cfg Config, format string) (*nfpm.Info, func(), error) {
@@ -162,7 +189,8 @@ func (c Component) Info(cfg Config, format string) (*nfpm.Info, func(), error) {
 		Release:     cfg.Release,
 		Arch:        c.Arch(cfg, format),
 		Platform:    "linux",
-		Description: c.Description,
+		Section:     cfg.section(),
+		Description: c.formatDescription(format),
 		Vendor:      cfg.vendor(),
 		Maintainer:  cfg.maintainer(),
 		License:     cfg.license(),
@@ -258,6 +286,11 @@ const (
 	pkgMaintainer = "The OpenTelemetry Authors"
 	pkgLicense    = "Apache-2.0"
 	pkgHomepage   = "https://github.com/open-telemetry/opentelemetry-packaging"
+	// pkgSection is the DEB archive section, one of the values Debian Policy
+	// 2.4 defines. These packages are host-installed monitoring agents, which
+	// is what collectd and its kind are filed under. RPM has no equivalent:
+	// the Group tag it corresponds to was deprecated and carries no meaning.
+	pkgSection = "utils"
 )
 
 // The exported helpers below are the vocabulary for writing a ContentsFunc

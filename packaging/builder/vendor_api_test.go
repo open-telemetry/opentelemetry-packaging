@@ -50,6 +50,7 @@ func TestIdentityDefaults(t *testing.T) {
 	assert.Equal(t, pkgMaintainer, cfg.maintainer())
 	assert.Equal(t, pkgLicense, cfg.license())
 	assert.Equal(t, pkgHomepage, cfg.homepage())
+	assert.Equal(t, pkgSection, cfg.section())
 
 	info, cleanup, err := fixtureComponent(t, Relations{}).Info(cfg, "deb")
 	if cleanup != nil {
@@ -60,6 +61,36 @@ func TestIdentityDefaults(t *testing.T) {
 	assert.Equal(t, "The OpenTelemetry Authors", info.Maintainer)
 	assert.Equal(t, "Apache-2.0", info.License)
 	assert.Equal(t, pkgHomepage, info.Homepage)
+	// Left empty, nfpm writes an empty Section field, which lintian reports as
+	// both empty-field and unknown-section.
+	assert.Equal(t, "utils", info.Section)
+}
+
+// The summary and the prose below it are separate everywhere, so that neither
+// format repeats the synopsis in its extended description.
+func TestDescriptionKeepsSummaryAndProseApart(t *testing.T) {
+	for _, comp := range AllComponents {
+		t.Run(comp.Name, func(t *testing.T) {
+			require.NotEmpty(t, comp.LongDescription, "every component needs prose below the summary")
+			assert.NotContains(t, comp.LongDescription, comp.Description,
+				"the prose must not repeat the summary")
+
+			// RPM has a Summary tag, so its description is the prose alone.
+			assert.Equal(t, comp.LongDescription, comp.formatDescription("rpm"))
+			// DEB has one field whose first line is the summary.
+			deb := comp.formatDescription("deb")
+			assert.Equal(t, comp.Description, strings.SplitN(deb, "\n", 2)[0])
+			assert.Contains(t, deb, comp.LongDescription)
+		})
+	}
+}
+
+// A component without prose keeps the summary as its whole description, so the
+// field is optional for a vendor building its own.
+func TestDescriptionWithoutProse(t *testing.T) {
+	comp := Component{Description: "summary"}
+	assert.Equal(t, "summary", comp.formatDescription("deb"))
+	assert.Equal(t, "summary", comp.formatDescription("rpm"))
 }
 
 // TestIdentityOverride covers the vendor case: branding the package without
@@ -72,6 +103,7 @@ func TestIdentityOverride(t *testing.T) {
 		Maintainer: "The ACME Company",
 		License:    "MIT",
 		Homepage:   "https://acme.example",
+		Section:    "net",
 	}
 
 	info, cleanup, err := fixtureComponent(t, Relations{}).Info(cfg, "deb")
@@ -83,6 +115,7 @@ func TestIdentityOverride(t *testing.T) {
 	assert.Equal(t, "The ACME Company", info.Maintainer)
 	assert.Equal(t, "MIT", info.License)
 	assert.Equal(t, "https://acme.example", info.Homepage)
+	assert.Equal(t, "net", info.Section)
 }
 
 // TestRelationsConflictsReplaces is the core of the vendor recipe: the virtual

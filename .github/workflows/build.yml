@@ -105,6 +105,42 @@ jobs:
           path: ./build/packages/*.${{ matrix.SYS_PACKAGE }}
           if-no-files-found: error
 
+  # Builds the generated debbuild specs the way the Open Build Service does,
+  # and runs the metadata tests over the result. Everything else about that
+  # path is asserted against the text of the generated spec, which passes just
+  # as well when the spec is wrong in a way debbuild agrees with.
+  #
+  # Debian and Ubuntu both, because the DEB packages are published for both and
+  # their dpkg differs in the compression it defaults to.
+  deb-source-rebuild:
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ "debian:12", "ubuntu:24.04" ]
+        arch: [ "amd64", "arm64" ]
+    runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
+    steps:
+      - name: Check out the codebase.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Write the DEB sources
+        env:
+          # Raises the GitHub API rate limit for the release-asset digest
+          # lookups the payload staging makes, as build-packages does.
+          GITHUB_TOKEN: ${{ github.token }}
+          # The archives are committed to OBS, where a changed archive is a
+          # rebuild; pinning the timestamp keeps an unchanged payload producing
+          # an unchanged archive. The value is arbitrary here, the test caring
+          # only that the two runs agree.
+          SOURCE_DATE_EPOCH: "1700000000"
+        run: make deb-sources VERSION=0.0.0-dev
+
+      - name: Build the specs with debbuild and check the metadata
+        run: make integration-test-deb-rebuild ARCH=${{ matrix.arch }} DEB_REBUILD_IMAGE=${{ matrix.image }}
+
   integration-tests:
     needs: build-packages
     strategy:
