@@ -31,11 +31,13 @@ cmd/build-spec/rpm/          CLI entry point for generating and staging the sour
 cmd/build-spec/deb/          CLI entry point for writing the debbuild specs and source archives built on OBS
 cmd/image-metadata/          Package-image metadata and build plans
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
+cmd/check-supported-python-versions/  CI check that the Python package resolves for every supported Python version
 packaging/
   builder/                   Go library that drives nfpm to create packages
     builder.go               Build orchestration, common metadata
     components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
     download.go              Upstream artifact download helpers
+    python_versions_check.go Check behind cmd/check-supported-python-versions
     supported_python_versions.json  Python interpreters the Python package is built for, embedded by download.go
     spec.go                  RPM spec generation for the COPR build (projection of components.go)
     debspec.go               debbuild spec generation for the OBS build, one spec per component
@@ -65,11 +67,6 @@ packaging/
     shared/                         Shared test application sources
 testutil/                    Shared Go test helpers
   otelsink/                  In-process OTLP sink + typed assertion API for E2E tests
-tools/                       Repository tooling, never packaged
-  python/
-    tools/                   Scripts that check and prune the supported Python versions,
-                             plus shared.py, whose module docstring defines the terms they use
-    test/                    Unit tests for those scripts
 docs/design/                 Architecture and design documents
 ```
 
@@ -104,8 +101,7 @@ The `cmd/build-packages` program:
 
    `sitecustomize.py` therefore has to know which interpreters the bundle actually carries, and it does not derive that from a minimum version.
    The compiled extensions are each built against a single CPython ABI, and `rpds-py` has no pure-Python fallback, so an interpreter newer than every one in the bundle has no working copy of it there.
-   The builder writes the set it resolved into the script by replacing the module-level `supported_python_versions` line marked with the `supported-python-versions` comment, and the script's version gate is a membership test against that list.
-   The list holds the same `"3.10"`-style strings as the JSON, in the same order, so the two can be compared as they stand.
+   The builder writes the set it resolved into the script by replacing the `supported_python_versions` line marked with the `supported-python-versions` comment, and the script's version gate is a membership test against that list.
    Change `packaging/builder/supported_python_versions.json` and the gate follows; never edit that line by hand.
 
 2. **Constructs an `nfpm.Info`** for each component with the correct metadata:
@@ -369,32 +365,21 @@ They stage fake `@opentelemetry` packages in a temporary directory and load `reg
 make nodejs-unit-tests
 ```
 
-### Python unit tests (fast, no containers)
+### Python sitecustomize unit tests (fast, no containers)
 
-Two suites: the guard logic in `packaging/common/python/sitecustomize.py` (version gate, protocol and configuration-file checks, double-instrumentation detection, dependency-conflict checking), and the supported Python version scripts in `tools/python/tools/`.
+Unit tests for the guard logic in `packaging/common/python/sitecustomize.py` (version gate, protocol and configuration-file checks, double-instrumentation detection, dependency-conflict checking).
 They run in a throwaway virtualenv under `build/`, so the host Python is untouched.
 
 ```sh
 make python-unit-tests
 ```
 
-The second suite lives in `tools/python/test/` and imports `shared.py` from its sibling `tools/python/tools/`, which `unittest discover` does not put on `sys.path`.
-Running it by hand therefore needs `PYTHONPATH`:
-
-```sh
-PYTHONPATH=tools/python/tools python3 -m unittest discover --start-directory tools/python/test
-```
-
 ### Supported Python versions check (fast, no containers)
 
-Checks that no supported Python version is below the minimum required Python version.
-Both terms are defined in the module docstring of `tools/python/tools/shared.py`, which is the only place either one is defined.
-It installs the PyPI pins into a throwaway bundled distributions directory with `pip install --target --python-version <target> --only-binary=:all:`, the same way the builder assembles the bundled distributions, and reads the vendored `requires-python` values straight from each `pyproject.toml`.
-It runs under whatever `python3` is on `PATH` and needs no other interpreter installed, because pip treats `--python-version` as a resolution target rather than an interpreter to run.
-It resolves for each supported Python version in ascending order and stops at the first that resolves, so a version whose pins no longer resolve is reported as one the package can no longer be built for, even when the metadata of what did resolve would not show it.
-Run `python3 tools/python/tools/prune_supported_python_versions.py` to drop the supported Python versions that fall below the minimum required Python version.
-Everything it builds, a throwaway virtualenv, a bundled distributions directory and a pinned requirements file, goes under `build/` at the repository root, so `make clean` removes all of it.
-Set the `BUILD_DIR` environment variable to put them somewhere else.
+Checks that the Python package can still be built for every interpreter in `packaging/builder/supported_python_versions.json`.
+It resolves `packaging/common/python/requirements.txt` for each supported version and architecture with the builder's own pip flags, as a `pip install --dry-run`, and checks the `requires-python` of the vendored packages.
+When a requirement bump drops an interpreter, the check names it, and the fix is either to remove that version from the JSON or to revert the bump.
+It needs `python3` with pip and access to PyPI.
 
 ```sh
 make check-supported-python-versions
@@ -423,9 +408,7 @@ make pyproto-grpc-integration-tests
 
 The injector cannot know which Python version a process runs, so `sitecustomize.py` must parse and self-deactivate gracefully on unsupported interpreters (down to Python 2.7) and pass its version gate on supported ones.
 These tests execute an unmodified application under real interpreters with `sitecustomize.py` on `PYTHONPATH` and assert the application always runs to completion.
-The interpreters are derived from `packaging/builder/supported_python_versions.json` rather than listed by hand: the lowest version in it, the highest, one minor below the lowest, and one minor above the highest, plus a fixed `python:2.7-slim` that neighbours nothing in the file.
-The one above the highest uses the `-rc` tag, because the official image publishes prereleases of a minor months before that minor is released, while its plain tag appears only on release day.
-For `["3.10", "3.11", "3.12", "3.13"]` those are the `python:2.7-slim`, `python:3.9-slim`, `python:3.10-slim`, `python:3.13-slim`, and `python:3.14-rc-slim` images.
+The interpreters are derived from `packaging/builder/supported_python_versions.json`: the lowest and highest supported versions, one minor below the lowest, one minor above the highest (from its `-rc` tag, which is published months before the release), and a fixed `python:2.7-slim`.
 
 ```sh
 make integration-test-sitecustomize

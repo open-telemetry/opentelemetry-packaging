@@ -513,6 +513,13 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 go-unit-tests:
 	go test -v ./cmd/... ./packaging/builder/ ./packaging/images/
 
+# Checks the Python package can still be built for every interpreter in
+# packaging/builder/supported_python_versions.json, resolving requirements.txt
+# with the builder's own pip flags. Needs python3 with pip and PyPI access.
+.PHONY: check-supported-python-versions
+check-supported-python-versions:
+	go run ./cmd/check-supported-python-versions
+
 # Unit tests for register.js, the Node.js entry point. They stage fake
 # @opentelemetry packages in a temporary directory, so they need no npm
 # registry access and nothing from build/.
@@ -526,12 +533,9 @@ nodejs-unit-tests:
 .PHONY: python-unit-tests
 python-unit-tests: check-uv-installed
 	uv venv --quiet --clear build/python-unit-tests-venv
-	uv pip install --quiet --python build/python-unit-tests-venv/bin/python packaging tomli
+	uv pip install --quiet --python build/python-unit-tests-venv/bin/python packaging
 	build/python-unit-tests-venv/bin/python -m unittest discover \
 		--start-directory packaging/common/python --pattern 'test_*.py' --verbose
-	PYTHONPATH=tools/python/tools build/python-unit-tests-venv/bin/python \
-		-m unittest discover --start-directory tools/python/test \
-		--pattern 'test_*.py' --verbose
 
 # Upstream test suites of the vendored pyproto exporter chain
 # (packaging/common/python/vendor/), in two throwaway venvs. The vendored
@@ -609,10 +613,6 @@ pyproto-unit-tests: check-uv-installed
 			--rootdir $(PYPROTO_VENDOR_DIR)/$${suite%%/*} \
 			$(PYPROTO_VENDOR_DIR)/$$suite; \
 	done
-
-.PHONY: check-supported-python-versions
-check-supported-python-versions:
-	python3 tools/python/tools/check_supported_python_versions.py
 
 # ============================================================================
 # Lint and tooling

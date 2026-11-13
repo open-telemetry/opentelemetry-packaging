@@ -26,7 +26,7 @@ make deb-rebuild-container     # Build those specs with debbuild the way OBS doe
 
 make go-unit-tests             # Go command unit tests (otel-config-check)
 make python-unit-tests         # sitecustomize.py unit tests (throwaway venv, no containers)
-make check-supported-python-versions # Every supported Python version is at or above the minimum required Python version
+make check-supported-python-versions # Python package still resolves for every supported Python version (needs PyPI)
 make pyproto-unit-tests        # Vendored pyproto exporter test suites (throwaway venvs, no containers)
 make integration-test-metadata # Fast metadata tests (no containers)
 make integration-test-deb-rebuild   # Same metadata tests over the debbuild output
@@ -47,6 +47,7 @@ make clean                     # Remove build/
 - `cmd/build-spec/rpm/` — source RPM spec generation and rpmbuild payload staging
 - `cmd/build-spec/deb/` — debbuild spec and pre-staged source archive per component, for the OBS DEB build
 - `cmd/otel-config-check/` — declarative-config validator, cross-compiled into the Python package and invoked by sitecustomize.py
+- `cmd/check-supported-python-versions/` — CI check that the Python package still resolves for every version in `packaging/builder/supported_python_versions.json`
 - `packaging/builder/` — Go package that constructs nfpm.Info per component and writes .deb/.rpm
 - `packaging/common/` — Config files, POSIX lifecycle scripts, man page templates (referenced by builder)
 - `packaging/repo/` — APT/YUM repo generation scripts (run in containers)
@@ -55,7 +56,6 @@ make clean                     # Remove build/
 - `packaging/tests/lifecycle/` — Package lifecycle tests (preload scripts, config handling, install/remove)
 - `packaging/tests/vendor/` — Vendor replacement tests; `mkvendor/` builds the mock acme package
 - `packaging/common/<component>/release.txt` — Renovate-managed upstream version pins (Python pins live in `packaging/common/python/requirements.txt`, and the test tooling pins in `packaging/common/python/test-requirements-*.txt`)
-- `tools/python/tools/` — Repository tooling, never packaged: the scripts that check and prune the supported Python versions, plus `shared.py`, whose module docstring is the only definition of the terms they use; `tools/python/test/` holds their unit tests
 
 ## Coding conventions
 

@@ -52,7 +52,7 @@ jobs:
       - name: Run the vendored pyproto exporter test suites
         run: make pyproto-unit-tests
 
-      - name: Check the supported Python versions are in sync with the bundled distributions
+      - name: Check the package can be built for every supported Python version
         run: make check-supported-python-versions
 
   sitecustomize-compatibility-tests:
