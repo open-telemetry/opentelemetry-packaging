@@ -110,3 +110,4 @@ Keep it accurate as the codebase evolves:
 
 - `docs/design/packages-meta-architecture.md` — Package architecture, dependency model, filesystem layout, interface versioning
 - `docs/design/integration-test-plan.md` — Full test matrix
+- `docs/design/package-publishing.md` — Building, versioning, signing, and publishing packages on OBS, CI pipeline, blob storage mirror
