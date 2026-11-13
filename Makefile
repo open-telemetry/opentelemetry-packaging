@@ -513,6 +513,13 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 go-unit-tests:
 	go test -v ./cmd/... ./packaging/builder/ ./packaging/images/
 
+# Checks the Python package can still be built for every interpreter in
+# packaging/builder/supported_python_versions.json, resolving requirements.txt
+# with the builder's own pip flags. Needs python3 with pip and PyPI access.
+.PHONY: check-supported-python-versions
+check-supported-python-versions:
+	go run ./cmd/check-supported-python-versions
+
 # Unit tests for register.js, the Node.js entry point. They stage fake
 # @opentelemetry packages in a temporary directory, so they need no npm
 # registry access and nothing from build/.

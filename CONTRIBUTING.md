@@ -31,11 +31,14 @@ cmd/build-spec/rpm/          CLI entry point for generating and staging the sour
 cmd/build-spec/deb/          CLI entry point for writing the debbuild specs and source archives built on OBS
 cmd/image-metadata/          Package-image metadata and build plans
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
+cmd/check-supported-python-versions/  CI check that the Python package resolves for every supported Python version
 packaging/
   builder/                   Go library that drives nfpm to create packages
     builder.go               Build orchestration, common metadata
     components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
     download.go              Upstream artifact download helpers
+    python_versions_check.go Check behind cmd/check-supported-python-versions
+    supported_python_versions.json  Python interpreters the Python package is built for, embedded by download.go
     spec.go                  RPM spec generation for the COPR build (projection of components.go)
     debspec.go               debbuild spec generation for the OBS build, one spec per component
     debsources.go            OBS source archives: the payload staged for every architecture
@@ -81,7 +84,8 @@ The `cmd/build-packages` program:
 
    The Python package bundles compiled C extensions, so its wheels are fetched
    for a fixed target architecture and for the interpreters listed in
-   `supportedPythonVersions` (`download.go`) rather than for the build host.
+   `packaging/builder/supported_python_versions.json`, which `download.go` embeds,
+   rather than for the build host.
    PyPI requirements are installed
    binary-only (manylinux wheels for the target arch); unpublished pure-Python
    requirements — the pyproto exporter chain developed under
@@ -97,8 +101,8 @@ The `cmd/build-packages` program:
 
    `sitecustomize.py` therefore has to know which interpreters the bundle actually carries, and it does not derive that from a minimum version.
    The compiled extensions are each built against a single CPython ABI, and `rpds-py` has no pure-Python fallback, so an interpreter newer than every one in the bundle has no working copy of it there.
-   The builder writes the set it resolved into the script by replacing the `_SUPPORTED_PYTHON_MINORS` line marked with the `supported-python-minors` comment, and the script's version gate is a membership test against that set.
-   Change `supportedPythonVersions` and the gate follows; never edit that line by hand.
+   The builder writes the set it resolved into the script by replacing the `supported_python_versions` line marked with the `supported-python-versions` comment, and the script's version gate is a membership test against that list.
+   Change `packaging/builder/supported_python_versions.json` and the gate follows; never edit that line by hand.
 
 2. **Constructs an `nfpm.Info`** for each component with the correct metadata:
    - `Provides` virtual package names (e.g., `opentelemetry-injector1`)
@@ -370,6 +374,17 @@ They run in a throwaway virtualenv under `build/`, so the host Python is untouch
 make python-unit-tests
 ```
 
+### Supported Python versions check (fast, no containers)
+
+Checks that the Python package can still be built for every interpreter in `packaging/builder/supported_python_versions.json`.
+It resolves `packaging/common/python/requirements.txt` for each supported version and architecture with the builder's own pip flags, as a `pip install --dry-run`, and checks the `requires-python` of the vendored packages.
+When a requirement bump drops an interpreter, the check names it, and the fix is either to remove that version from the JSON or to revert the bump.
+It needs `python3` with pip and access to PyPI.
+
+```sh
+make check-supported-python-versions
+```
+
 ### Pyproto exporter tests (fast, no containers)
 
 The test suites of the pyproto packages developed under `packaging/common/python/vendor/`.
@@ -392,7 +407,8 @@ make pyproto-grpc-integration-tests
 ### Python sitecustomize interpreter compatibility tests (containers required)
 
 The injector cannot know which Python version a process runs, so `sitecustomize.py` must parse and self-deactivate gracefully on unsupported interpreters (down to Python 2.7) and pass its version gate on supported ones.
-These tests execute an unmodified application under real interpreters (`python:2.7` through `python:3.13` images) with `sitecustomize.py` on `PYTHONPATH` and assert the application always runs to completion.
+These tests execute an unmodified application under real interpreters with `sitecustomize.py` on `PYTHONPATH` and assert the application always runs to completion.
+The interpreters are derived from `packaging/builder/supported_python_versions.json`: the lowest and highest supported versions, one minor below the lowest, one minor above the highest (from its `-rc` tag, which is published months before the release), and a fixed `python:2.7-slim`.
 
 ```sh
 make integration-test-sitecustomize
