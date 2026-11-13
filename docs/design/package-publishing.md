@@ -23,7 +23,7 @@ This document specifies how the packages are built, versioned, signed, and publi
 Like COPR, it builds packages, signs them, and publishes them as repositories.
 Unlike COPR, it builds for many distributions, including Debian and Ubuntu, so a single service can cover every target currently in scope for system packages (Debian, Ubuntu, Fedora, and RHEL).
 
-## Release schedule
+### Release schedule
 
 Packages release at different paces, when the upstream agents (the injector, or the Java, Node.js, .NET, or Python auto-instrumentation) ship.
 
