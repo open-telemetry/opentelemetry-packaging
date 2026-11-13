@@ -19,7 +19,7 @@ make srpm-container            # Same, running rpmbuild in a container instead
 make srpm-sources              # Generated spec + vendored source tarball only
 make rpm-rebuild-container     # Rebuild the SRPM into binary RPMs the way COPR does
                                #   REBUILD_IMAGE=almalinux:9 to exercise the EL rpm
-make deb-sources               # debbuild specs + staged source archives for OBS (build/deb-sources/<package>/)
+make deb-sources               # debbuild specs + staged source archives for OBS (build/deb-sources/<package>/), each at its upstream version
 make deb-sources-<component>   # Same, for one component
 make deb-rebuild-container     # Build those specs with debbuild the way OBS does
                                #   DEB_REBUILD_IMAGE=ubuntu:24.04 to exercise the Ubuntu dpkg
@@ -45,6 +45,9 @@ make clean                     # Remove build/
 - `cmd/build-packages/` — CLI entry point; calls `packaging/builder/`
 - `cmd/build-spec/rpm/` — source RPM spec generation and rpmbuild payload staging
 - `cmd/build-spec/deb/` — debbuild spec and pre-staged source archive per component, for the OBS DEB build
+- `cmd/package-metadata/` — CI build plans: package images (`-target images`) and OBS uploads (`-target obs`)
+- `cmd/obs-publish/` + `packaging/obs/` — OBS API client that commits one package's sources, waits for every build of that revision, and releases it (used by `.github/workflows/obs.yml`)
+- `packaging/changes/` — maps changed paths to the components they affect, shared by the image and OBS workflows
 - `cmd/otel-config-check/` — declarative-config validator, cross-compiled into the Python package and invoked by sitecustomize.py
 - `packaging/builder/` — Go package that constructs nfpm.Info per component and writes .deb/.rpm
 - `packaging/common/` — Config files, POSIX lifecycle scripts, man page templates (referenced by builder)
@@ -53,7 +56,7 @@ make clean                     # Remove build/
 - `packaging/tests/{java,nodejs,dotnet,python}/` — Testcontainers-based E2E telemetry tests; `python/` also hosts the sitecustomize.py interpreter compatibility tests (unit tests live next to the script)
 - `packaging/tests/lifecycle/` — Package lifecycle tests (preload scripts, config handling, install/remove)
 - `packaging/tests/vendor/` — Vendor replacement tests; `mkvendor/` builds the mock acme package
-- `packaging/common/<component>/release.txt` — Renovate-managed upstream version pins (Python pins live in `packaging/common/python/requirements.txt`, and the test tooling pins in `packaging/common/python/test-requirements-*.txt`)
+- `packaging/common/<component>/release.txt` — Renovate-managed upstream version pins (Python pins live in `packaging/common/python/requirements.txt`, and the test tooling pins in `packaging/common/python/test-requirements-*.txt`); `meta/release.txt` is the metapackage version, bumped by hand
 
 ## Coding conventions
 

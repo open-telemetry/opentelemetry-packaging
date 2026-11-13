@@ -59,8 +59,8 @@ COMPONENTS := injector java nodejs dotnet python meta
 # Languages that have integration tests (meta is excluded).
 TEST_LANGUAGES := java nodejs dotnet python
 
-IMAGE_VERSION = $(shell go run ./cmd/image-metadata -component $* -field version)
-IMAGE_PACKAGE = $(shell go run ./cmd/image-metadata -component $* -field package)
+IMAGE_VERSION = $(shell go run ./cmd/package-metadata -component $* -field version)
+IMAGE_PACKAGE = $(shell go run ./cmd/package-metadata -component $* -field package)
 IMAGE_REF = ghcr.io/open-telemetry/opentelemetry-packaging/$(IMAGE_PACKAGE):$(IMAGE_VERSION)
 IMAGE_CONTEXT = build/images/$*
 
@@ -72,9 +72,16 @@ IMAGE_CONTEXT = build/images/$*
 # package. Pure Go with CGO disabled, so any build host produces the
 # linux/$(ARCH) binary; go build is incremental, so running this before every
 # package build is cheap.
+#
+# -trimpath keeps the build directory out of the binary, and -buildvcs=false
+# keeps the commit out of it: go build stamps vcs.revision and vcs.time into a
+# main package built from a git clone, which would make the binary, and so the
+# Python source archive that bundles it, differ at every commit. The OBS
+# sources must be byte-identical when their inputs have not changed, or every
+# upload commits a new revision and releases an identical package.
 .PHONY: otel-config-check
 otel-config-check:
-	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -trimpath -o build/bin/otel-config-check-$(ARCH) ./cmd/otel-config-check
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -trimpath -buildvcs=false -o build/bin/otel-config-check-$(ARCH) ./cmd/otel-config-check
 
 .PHONY: deb-package-%
 deb-package-%: otel-config-check
@@ -103,13 +110,13 @@ packages: otel-config-check
 .PHONY: images
 .PRECIOUS: image-packages-% image-%
 images:
-	@set -e; components="$$(go run ./cmd/image-metadata -field components)"; \
+	@set -e; components="$$(go run ./cmd/package-metadata -field components)"; \
 	for component in $$components; do \
 		$(MAKE) image-$$component; \
 	done
 
 image-packages-%: otel-config-check
-	go run ./cmd/image-metadata -component $*
+	go run ./cmd/package-metadata -component $*
 	rm -rf "$(IMAGE_CONTEXT)/$(ARCH)"
 	go run ./cmd/build-packages -version $(IMAGE_VERSION) -arch "$(ARCH)" -format deb \
 		-component $* -output "$(IMAGE_CONTEXT)/$(ARCH)"
@@ -261,14 +268,16 @@ otel-config-check-all:
 	done
 
 # Writes $(DEB_SOURCES_DIR)/<package>/ with the debbuild spec and source archive
-# of every component; deb-sources-<component> writes one.
+# of every component; deb-sources-<component> writes one. Each package takes the
+# version of the upstream agent it ships, not $(VERSION): on OBS every package
+# is versioned and released on its own.
 .PHONY: deb-sources
 deb-sources: otel-config-check-all
-	go run ./cmd/build-spec/deb -version $(VERSION) -output $(DEB_SOURCES_DIR)
+	go run ./cmd/build-spec/deb -output $(DEB_SOURCES_DIR)
 
 .PHONY: deb-sources-%
 deb-sources-%: otel-config-check-all
-	go run ./cmd/build-spec/deb -version $(VERSION) -component $* -output $(DEB_SOURCES_DIR)
+	go run ./cmd/build-spec/deb -component $* -output $(DEB_SOURCES_DIR)
 
 # Builds the generated specs with debbuild in a container, the way OBS does.
 #
@@ -431,7 +440,7 @@ integration-test-metadata: packages
 
 .PHONY: integration-test-images
 integration-test-images:
-	@set -e; components="$$(go run ./cmd/image-metadata -field components)"; \
+	@set -e; components="$$(go run ./cmd/package-metadata -field components)"; \
 	for component in $$components; do \
 		$(MAKE) integration-test-image-$$component; \
 	done
@@ -507,11 +516,11 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 # ============================================================================
 
 # Unit tests for Go commands, the package builder, and package-image
-# configuration. The image-metadata tests construct git histories, so git must
+# configuration. The package-metadata tests construct git histories, so git must
 # be on PATH; no containers or network access are needed.
 .PHONY: go-unit-tests
 go-unit-tests:
-	go test -v ./cmd/... ./packaging/builder/ ./packaging/images/
+	go test -v ./cmd/... ./packaging/builder/ ./packaging/images/ ./packaging/changes/ ./packaging/obs/
 
 # Unit tests for register.js, the Node.js entry point. They stage fake
 # @opentelemetry packages in a temporary directory, so they need no npm

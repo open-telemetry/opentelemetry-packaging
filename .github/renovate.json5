@@ -19,6 +19,18 @@
       ]
     },
     {
+      // Track the Go toolchain the OBS packages are built with, pinned in
+      // .go-version. Renovate has no manager for that file, and none for the
+      // go-version of actions/setup-go either, so it is matched here. The
+      // version is the whole file, as goenv, mise, and setup-go expect, so
+      // the usual "# renovate:" annotation has nowhere to live.
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.go-version$/"],
+      "matchStrings": ["^(?<currentValue>\\d+\\.\\d+\\.\\d+)\\s*$"],
+      "depNameTemplate": "go",
+      "datasourceTemplate": "golang-version"
+    },
+    {
       // Update github runners used to publish images, which are maintained in packaging/images/config.json.
       "customType": "regex",
       "managerFilePatterns": ["/^packaging/images/config\\.json$/"],
@@ -75,6 +87,16 @@
       "schedule": [
         "before 8am on Tuesday"
       ]
+    },
+    {
+      // The Go toolchain is an input of every package: changing it changes
+      // the otel-config-check binary the Python package ships, so an OBS
+      // upload commits and releases every component again. Keep it out of
+      // the grouped dependency PRs, and together with the go.mod directive
+      // it has to stay above, so it can be reviewed and timed on its own.
+      "groupName": "go toolchain",
+      "matchDatasources": ["golang-version"],
+      "schedule": ["before 8am on Monday"]
     },
     {
       // The opentelemetry-python-contrib packages (distro + every
