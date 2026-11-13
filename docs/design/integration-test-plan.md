@@ -97,6 +97,7 @@ Validate that configuration files are handled correctly across package lifecycle
 | User adds `99-custom.conf` in `conf.d/`: injector reads it | Custom drop-in |
 | User modifies `default_env.conf` to set `OTEL_SERVICE_NAME`: value is applied | Env var override |
 | User modifies `default_env.conf`: package upgrade preserves the modification | Modified conffile on upgrade |
+| User modifies `default_env.conf`, then removes and reinstalls (RPM): the install warns about the `.rpmsave` | Edits saved on remove are not lost silently |
 
 **Implementation:** Install packages, modify config files, upgrade/remove, and assert on file state and application behavior.
 Implemented in `packaging/tests/lifecycle/config_test.go`.
