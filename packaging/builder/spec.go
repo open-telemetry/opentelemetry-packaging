@@ -144,12 +144,12 @@ func WriteSpec(cfg Config, w io.Writer) error {
 			Noarch:      comp.Noarch,
 			Provides:    comp.Relations.Provides,
 			Requires:    comp.Relations.Depends,
-			Suggests:    comp.Relations.Suggests,
+			Suggests:    comp.Relations.suggests("rpm"),
 			Conflicts:   comp.Relations.Conflicts,
 			Replaces:    comp.Relations.Replaces,
 			Guarded:     guarded,
 		}
-		for _, r := range comp.Relations.Recommends {
+		for _, r := range comp.Relations.recommends("rpm") {
 			pkg.Recommends = append(pkg.Recommends, specRelation{
 				Name:    r,
 				Guarded: strings.HasPrefix(r, Python.PackageName),

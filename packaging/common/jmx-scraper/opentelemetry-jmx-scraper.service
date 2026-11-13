@@ -1,0 +1,57 @@
+[Unit]
+Description=OpenTelemetry JMX Metrics Scraper
+Documentation=man:opentelemetry-jmx-scraper(8)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=JMX_SCRAPER_CONFIG=/etc/opentelemetry/jmx-scraper/config.properties
+# The scraper installs the SASL security provider reflectively, which the module
+# system restricts unless the package is exported. Java 9 to 15 permit it and log
+# a four-line illegal-access warning; Java 16 and later deny it outright, so the
+# scraper logs "SASL unsupported in current environment" on every connection
+# attempt and never installs the callback handler that supplies the username,
+# password, and realm, and every SASL remote profile fails to authenticate.
+#
+# The option goes in JDK_JAVA_OPTIONS rather than on the command line because
+# the scraper still runs on Java 8, where --add-exports is an unrecognized
+# option that stops the JVM from starting. Only the Java 9 and later launcher
+# reads JDK_JAVA_OPTIONS, which is exactly where the export is needed.
+#
+# The option is spelled with "=" rather than a space, because systemd splits an
+# Environment= value on whitespace into separate assignments and the JVM would
+# then be handed a bare --add-exports.
+Environment=JDK_JAVA_OPTIONS=--add-exports=java.security.sasl/com.sun.security.sasl=ALL-UNNAMED
+EnvironmentFile=-/etc/opentelemetry/jmx-scraper/jmx-scraper.env
+ExecStart=/usr/bin/env java -jar /usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar -config ${JMX_SCRAPER_CONFIG}
+Restart=on-failure
+RestartSec=5s
+
+# The scraper reads a configuration file and opens outbound JMX and OTLP
+# connections, so it needs no privileges of its own. DynamicUser allocates a
+# transient UID per start, which avoids creating a system user from a package
+# lifecycle script.
+#
+# The transient UID is why config.properties must stay world-readable:
+# restricting it to root makes the service unable to read its own
+# configuration. Secrets therefore belong in the environment file above, which
+# systemd reads as root before dropping privileges. See
+# opentelemetry-jmx-scraper(8).
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+# Deliberately not set: the JVM needs writable-executable memory to JIT, so
+# MemoryDenyWriteExecute=yes would stop the scraper from starting.
+
+[Install]
+WantedBy=multi-user.target

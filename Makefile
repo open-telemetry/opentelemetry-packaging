@@ -511,7 +511,7 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 # be on PATH; no containers or network access are needed.
 .PHONY: go-unit-tests
 go-unit-tests:
-	go test -v ./cmd/... ./packaging/builder/ ./packaging/images/
+	go test -v ./cmd/... ./packaging/builder/... ./packaging/images/...
 
 # Unit tests for register.js, the Node.js entry point. They stage fake
 # @opentelemetry packages in a temporary directory, so they need no npm
@@ -631,6 +631,26 @@ lint: check-shellcheck-installed
 	find . -name '*.sh' -not -path './.git/*' | xargs shellcheck -x
 	@echo "Vetting Go code"
 	go vet ./...
+
+# ============================================================================
+# Generated documentation
+# ============================================================================
+
+# The JMX target systems a scraper accepts come from the metric definitions
+# inside its JAR, so the documented list changes with the pin in
+# packaging/common/jmx-scraper/release.txt. Run this after bumping it.
+.PHONY: update-jmx-target-systems
+update-jmx-target-systems:
+	@echo "Updating the documented JMX target systems"
+	go run ./cmd/update-jmx-target-systems
+
+# Fails when the committed list no longer matches the pinned JAR, which is what
+# a Renovate bump of release.txt leaves behind. Reads the files rather than the
+# working tree, so unrelated local edits do not trip it.
+.PHONY: check-jmx-target-systems
+check-jmx-target-systems:
+	@echo "Checking the documented JMX target systems against the pinned JAR"
+	go run ./cmd/update-jmx-target-systems -check
 
 # ============================================================================
 # Clean

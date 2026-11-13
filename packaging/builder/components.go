@@ -27,18 +27,20 @@ func SupportedArchitecture(arch string) bool {
 
 // Installation paths (FHS-compliant).
 const (
-	installDir         = "/usr/lib/opentelemetry"
-	configDir          = "/etc/opentelemetry"
-	injectorInstallDir = installDir + "/injector"
-	injectorConfigDir  = configDir + "/injector"
-	javaInstallDir     = installDir + "/java"
-	javaConfigDir      = configDir + "/java"
-	nodejsInstallDir   = installDir + "/nodejs"
-	nodejsConfigDir    = configDir + "/nodejs"
-	dotnetInstallDir   = installDir + "/dotnet"
-	dotnetConfigDir    = configDir + "/dotnet"
-	pythonInstallDir   = installDir + "/python"
-	pythonConfigDir    = configDir + "/python"
+	installDir           = "/usr/lib/opentelemetry"
+	configDir            = "/etc/opentelemetry"
+	injectorInstallDir   = installDir + "/injector"
+	injectorConfigDir    = configDir + "/injector"
+	javaInstallDir       = installDir + "/java"
+	javaConfigDir        = configDir + "/java"
+	nodejsInstallDir     = installDir + "/nodejs"
+	nodejsConfigDir      = configDir + "/nodejs"
+	dotnetInstallDir     = installDir + "/dotnet"
+	dotnetConfigDir      = configDir + "/dotnet"
+	pythonInstallDir     = installDir + "/python"
+	pythonConfigDir      = configDir + "/python"
+	jmxScraperInstallDir = "/usr/lib/opentelemetry-jmx-scraper"
+	jmxScraperConfigDir  = configDir + "/jmx-scraper"
 )
 
 // Injector is the opentelemetry-injector package component.
@@ -130,18 +132,35 @@ var Meta = Component{
 	ContentsFunc: metaContents,
 }
 
+// JMXScraper is the standalone opentelemetry-jmx-scraper package.
+var JMXScraper = Component{
+	Name:            "jmx-scraper",
+	PackageName:     "opentelemetry-jmx-scraper",
+	Description:     jmxScraperDescription,
+	LongDescription: jmxScraperLongDescription,
+	Noarch:          true,
+	Relations: Relations{
+		Deb: DebOverride{Suggests: []string{"default-jre | java8-runtime"}},
+		Rpm: RpmOverride{Suggests: []string{"java-headless"}},
+	},
+	PostInstall:  "postinstall-jmx-scraper.sh",
+	PreRemove:    "preuninstall-jmx-scraper.sh",
+	ContentsFunc: jmxScraperContents,
+}
+
 // Each component carries a one-line summary and the paragraphs below it. The
 // package formats keep the two apart: the summary is the DEB Description's
 // first line and the RPM Summary tag, the rest is the DEB extended description
 // and the RPM %description. Repeating the summary in both is what lintian
 // reports as description-synopsis-is-duplicated.
 const (
-	injectorDescription = "OpenTelemetry LD_PRELOAD-based automatic instrumentation injector"
-	javaDescription     = "OpenTelemetry Java Auto-Instrumentation Agent"
-	nodejsDescription   = "OpenTelemetry Node.js Auto-Instrumentation"
-	dotnetDescription   = "OpenTelemetry .NET Automatic Instrumentation"
-	pythonDescription   = "OpenTelemetry Python Auto-Instrumentation"
-	metaDescription     = "OpenTelemetry Auto-Instrumentation Suite (metapackage)"
+	injectorDescription   = "OpenTelemetry LD_PRELOAD-based automatic instrumentation injector"
+	javaDescription       = "OpenTelemetry Java Auto-Instrumentation Agent"
+	nodejsDescription     = "OpenTelemetry Node.js Auto-Instrumentation"
+	dotnetDescription     = "OpenTelemetry .NET Automatic Instrumentation"
+	pythonDescription     = "OpenTelemetry Python Auto-Instrumentation"
+	metaDescription       = "OpenTelemetry Auto-Instrumentation Suite (metapackage)"
+	jmxScraperDescription = "OpenTelemetry JMX Metrics Scraper"
 )
 
 const (
@@ -199,6 +218,13 @@ host report traces, metrics, and logs without being rebuilt or reconfigured.
 This package contains no instrumentation of its own. Install the individual
 opentelemetry-*-autoinstrumentation packages instead to cover only the
 languages a host actually runs.`
+
+	jmxScraperLongDescription = `The OpenTelemetry JMX scraper, run as a systemd service that connects to a
+JMX endpoint and exports the metrics it collects over OTLP.
+
+The metric definitions applied are chosen in
+/etc/opentelemetry/jmx-scraper/config.properties. A Java runtime is required
+but not installed by this package.`
 )
 
 func injectorContents(cfg Config) (files.Contents, func(), error) {
@@ -404,6 +430,39 @@ func metaContents(cfg Config) (files.Contents, func(), error) {
 
 	return files.Contents{
 		regularFile(readmePath, "/usr/share/doc/opentelemetry/README", 0o644),
+	}, cleanup, nil
+}
+
+func jmxScraperContents(cfg Config) (files.Contents, func(), error) {
+	staging, err := os.MkdirTemp("", "otel-jmx-scraper-*")
+	if err != nil {
+		return nil, nil, err
+	}
+	cleanup := func() { os.RemoveAll(staging) }
+
+	jarPath := filepath.Join(staging, "opentelemetry-jmx-scraper.jar")
+	if err := downloadJMXScraper(cfg, jarPath); err != nil {
+		return nil, cleanup, fmt.Errorf("downloading JMX scraper: %w", err)
+	}
+
+	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "jmx-scraper"))
+	if err != nil {
+		return nil, cleanup, err
+	}
+
+	commonDir := filepath.Join(cfg.PackagingDir, "common", "jmx-scraper")
+	return files.Contents{
+		regularFile(jarPath, jmxScraperInstallDir+"/opentelemetry-jmx-scraper.jar", 0o644),
+		// The unit runs under DynamicUser, so the service reads
+		// config.properties as a transient UID and that file has to stay
+		// world-readable. Secrets belong in the environment file instead,
+		// which systemd reads as root before dropping privileges, so that one
+		// is restricted.
+		configFile(filepath.Join(commonDir, "config.properties"), jmxScraperConfigDir+"/config.properties"),
+		configFileMode(filepath.Join(commonDir, "jmx-scraper.env"), jmxScraperConfigDir+"/jmx-scraper.env", 0o640),
+		regularFile(filepath.Join(commonDir, "opentelemetry-jmx-scraper.service"), "/usr/lib/systemd/system/opentelemetry-jmx-scraper.service", 0o644),
+		regularFile(manPath, "/usr/share/man/man8/opentelemetry-jmx-scraper.8.gz", 0o644),
+		regularFile(filepath.Join(commonDir, "README.md"), "/usr/share/doc/opentelemetry-jmx-scraper/README.md", 0o644),
 	}, cleanup, nil
 }
 

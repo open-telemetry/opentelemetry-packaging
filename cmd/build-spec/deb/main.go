@@ -33,7 +33,7 @@ func main() {
 	version := flag.String("version", "", "Package version (required)")
 	release := flag.String("release", "", "Packaging revision (defaults to 1)")
 	outputDir := flag.String("output", "build/deb-sources", "Output directory; each component gets a subdirectory named after its package")
-	component := flag.String("component", "all", "Component to write: injector, java, nodejs, dotnet, python, meta, or all")
+	component := flag.String("component", "all", "Component to write: injector, java, nodejs, dotnet, python, meta, jmx-scraper, or all")
 	packagingDir := flag.String("packaging-dir", "", "Path to packaging/ directory (auto-detected if empty)")
 	configCheckDir := flag.String("config-check-dir", filepath.Join("build", "bin"),
 		"Directory holding the prebuilt otel-config-check-<arch> binaries, one per architecture")
@@ -78,7 +78,7 @@ func main() {
 	if *component != "all" {
 		selected, ok := builder.ComponentByName(*component)
 		if !ok {
-			log.Fatalf("error: unknown component %q (expected injector, java, nodejs, dotnet, python, meta, or all)", *component)
+			log.Fatalf("error: unknown component %q (expected injector, java, nodejs, dotnet, python, meta, jmx-scraper, or all)", *component)
 		}
 		components = []builder.Component{selected}
 	}

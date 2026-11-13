@@ -139,12 +139,29 @@ func WriteDebSpec(cfg Config, comp Component, w io.Writer) error {
 		Component:    comp.Name,
 		Provides:     comp.Relations.Provides,
 		Requires:     comp.Relations.Depends,
-		Recommends:   comp.Relations.Recommends,
-		Suggests:     comp.Relations.Suggests,
+		Recommends:   comp.Relations.recommends("deb"),
+		Suggests:     debbuildAlternatives(comp.Relations.suggests("deb")),
 		Conflicts:    comp.Relations.Conflicts,
 		Replaces:     comp.Relations.Replaces,
 		Scriptlets:   scriptlets,
 	}
 
 	return debSpecTemplate.Execute(w, data)
+}
+
+// debbuildAlternatives lists each alternative of a "a | b" relation on its
+// own. debbuild has no syntax for alternatives: it splits a relation list on
+// commas only and keeps the last name of a "|" group, so the alternation the
+// nfpm packages carry would come out as its final alternative alone. Only
+// Suggests goes through this, where suggesting every alternative leaves the
+// intent intact because a suggestion is never installed on its own; doing
+// the same to Depends or Recommends would install all of them.
+func debbuildAlternatives(relations []string) []string {
+	var out []string
+	for _, r := range relations {
+		for _, alt := range strings.Split(r, "|") {
+			out = append(out, strings.TrimSpace(alt))
+		}
+	}
+	return out
 }
