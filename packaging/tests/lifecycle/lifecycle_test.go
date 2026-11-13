@@ -153,14 +153,14 @@ func (h *harness) exec(t *testing.T, ctx context.Context, cmd ...string) string 
 	return testutil.ExecSucceeds(t, ctx, h.container, cmd...)
 }
 
-// install installs the given packages from the local repository.
-func (h *harness) install(t *testing.T, ctx context.Context, pkgs ...string) {
+// install installs the given packages from the local repository and returns
+// the package manager's output, including scriptlet output.
+func (h *harness) install(t *testing.T, ctx context.Context, pkgs ...string) string {
 	t.Helper()
 	if h.format == "deb" {
-		h.exec(t, ctx, append([]string{"apt-get", "-y", "install"}, pkgs...)...)
-	} else {
-		h.exec(t, ctx, append([]string{"dnf", "-y", "install"}, pkgs...)...)
+		return h.exec(t, ctx, append([]string{"apt-get", "-y", "install"}, pkgs...)...)
 	}
+	return h.exec(t, ctx, append([]string{"dnf", "-y", "install"}, pkgs...)...)
 }
 
 // remove removes the given packages (DEB: keeps conffiles) and returns the

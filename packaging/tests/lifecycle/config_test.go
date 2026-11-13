@@ -112,6 +112,23 @@ var configScenarios = []scenario{
 		},
 	},
 	{
+		name:    "config-reinstall-warns-about-rpmsave",
+		formats: []string{"rpm"},
+		run: func(t *testing.T, ctx context.Context, h *harness) {
+			out := h.install(t, ctx, "opentelemetry-injector")
+			require.NotContains(t, out, ".rpmsave", "a first install has nothing to warn about")
+
+			h.appendLine(t, ctx, envConfPath, userMarker)
+			h.remove(t, ctx, "opentelemetry-injector")
+			out = h.install(t, ctx, "opentelemetry-injector")
+
+			require.NotContains(t, h.fileContent(t, ctx, envConfPath), userMarker,
+				"the reinstall writes the default config")
+			require.Contains(t, out, "WARNING: found "+envConfPath+".rpmsave",
+				"the reinstall must name the .rpmsave holding the edits")
+		},
+	},
+	{
 		name:    "config-upgrade-modified-rpmnew",
 		formats: []string{"rpm"},
 		run: func(t *testing.T, ctx context.Context, h *harness) {

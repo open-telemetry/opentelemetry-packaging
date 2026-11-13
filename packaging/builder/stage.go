@@ -29,12 +29,43 @@ var ownedDirPrefixes = []string{
 // docDirParent is distribution-owned; only per-package children are claimed.
 const docDirParent = "/usr/share/doc/"
 
+// fileListFormat describes the %files dialect a staged file list is written in.
+type fileListFormat struct {
+	// packager names the nfpm packager whose content preparation the staging
+	// mirrors, so the tree matches what that packager would have produced.
+	packager string
+	// attrs records ownership and mode on every line. rpmbuild needs them,
+	// because the buildroot is not owned by root. debbuild turns each one
+	// into a chown and chmod command in the postinst, so its lists leave them
+	// out and carry the modes in the staged tree instead.
+	attrs bool
+	// configQualifiers writes the noreplace and missingok qualifiers after a
+	// %config directive. Only rpm has them: dpkg treats every conffile as
+	// noreplace already, and debbuild recognizes no qualifier at all.
+	configQualifiers bool
+}
+
+var (
+	rpmFileList = fileListFormat{packager: "rpm", attrs: true, configQualifiers: true}
+	debFileList = fileListFormat{packager: "deb"}
+)
+
 // Stage materializes a component's payload under root and writes its RPM %files
 // fragment to filelistDir/<component>.files.
 //
 // Like Build, it derives both outputs from ContentsFunc, keeping the staged
 // payload and file list consistent. It calls the returned cleanup after staging.
 func Stage(cfg Config, comp Component, root, filelistDir string) error {
+	return stage(cfg, comp, root, filelistDir, rpmFileList)
+}
+
+// StageDeb is Stage for the debbuild spec (see debspec.go). The file list
+// declares no ownership or modes, which dpkg takes from the staged tree.
+func StageDeb(cfg Config, comp Component, root, filelistDir string) error {
+	return stage(cfg, comp, root, filelistDir, debFileList)
+}
+
+func stage(cfg Config, comp Component, root, filelistDir string, format fileListFormat) error {
 	contents, cleanup, err := comp.ContentsFunc(cfg)
 	if cleanup != nil {
 		defer cleanup()
@@ -44,14 +75,14 @@ func Stage(cfg Config, comp Component, root, filelistDir string) error {
 	}
 
 	// Match nfpm's expansion of trees, globs, and implicit parent directories.
-	prepared, err := files.PrepareForPackager(contents, stageUmask, "rpm", false, time.Now())
+	prepared, err := files.PrepareForPackager(contents, stageUmask, format.packager, false, time.Now())
 	if err != nil {
 		return fmt.Errorf("preparing contents for %s: %w", comp.Name, err)
 	}
 
 	var lines []string
 	for _, content := range prepared {
-		line, err := stageContent(content, root)
+		line, err := stageContent(content, root, format)
 		if err != nil {
 			return fmt.Errorf("staging %s for %s: %w", content.Destination, comp.Name, err)
 		}
@@ -77,7 +108,7 @@ func Stage(cfg Config, comp Component, root, filelistDir string) error {
 
 // stageContent writes a single content entry under root and returns the %files
 // line describing it, or an empty string when the entry needs no line.
-func stageContent(content *files.Content, root string) (string, error) {
+func stageContent(content *files.Content, root string, format fileListFormat) (string, error) {
 	dst := content.Destination
 	target := filepath.Join(root, filepath.FromSlash(dst))
 
@@ -91,12 +122,12 @@ func stageContent(content *files.Content, root string) (string, error) {
 		if !isOwnedDir(dst) {
 			return "", nil
 		}
-		return dirLine(content), nil
+		return dirLine(content, format), nil
 	case files.TypeDir:
 		if err := os.MkdirAll(target, content.Mode()); err != nil {
 			return "", err
 		}
-		return dirLine(content), nil
+		return dirLine(content, format), nil
 	case files.TypeSymlink:
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return "", err
@@ -110,12 +141,12 @@ func stageContent(content *files.Content, root string) (string, error) {
 		if err := copyStagedFile(content, target); err != nil {
 			return "", err
 		}
-		return configDirective(content.Type) + " " + attr(content) + " " + filelistPath(dst), nil
+		return fileLine(content, format, configDirective(content.Type, format)), nil
 	case files.TypeFile, "":
 		if err := copyStagedFile(content, target); err != nil {
 			return "", err
 		}
-		return attr(content) + " " + filelistPath(dst), nil
+		return fileLine(content, format, ""), nil
 	default:
 		// Reject unused RPM-only types rather than silently omit their files.
 		return "", fmt.Errorf("unsupported content type %q", content.Type)
@@ -148,11 +179,27 @@ func isOwnedDir(dst string) bool {
 	return false
 }
 
-func dirLine(content *files.Content) string {
-	return "%dir " + attr(content) + " " + filelistPath(content.Destination)
+func dirLine(content *files.Content, format fileListFormat) string {
+	return fileLine(content, format, "%dir")
 }
 
-func configDirective(contentType string) string {
+// fileLine joins a %files directive, the attributes when the format records
+// them, and the quoted path.
+func fileLine(content *files.Content, format fileListFormat, directive string) string {
+	var parts []string
+	if directive != "" {
+		parts = append(parts, directive)
+	}
+	if format.attrs {
+		parts = append(parts, attr(content))
+	}
+	return strings.Join(append(parts, filelistPath(content.Destination)), " ")
+}
+
+func configDirective(contentType string, format fileListFormat) string {
+	if !format.configQualifiers {
+		return "%config"
+	}
 	switch contentType {
 	case files.TypeConfigNoReplace:
 		return "%config(noreplace)"

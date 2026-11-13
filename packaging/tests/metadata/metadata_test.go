@@ -8,8 +8,10 @@
 package metadata_test
 
 import (
+	"archive/tar"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -141,6 +143,37 @@ func debExtractFile(t *testing.T, path, target string) string {
 }
 
 // pathsContain checks if any path in the list contains the given substring.
+// assertPerInterpreterManifests checks that every bundled interpreter carries
+// the dependency manifest sitecustomize.py reads to detect version conflicts.
+//
+// The manifest is per interpreter because the wheels are: the bundle ships one
+// directory per supported CPython ABI tag, and sitecustomize.py reads the
+// manifest from the one matching the running interpreter. A manifest at the
+// bundle root would be read by nothing.
+func assertPerInterpreterManifests(t *testing.T, paths []string) {
+	t.Helper()
+
+	const bundle = "/usr/lib/opentelemetry/python/glibc/"
+	interpreters := map[string]bool{}
+	for _, p := range paths {
+		i := strings.Index(p, bundle)
+		if i < 0 {
+			continue
+		}
+		rest := strings.TrimPrefix(p[i:], bundle)
+		tag, _, found := strings.Cut(rest, "/")
+		if found && strings.HasPrefix(tag, "cp3") {
+			interpreters[tag] = true
+		}
+	}
+	require.NotEmpty(t, interpreters, "no bundled interpreter directory found under %s", bundle)
+
+	for tag := range interpreters {
+		assert.True(t, pathsContain(paths, bundle+tag+"/all-dependencies.txt"),
+			"interpreter %s should carry the all-dependencies.txt conflict manifest", tag)
+	}
+}
+
 func pathsContain(paths []string, substr string) bool {
 	for _, p := range paths {
 		if strings.Contains(p, substr) {
@@ -352,12 +385,69 @@ func TestDebPythonContents(t *testing.T) {
 
 	assert.True(t, pathsContain(paths, "/usr/lib/opentelemetry/python/glibc/sitecustomize.py"),
 		"should contain sitecustomize.py under the glibc/ prefix")
-	assert.True(t, pathsContain(paths, "/usr/lib/opentelemetry/python/glibc/all-dependencies.txt"),
-		"should contain the all-dependencies.txt conflict manifest")
+	assertPerInterpreterManifests(t, paths)
 	assert.True(t, pathsContain(paths, "/usr/lib/opentelemetry/python/otel-config-check"),
 		"should contain the otel-config-check validator")
 	assert.True(t, pathsContain(paths, "/etc/opentelemetry/injector/conf.d/python.conf"),
 		"should contain Python conf.d drop-in")
+}
+
+// Nothing a package ships may be writable by anyone but its owner.
+//
+// This is the assertion the debbuild path most needs, and the one its specs
+// work hardest for. Package managers build under a umask the packager does not
+// choose, 002 on the Open Build Service, and debbuild creates the package's
+// directories and recompresses its man pages itself, under that umask. The
+// specs override %__mkdir_p and %__gzip to force 022, which are macros
+// internal to debbuild: an upstream release that renamed either would leave
+// every assertion on the generated spec passing, and ship directories the
+// group can write to. Only a built package shows it.
+//
+// Run over the nfpm packages too, which get this from nfpm's own staging, so
+// that the two producers are held to the same standard.
+func TestDebPackagesAreNotGroupWritable(t *testing.T) {
+	skipIfNoDebPackages(t)
+
+	matches, err := filepath.Glob(filepath.Join(packagesDir(t), "*.deb"))
+	require.NoError(t, err)
+	require.NotEmpty(t, matches)
+
+	for _, pkg := range matches {
+		t.Run(filepath.Base(pkg), func(t *testing.T) {
+			d, closer, err := deb.LoadFile(pkg)
+			require.NoError(t, err)
+			defer closer()
+
+			entries := 0
+			for {
+				hdr, err := d.Data.Next()
+				if err == io.EOF {
+					break
+				}
+				require.NoError(t, err)
+				entries++
+
+				// Symlink modes are not meaningful: dpkg recreates them from
+				// the target, and tar records them inconsistently.
+				if hdr.Typeflag == tar.TypeSymlink {
+					continue
+				}
+				// The archive root stands for "/", which dpkg owns and never
+				// chmods from a package: installing one that carries "./" at
+				// 0775 leaves "/" at 0755. debbuild creates the directory the
+				// package is built from with Perl's mkdir, outside the mkdir
+				// macro the specs override, so under the umask the Open Build
+				// Service runs with it is group-writable and nothing in a spec
+				// can reach it. It is the one entry here that is inert.
+				if path.Clean(hdr.Name) == "." {
+					continue
+				}
+				assert.Zero(t, hdr.FileInfo().Mode().Perm()&0o022,
+					"%s is writable beyond its owner (mode %04o)", hdr.Name, hdr.FileInfo().Mode().Perm())
+			}
+			require.NotZero(t, entries, "package has no data entries")
+		})
+	}
 }
 
 func TestDebMetapackageMetadata(t *testing.T) {
@@ -632,7 +722,7 @@ func TestRpmPythonContents(t *testing.T) {
 	names := rpmFileNames(p)
 
 	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/python/glibc/sitecustomize.py"))
-	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/python/glibc/all-dependencies.txt"))
+	assertPerInterpreterManifests(t, names)
 	assert.True(t, pathsContain(names, "/usr/lib/opentelemetry/python/otel-config-check"))
 	assert.True(t, pathsContain(names, "/etc/opentelemetry/injector/conf.d/python.conf"))
 }

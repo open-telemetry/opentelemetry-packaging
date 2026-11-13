@@ -40,6 +40,9 @@ export OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED=true
 export OTEL_CONFIG_FILE=/etc/opentelemetry/dotnet/otel-config.yaml
 ```
 
+On an RPM host, removing this package renames an edited `otel-config.yaml` to `otel-config.yaml.rpmsave`, and installing it again writes the shipped file beside it, silently.
+A copy outside `/etc/opentelemetry/dotnet/` is not touched by either.
+
 ## Supported libraries
 
 The instrumentation supports automatic instrumentation for:
