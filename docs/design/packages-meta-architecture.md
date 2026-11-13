@@ -259,7 +259,7 @@ The modules are part of the system package; no files are downloaded at package i
 |-------|-----|-----|
 | Architecture | `all` | `noarch` |
 | Provides | `opentelemetry-nodejs-autoinstrumentation1` | `opentelemetry-nodejs-autoinstrumentation1` |
-| Suggests | `opentelemetry-injector1`, `nodejs (>= 18)` | `opentelemetry-injector1` |
+| Suggests | `opentelemetry-injector1` | `opentelemetry-injector1` |
 | Config files | `/etc/opentelemetry/nodejs` | `/etc/opentelemetry/nodejs` |
 
 ### `opentelemetry-dotnet-autoinstrumentation`

@@ -8,11 +8,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/goreleaser/nfpm/v2/files"
 )
+
+// Architectures are the target architectures package builds support. Callers
+// that accept an architecture from configuration or a flag validate against
+// this rather than keeping their own copy of the list.
+var Architectures = []string{"amd64", "arm64"}
+
+// SupportedArchitecture reports whether arch is one of Architectures.
+func SupportedArchitecture(arch string) bool {
+	return slices.Contains(Architectures, arch)
+}
 
 // Installation paths (FHS-compliant).
 const (
@@ -32,9 +43,10 @@ const (
 
 // Injector is the opentelemetry-injector package component.
 var Injector = Component{
-	Name:        "injector",
-	PackageName: "opentelemetry-injector",
-	Description: injectorDescription,
+	Name:            "injector",
+	PackageName:     "opentelemetry-injector",
+	Description:     injectorDescription,
+	LongDescription: injectorLongDescription,
 	Relations: Relations{
 		Provides: []string{"opentelemetry-injector1"},
 	},
@@ -45,10 +57,11 @@ var Injector = Component{
 
 // Java is the opentelemetry-java-autoinstrumentation package component.
 var Java = Component{
-	Name:        "java",
-	PackageName: "opentelemetry-java-autoinstrumentation",
-	Description: javaDescription,
-	Noarch:      true,
+	Name:            "java",
+	PackageName:     "opentelemetry-java-autoinstrumentation",
+	Description:     javaDescription,
+	LongDescription: javaLongDescription,
+	Noarch:          true,
 	Relations: Relations{
 		Provides: []string{"opentelemetry-java-autoinstrumentation1"},
 		Suggests: []string{"opentelemetry-injector1"},
@@ -58,10 +71,11 @@ var Java = Component{
 
 // Nodejs is the opentelemetry-nodejs-autoinstrumentation package component.
 var Nodejs = Component{
-	Name:        "nodejs",
-	PackageName: "opentelemetry-nodejs-autoinstrumentation",
-	Description: nodejsDescription,
-	Noarch:      true,
+	Name:            "nodejs",
+	PackageName:     "opentelemetry-nodejs-autoinstrumentation",
+	Description:     nodejsDescription,
+	LongDescription: nodejsLongDescription,
+	Noarch:          true,
 	Relations: Relations{
 		Provides: []string{"opentelemetry-nodejs-autoinstrumentation1"},
 		Suggests: []string{"opentelemetry-injector1"},
@@ -71,9 +85,10 @@ var Nodejs = Component{
 
 // Dotnet is the opentelemetry-dotnet-autoinstrumentation package component.
 var Dotnet = Component{
-	Name:        "dotnet",
-	PackageName: "opentelemetry-dotnet-autoinstrumentation",
-	Description: dotnetDescription,
+	Name:            "dotnet",
+	PackageName:     "opentelemetry-dotnet-autoinstrumentation",
+	Description:     dotnetDescription,
+	LongDescription: dotnetLongDescription,
 	Relations: Relations{
 		Provides: []string{"opentelemetry-dotnet-autoinstrumentation1"},
 		Suggests: []string{"opentelemetry-injector1"},
@@ -83,9 +98,10 @@ var Dotnet = Component{
 
 // Python is the opentelemetry-python-autoinstrumentation package component.
 var Python = Component{
-	Name:        "python",
-	PackageName: "opentelemetry-python-autoinstrumentation",
-	Description: pythonDescription,
+	Name:            "python",
+	PackageName:     "opentelemetry-python-autoinstrumentation",
+	Description:     pythonDescription,
+	LongDescription: pythonLongDescription,
 	// Not Noarch: the bundled wheels may carry compiled C extensions, so the
 	// package is architecture-specific.
 	Relations: Relations{
@@ -97,10 +113,11 @@ var Python = Component{
 
 // Meta is the opentelemetry metapackage component.
 var Meta = Component{
-	Name:        "meta",
-	PackageName: "opentelemetry",
-	Description: metaDescription,
-	Noarch:      true,
+	Name:            "meta",
+	PackageName:     "opentelemetry",
+	Description:     metaDescription,
+	LongDescription: metaLongDescription,
+	Noarch:          true,
 	Relations: Relations{
 		Depends: []string{"opentelemetry-injector1"},
 		Recommends: []string{
@@ -113,6 +130,11 @@ var Meta = Component{
 	ContentsFunc: metaContents,
 }
 
+// Each component carries a one-line summary and the paragraphs below it. The
+// package formats keep the two apart: the summary is the DEB Description's
+// first line and the RPM Summary tag, the rest is the DEB extended description
+// and the RPM %description. Repeating the summary in both is what lintian
+// reports as description-synopsis-is-duplicated.
 const (
 	injectorDescription = "OpenTelemetry LD_PRELOAD-based automatic instrumentation injector"
 	javaDescription     = "OpenTelemetry Java Auto-Instrumentation Agent"
@@ -120,6 +142,63 @@ const (
 	dotnetDescription   = "OpenTelemetry .NET Automatic Instrumentation"
 	pythonDescription   = "OpenTelemetry Python Auto-Instrumentation"
 	metaDescription     = "OpenTelemetry Auto-Instrumentation Suite (metapackage)"
+)
+
+const (
+	injectorLongDescription = `Injects the OpenTelemetry auto-instrumentation agents into processes as they
+start, by way of a shared library listed in /etc/ld.so.preload. The library
+detects the runtime of each process and loads the agent for it, so that
+applications report traces, metrics, and logs without being rebuilt or
+reconfigured.
+
+Which runtimes are covered depends on the language packages installed
+alongside it: each one registers its agent in a drop-in file under
+/etc/opentelemetry/injector/conf.d/. The injector on its own instruments
+nothing.`
+
+	javaLongDescription = `The OpenTelemetry Java agent, instrumenting Java applications to collect
+distributed traces, metrics, and logs without code changes.
+
+Installed alongside the opentelemetry-injector package, the agent is attached
+to every Java process on the host automatically. Without it, the agent is
+still usable by passing -javaagent to a JVM directly.`
+
+	nodejsLongDescription = `The OpenTelemetry Node.js instrumentations, collecting distributed traces,
+metrics, and logs from Node.js applications without code changes.
+
+Installed alongside the opentelemetry-injector package, the instrumentations
+are loaded into every Node.js process on the host automatically. Without it,
+they are still usable through the --require flag.`
+
+	dotnetLongDescription = `The OpenTelemetry .NET automatic instrumentation, collecting distributed
+traces, metrics, and logs from .NET applications without code changes.
+
+Installed alongside the opentelemetry-injector package, the instrumentation is
+attached to every .NET process on the host automatically.
+
+Only the glibc build is bundled. Instrumenting a musl-based distribution such
+as Alpine Linux means installing the upstream release directly, this project
+building no apk packages.`
+
+	pythonLongDescription = `The OpenTelemetry Python instrumentations, collecting distributed traces,
+metrics, and logs from Python applications without code changes.
+
+Installed alongside the opentelemetry-injector package, the injector puts the
+bundled interpreter path on PYTHONPATH for every process, and the
+sitecustomize module found there starts instrumentation before the application
+does. That module first checks that the interpreter version is supported, that
+the configuration is valid, and that no conflicting instrumentation or
+dependency is already present; instrumentation stays off when any check fails,
+so a misconfigured host runs its applications unchanged rather than breaking
+them.`
+
+	metaLongDescription = `Installs the OpenTelemetry injector and, by recommendation, the
+auto-instrumentation for every supported language, so that applications on the
+host report traces, metrics, and logs without being rebuilt or reconfigured.
+
+This package contains no instrumentation of its own. Install the individual
+opentelemetry-*-autoinstrumentation packages instead to cover only the
+languages a host actually runs.`
 )
 
 func injectorContents(cfg Config) (files.Contents, func(), error) {
@@ -134,7 +213,7 @@ func injectorContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("downloading injector: %w", err)
 	}
 
-	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "injector"))
+	manPath, err := componentManPage(cfg, staging, "injector")
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -163,7 +242,7 @@ func javaContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("downloading Java agent: %w", err)
 	}
 
-	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "java"))
+	manPath, err := componentManPage(cfg, staging, "java")
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -190,7 +269,7 @@ func nodejsContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("downloading Node.js agent: %w", err)
 	}
 
-	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "nodejs"))
+	manPath, err := componentManPage(cfg, staging, "nodejs")
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -222,7 +301,7 @@ func dotnetContents(cfg Config) (files.Contents, func(), error) {
 		return nil, cleanup, fmt.Errorf("downloading .NET agent: %w", err)
 	}
 
-	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "dotnet"))
+	manPath, err := componentManPage(cfg, staging, "dotnet")
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -288,7 +367,7 @@ func pythonContents(cfg Config) (files.Contents, func(), error) {
 		}
 	}
 
-	manPath, err := GenerateManPage(cfg, staging, manPageTemplate(cfg, "python"))
+	manPath, err := componentManPage(cfg, staging, "python")
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -335,14 +414,83 @@ func manPageTemplate(cfg Config, component string) string {
 		fmt.Sprintf("opentelemetry-%s.8.tmpl", component))
 }
 
+// upstreamVersion returns the version of the upstream agent a component ships.
+//
+// This is deliberately not cfg.Version. That is the distribution packaging
+// version, and the two move independently: the same agent is republished
+// whenever the packaging itself changes, and package images version their DEBs
+// by the upstream pin instead. A man page reporting cfg.Version therefore says
+// something different about the same agent depending on which build produced
+// it, which is what "opentelemetry-java-autoinstrumentation <version>" reads as
+// to anyone running man(1).
+func upstreamVersion(cfg Config, component string) (string, error) {
+	if component == "python" {
+		// Python ships no single upstream artifact: its payload is a set of
+		// wheels pinned in requirements.txt. opentelemetry-distro is the
+		// auto-instrumentation distribution itself -- the direct analogue of
+		// the Java agent or the .NET tracer -- so its pin is the version to
+		// report.
+		return pinnedRequirement(
+			filepath.Join(cfg.PackagingDir, "common", "python", "requirements.txt"),
+			"opentelemetry-distro",
+		)
+	}
+	version, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", component, "release.txt"))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimPrefix(version, "v"), nil
+}
+
+// pinnedRequirement returns the version a requirements file pins for name with
+// the "name==version" form, ignoring any extras in brackets.
+func pinnedRequirement(path, name string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		pkg, version, ok := strings.Cut(line, "==")
+		if !ok {
+			continue
+		}
+		if base, _, found := strings.Cut(pkg, "["); found {
+			pkg = base
+		}
+		if strings.TrimSpace(pkg) == name {
+			return strings.TrimSpace(version), nil
+		}
+	}
+	return "", fmt.Errorf("no %s==<version> pin in %s", name, path)
+}
+
+// componentManPage renders a component's man page with its upstream version.
+func componentManPage(cfg Config, stagingDir, component string) (string, error) {
+	upstream, err := upstreamVersion(cfg, component)
+	if err != nil {
+		return "", fmt.Errorf("resolving upstream version for %s: %w", component, err)
+	}
+	return GenerateManPage(cfg, stagingDir, manPageTemplate(cfg, component),
+		map[string]string{"@UPSTREAM_VERSION@": upstream})
+}
+
 // GenerateManPage expands @VERSION@ and @DATE@ placeholders in the man page
 // template at templatePath, compresses it with gzip, and writes the result
 // into stagingDir. It returns the path to the gzipped file.
 //
+// @VERSION@ is the packaging version. Callers that also want to report the
+// version of the upstream software the package ships pass it through
+// substitutions, which apply after the built-in placeholders; the
+// OpenTelemetry components use it for @UPSTREAM_VERSION@.
+//
 // The template is addressed by path rather than derived from a component name,
 // so a caller is free to name its templates whatever its packages are called.
 // The output file keeps the template's own name minus the .tmpl suffix.
-func GenerateManPage(cfg Config, stagingDir, templatePath string) (string, error) {
+func GenerateManPage(cfg Config, stagingDir, templatePath string, substitutions ...map[string]string) (string, error) {
 	templateName := filepath.Base(templatePath)
 	if !strings.HasSuffix(templateName, ".tmpl") {
 		return "", fmt.Errorf("man page template %q must end in .tmpl", templateName)
@@ -356,6 +504,11 @@ func GenerateManPage(cfg Config, stagingDir, templatePath string) (string, error
 	content := string(tmplData)
 	content = strings.ReplaceAll(content, "@VERSION@", cfg.Version)
 	content = strings.ReplaceAll(content, "@DATE@", time.Now().Format("January 2006"))
+	for _, set := range substitutions {
+		for placeholder, value := range set {
+			content = strings.ReplaceAll(content, placeholder, value)
+		}
+	}
 
 	outPath := filepath.Join(stagingDir, strings.TrimSuffix(templateName, ".tmpl")+".gz")
 	f, err := os.Create(outPath)

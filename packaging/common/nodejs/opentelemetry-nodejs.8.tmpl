@@ -1,6 +1,6 @@
 .\" Copyright The OpenTelemetry Authors
 .\" SPDX-License-Identifier: Apache-2.0
-.TH OPENTELEMETRY-NODEJS 8 "@DATE@" "opentelemetry-nodejs-autoinstrumentation @VERSION@" "System Administration"
+.TH OPENTELEMETRY-NODEJS 8 "@DATE@" "opentelemetry-nodejs-autoinstrumentation @UPSTREAM_VERSION@" "System Administration"
 .SH NAME
 opentelemetry-nodejs \- OpenTelemetry Node.js Auto-Instrumentation
 .SH SYNOPSIS
@@ -16,6 +16,14 @@ requiring code changes.
 .PP
 When used with the OpenTelemetry Injector package, the agent is automatically
 loaded into all Node.js processes.
+.SH REQUIREMENTS
+The bundled instrumentation supports Node.js 22.15.0 and newer. The package
+declares no dependency on a Node.js package, because the agent is loaded into
+whichever
+.BR node (1)
+binary the application runs, which need not be the one the distribution ships.
+On older interpreters the agent may still load, but that combination is not
+supported upstream.
 .SH FILES
 .TP
 .B /usr/lib/opentelemetry/nodejs/

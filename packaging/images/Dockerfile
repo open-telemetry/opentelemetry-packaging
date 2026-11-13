@@ -1,0 +1,25 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Run the extract stage on the build host so cross-architecture builds do not
+# emulate dpkg-deb. BuildKit sets BUILDPLATFORM, and so does buildah -- 1.28,
+# 1.33, and 1.43 were checked directly, and all three pin this stage to the
+# host either way. The fallback only covers an unset or empty value, where the
+# flag would otherwise resolve to the target platform and emulate silently.
+FROM --platform=${BUILDPLATFORM:-$TARGETPLATFORM} debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS extract
+ARG TARGETARCH
+ARG PACKAGE
+# Copy the architecture's whole directory rather than a glob: COPY resolves a
+# multi-match glob to a single file without complaining, so an ambiguous build
+# context would silently ship whichever filename sorts last.
+COPY ${TARGETARCH}/ /tmp/packages/
+RUN set -eu; \
+    matches=$(find /tmp/packages -maxdepth 1 -name "${PACKAGE}_*.deb" | wc -l); \
+    if [ "$matches" -ne 1 ]; then \
+        echo "expected exactly one ${PACKAGE}_*.deb in ${TARGETARCH}/, found ${matches}" >&2; \
+        exit 1; \
+    fi; \
+    dpkg-deb --extract "$(find /tmp/packages -maxdepth 1 -name "${PACKAGE}_*.deb")" /payload
+
+FROM busybox@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
+COPY --from=extract /payload/ /

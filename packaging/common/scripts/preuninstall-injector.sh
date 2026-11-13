@@ -12,6 +12,16 @@
 # echo for file content: dash's echo interprets backslash escapes and
 # could corrupt foreign preload entries.
 
+PRELOAD_PATH="/etc/ld.so.preload"
+
+# No trap runs on SIGKILL, so a killed run leaves its tmpfile behind. PIDs are
+# reused, so a later run with the same PID would append to that leftover and
+# move it over /etc/ld.so.preload. Clear leftovers first, on upgrades too, so a
+# host that only ever upgrades is cleaned as well. The package manager's lock
+# rules out a concurrent run, and an unmatched glob stays literal, which rm -f
+# ignores.
+rm -f "${PRELOAD_PATH}".tmp.*
+
 # Keep the preload entry on every non-removal transition. dpkg invokes prerm
 # with "upgrade", "failed-upgrade", or "deconfigure" (each optionally followed
 # by version/package arguments) when the package is not actually going away;
@@ -35,7 +45,6 @@ esac
 # for non-root processes — killing the remaining foreign entries.
 umask 022
 
-PRELOAD_PATH="/etc/ld.so.preload"
 LIBOTELINJECT_PATH="/usr/lib/opentelemetry/injector/libotelinject.so"
 
 if [ ! -f "$PRELOAD_PATH" ]; then
@@ -111,10 +120,22 @@ if [ "$write_failed" = true ]; then
     exit 0
 fi
 
+# Check the replacement: on an unwritable target (read-only /etc, chattr +i)
+# the entry stays, so the script must not claim it was removed. Exit 0 anyway,
+# because a failing prerm aborts the removal under both dpkg and rpm.
 if [ "$has_other_entries" = true ]; then
-    mv "$tmpfile" "$PRELOAD_PATH"
+    if ! mv "$tmpfile" "$PRELOAD_PATH"; then
+        echo "WARNING: could not replace $PRELOAD_PATH; leaving it unchanged." >&2
+        echo "WARNING: remove the $LIBOTELINJECT_PATH entry manually to silence linker warnings." >&2
+        exit 0
+    fi
 else
-    rm -f "$tmpfile" "$PRELOAD_PATH"
+    rm -f "$tmpfile"
+    if ! rm -f "$PRELOAD_PATH"; then
+        echo "WARNING: could not remove $PRELOAD_PATH; leaving it unchanged." >&2
+        echo "WARNING: remove the $LIBOTELINJECT_PATH entry manually to silence linker warnings." >&2
+        exit 0
+    fi
     echo "Removed empty $PRELOAD_PATH"
 fi
 

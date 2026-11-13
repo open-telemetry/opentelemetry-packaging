@@ -4,6 +4,7 @@
 package builder
 
 import (
+	"bytes"
 	"compress/gzip"
 	"io"
 	"os"
@@ -49,6 +50,7 @@ func TestIdentityDefaults(t *testing.T) {
 	assert.Equal(t, pkgMaintainer, cfg.maintainer())
 	assert.Equal(t, pkgLicense, cfg.license())
 	assert.Equal(t, pkgHomepage, cfg.homepage())
+	assert.Equal(t, pkgSection, cfg.section())
 
 	info, cleanup, err := fixtureComponent(t, Relations{}).Info(cfg, "deb")
 	if cleanup != nil {
@@ -59,6 +61,36 @@ func TestIdentityDefaults(t *testing.T) {
 	assert.Equal(t, "The OpenTelemetry Authors", info.Maintainer)
 	assert.Equal(t, "Apache-2.0", info.License)
 	assert.Equal(t, pkgHomepage, info.Homepage)
+	// Left empty, nfpm writes an empty Section field, which lintian reports as
+	// both empty-field and unknown-section.
+	assert.Equal(t, "utils", info.Section)
+}
+
+// The summary and the prose below it are separate everywhere, so that neither
+// format repeats the synopsis in its extended description.
+func TestDescriptionKeepsSummaryAndProseApart(t *testing.T) {
+	for _, comp := range AllComponents {
+		t.Run(comp.Name, func(t *testing.T) {
+			require.NotEmpty(t, comp.LongDescription, "every component needs prose below the summary")
+			assert.NotContains(t, comp.LongDescription, comp.Description,
+				"the prose must not repeat the summary")
+
+			// RPM has a Summary tag, so its description is the prose alone.
+			assert.Equal(t, comp.LongDescription, comp.formatDescription("rpm"))
+			// DEB has one field whose first line is the summary.
+			deb := comp.formatDescription("deb")
+			assert.Equal(t, comp.Description, strings.SplitN(deb, "\n", 2)[0])
+			assert.Contains(t, deb, comp.LongDescription)
+		})
+	}
+}
+
+// A component without prose keeps the summary as its whole description, so the
+// field is optional for a vendor building its own.
+func TestDescriptionWithoutProse(t *testing.T) {
+	comp := Component{Description: "summary"}
+	assert.Equal(t, "summary", comp.formatDescription("deb"))
+	assert.Equal(t, "summary", comp.formatDescription("rpm"))
 }
 
 // TestIdentityOverride covers the vendor case: branding the package without
@@ -71,6 +103,7 @@ func TestIdentityOverride(t *testing.T) {
 		Maintainer: "The ACME Company",
 		License:    "MIT",
 		Homepage:   "https://acme.example",
+		Section:    "net",
 	}
 
 	info, cleanup, err := fixtureComponent(t, Relations{}).Info(cfg, "deb")
@@ -82,6 +115,7 @@ func TestIdentityOverride(t *testing.T) {
 	assert.Equal(t, "The ACME Company", info.Maintainer)
 	assert.Equal(t, "MIT", info.License)
 	assert.Equal(t, "https://acme.example", info.Homepage)
+	assert.Equal(t, "net", info.Section)
 }
 
 // TestRelationsConflictsReplaces is the core of the vendor recipe: the virtual
@@ -275,4 +309,90 @@ func TestWriteSpecUsesExplicitRelease(t *testing.T) {
 	assert.Contains(t, spec, "Version:        4.2.13")
 	assert.Contains(t, spec, "Release:        2%{?dist}")
 	assert.NotContains(t, spec, "Release:        0.")
+}
+
+// The man page reports the version of the upstream agent, not the packaging
+// version, so the same agent is described identically however it was packaged.
+// Package images build their DEBs with the upstream pin as the package version
+// while the released DEBs use the git tag; before this, the two disagreed.
+func TestManPageReportsUpstreamVersion(t *testing.T) {
+	repoRoot, err := filepath.Abs("../..")
+	require.NoError(t, err)
+	packagingDir := filepath.Join(repoRoot, "packaging")
+
+	for _, component := range []string{"injector", "java", "nodejs", "dotnet", "python"} {
+		t.Run(component, func(t *testing.T) {
+			upstream, err := upstreamVersion(Config{PackagingDir: packagingDir}, component)
+			require.NoError(t, err)
+			require.NotEmpty(t, upstream)
+
+			render := func(packageVersion string) string {
+				staging := t.TempDir()
+				cfg := Config{Version: packageVersion, PackagingDir: packagingDir}
+				out, err := componentManPage(cfg, staging, component)
+				require.NoError(t, err)
+				body, err := os.ReadFile(out)
+				require.NoError(t, err)
+				gz, err := gzip.NewReader(bytes.NewReader(body))
+				require.NoError(t, err)
+				text, err := io.ReadAll(gz)
+				require.NoError(t, err)
+				return string(text)
+			}
+
+			// The packaging version must not reach the rendered page, and the
+			// two packaging paths must render the same bytes.
+			asRelease, asImage := render("0.0.3"), render(upstream)
+			require.Equal(t, asRelease, asImage)
+			require.Contains(t, asRelease, upstream)
+			require.NotContains(t, asRelease, "0.0.3")
+			require.NotContains(t, asRelease, "@UPSTREAM_VERSION@")
+		})
+	}
+}
+
+func TestUpstreamVersionMatchesPins(t *testing.T) {
+	repoRoot, err := filepath.Abs("../..")
+	require.NoError(t, err)
+	cfg := Config{PackagingDir: filepath.Join(repoRoot, "packaging")}
+
+	// Agent components take their version from the Renovate-managed pin.
+	for _, component := range []string{"injector", "java", "nodejs", "dotnet"} {
+		pin, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", component, "release.txt"))
+		require.NoError(t, err)
+		got, err := upstreamVersion(cfg, component)
+		require.NoError(t, err)
+		require.Equal(t, strings.TrimPrefix(pin, "v"), got)
+	}
+
+	// Python has no release.txt; it reports the distro pin from requirements.
+	got, err := upstreamVersion(cfg, "python")
+	require.NoError(t, err)
+	requirements, err := os.ReadFile(filepath.Join(cfg.PackagingDir, "common", "python", "requirements.txt"))
+	require.NoError(t, err)
+	require.Contains(t, string(requirements), "opentelemetry-distro=="+got)
+}
+
+func TestPinnedRequirement(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "requirements.txt")
+	require.NoError(t, os.WriteFile(path, []byte(
+		"# comment\n\nopentelemetry-distro==0.66b1\n"+
+			"opentelemetry-sdk[file-configuration]==1.45.1\n"+
+			"urllib3 <2.8.1\n"), 0o644))
+
+	for name, want := range map[string]string{
+		"opentelemetry-distro": "0.66b1",
+		// Extras in brackets must not defeat the name match.
+		"opentelemetry-sdk": "1.45.1",
+	} {
+		got, err := pinnedRequirement(path, name)
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+	}
+
+	// A non-pinned or absent requirement is an error, not an empty version.
+	_, err := pinnedRequirement(path, "urllib3")
+	require.Error(t, err)
+	_, err = pinnedRequirement(path, "absent")
+	require.Error(t, err)
 }

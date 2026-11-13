@@ -65,6 +65,8 @@ Validate that the injector's lifecycle scripts correctly manage `/etc/ld.so.prel
 | Remove cleans up the injector path from `/etc/ld.so.preload` | Pre-uninstall |
 | Remove deletes `/etc/ld.so.preload` if it becomes empty | Cleanup |
 | Remove preserves other entries in `/etc/ld.so.preload` | Non-destructive |
+| Remove warns instead of reporting success when `/etc/ld.so.preload` is immutable | Failed rewrite |
+| Remove and upgrade delete `/etc/ld.so.preload.tmp.*` files left by a killed earlier run | Stale tmpfiles |
 
 **Implementation:** Install/remove the injector package in a container and inspect `/etc/ld.so.preload` at each stage.
 Implemented in `packaging/tests/lifecycle/preload_test.go`.
@@ -95,6 +97,7 @@ Validate that configuration files are handled correctly across package lifecycle
 | User adds `99-custom.conf` in `conf.d/`: injector reads it | Custom drop-in |
 | User modifies `default_env.conf` to set `OTEL_SERVICE_NAME`: value is applied | Env var override |
 | User modifies `default_env.conf`: package upgrade preserves the modification | Modified conffile on upgrade |
+| User modifies `default_env.conf`, then removes and reinstalls (RPM): the install warns about the `.rpmsave` | Edits saved on remove are not lost silently |
 
 **Implementation:** Install packages, modify config files, upgrade/remove, and assert on file state and application behavior.
 Implemented in `packaging/tests/lifecycle/config_test.go`.

@@ -17,7 +17,7 @@ SHELL = /bin/bash
 
 # Package version. Derived from the latest git tag if available, otherwise
 # falls back to a development placeholder.
-VERSION ?= $(shell v=`git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null` && echo "$${v#v}" || echo "0.0.0-dev")
+VERSION ?= $(patsubst v%,%,$(shell git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null || echo "0.0.0-dev"))
 
 # Target CPU architecture (amd64 or arm64).
 ARCH ?= amd64
@@ -59,6 +59,11 @@ COMPONENTS := injector java nodejs dotnet python meta
 # Languages that have integration tests (meta is excluded).
 TEST_LANGUAGES := java nodejs dotnet python
 
+IMAGE_VERSION = $(shell go run ./cmd/image-metadata -component $* -field version)
+IMAGE_PACKAGE = $(shell go run ./cmd/image-metadata -component $* -field package)
+IMAGE_REF = ghcr.io/open-telemetry/opentelemetry-packaging/$(IMAGE_PACKAGE):$(IMAGE_VERSION)
+IMAGE_CONTEXT = build/images/$*
+
 # ============================================================================
 # Package Build Targets (nfpm, pure Go)
 # ============================================================================
@@ -90,6 +95,36 @@ rpm-packages: otel-config-check
 .PHONY: packages
 packages: otel-config-check
 	go run ./cmd/build-packages -version $(VERSION) -arch $(ARCH) -format all -output $(OUTPUT_DIR)
+
+# ============================================================================
+# Package images
+# ============================================================================
+
+.PHONY: images
+.PRECIOUS: image-packages-% image-%
+images:
+	@set -e; components="$$(go run ./cmd/image-metadata -field components)"; \
+	for component in $$components; do \
+		$(MAKE) image-$$component; \
+	done
+
+image-packages-%: otel-config-check
+	go run ./cmd/image-metadata -component $*
+	rm -rf "$(IMAGE_CONTEXT)/$(ARCH)"
+	go run ./cmd/build-packages -version $(IMAGE_VERSION) -arch "$(ARCH)" -format deb \
+		-component $* -output "$(IMAGE_CONTEXT)/$(ARCH)"
+
+image-%: image-packages-%
+	$(CONTAINER_ENGINE) build --platform "linux/$(ARCH)" \
+		--build-arg TARGETARCH="$(ARCH)" --build-arg PACKAGE=$(IMAGE_PACKAGE) \
+		-f packaging/images/Dockerfile -t $(IMAGE_REF) $(IMAGE_CONTEXT)
+
+# -count=1 because the container image is not an input Go's test cache tracks:
+# the test reaches it through the container engine, so a rebuilt or retagged
+# image would otherwise replay a stale PASS.
+integration-test-image-%: image-%
+	IMAGE_COMPONENT=$* IMAGE_REF=$(IMAGE_REF) IMAGE_PACKAGES_DIR=$(IMAGE_CONTEXT)/$(ARCH) \
+		CONTAINER_ENGINE=$(CONTAINER_ENGINE) go test -v -count=1 -timeout 5m ./packaging/tests/images/
 
 # ============================================================================
 # Source RPM (rpmbuild path, used by COPR)
@@ -203,6 +238,76 @@ rpm-rebuild-container:
 	@echo ""
 	@echo "Rebuilt RPMs in $(REBUILD_OUTPUT_DIR):"
 	@ls -1 $(REBUILD_OUTPUT_DIR)/*.rpm
+
+# ============================================================================
+# DEB sources for the Open Build Service (debbuild path)
+# ============================================================================
+
+# The Open Build Service builds the DEB packages with debbuild, one OBS package
+# per component, and its builds have no network access. So the payload is
+# staged here, for every architecture, into each component's source archive,
+# and the generated spec only copies it into place.
+DEB_SOURCES_DIR ?= build/deb-sources
+
+# Cross-compiles otel-config-check for every supported architecture. Source
+# packages carry the payload of all of them, and the Python payload bundles the
+# binary, so they need it for all of them whatever ARCH says. The list comes
+# from the generator rather than being spelled out here, so that adding an
+# architecture to builder.Architectures is the only edit it takes.
+.PHONY: otel-config-check-all
+otel-config-check-all:
+	@set -e; for arch in $$(go run ./cmd/build-spec/deb -print-architectures); do \
+		$(MAKE) --no-print-directory otel-config-check ARCH=$$arch; \
+	done
+
+# Writes $(DEB_SOURCES_DIR)/<package>/ with the debbuild spec and source archive
+# of every component; deb-sources-<component> writes one.
+.PHONY: deb-sources
+deb-sources: otel-config-check-all
+	go run ./cmd/build-spec/deb -version $(VERSION) -output $(DEB_SOURCES_DIR)
+
+.PHONY: deb-sources-%
+deb-sources-%: otel-config-check-all
+	go run ./cmd/build-spec/deb -version $(VERSION) -component $* -output $(DEB_SOURCES_DIR)
+
+# Builds the generated specs with debbuild in a container, the way OBS does.
+#
+# Everything else about the DEB source path is asserted against the text of the
+# generated spec, which cannot catch the spec being wrong in a way debbuild
+# agrees with: the umask overrides name macros internal to debbuild, and a
+# release that renamed one would leave the assertions passing and the packages
+# shipping group-writable directories. This builds the spec instead, and
+# integration-test-deb-rebuild runs the metadata tests over the result.
+#
+# DEB_REBUILD_IMAGE selects the build distribution. Debian and Ubuntu differ in
+# the compression dpkg-deb defaults to, and in little else here.
+DEB_REBUILD_IMAGE ?= debian:12
+DEB_REBUILD_OUTPUT_DIR ?= $(CURDIR)/build/deb-rebuild
+
+# Pinned, so that an upstream change to the macros the specs rely on fails on a
+# commit that moves it rather than on an unrelated one.
+DEBBUILD_VERSION ?= 24.12.0
+
+.PHONY: deb-rebuild-container
+deb-rebuild-container:
+	@if [ -z "$$(ls $(DEB_SOURCES_DIR)/*/*.spec 2>/dev/null)" ]; then \
+		echo "error: no spec found in $(DEB_SOURCES_DIR). Run \`make deb-sources\` first."; \
+		exit 1; \
+	fi
+	@rm -rf $(DEB_REBUILD_OUTPUT_DIR)
+	@mkdir -p $(DEB_REBUILD_OUTPUT_DIR)
+	$(CONTAINER_ENGINE) run --rm --platform linux/$(ARCH) \
+		-v $(abspath $(DEB_SOURCES_DIR)):/sources:ro \
+		-v $(DEB_REBUILD_OUTPUT_DIR):/out \
+		-v $(CURDIR)/packaging/repo:/scripts:ro \
+		$(DEB_REBUILD_IMAGE) \
+		/scripts/debbuild-rebuild.sh /sources /out $(DEBBUILD_VERSION)
+
+# Runs the metadata tests over the debbuild output, the same assertions the
+# nfpm packages answer, so that the two producers cannot drift apart unnoticed.
+.PHONY: integration-test-deb-rebuild
+integration-test-deb-rebuild: deb-rebuild-container
+	PACKAGES_DIR=$(DEB_REBUILD_OUTPUT_DIR) go test -v -timeout 5m -run TestDeb ./packaging/tests/metadata/
 
 # ============================================================================
 # Local Package Repositories for Testing
@@ -324,9 +429,16 @@ export TESTCONTAINERS_RYUK_DISABLED = true
 integration-test-metadata: packages
 	go test -v -timeout 5m ./packaging/tests/metadata/
 
+.PHONY: integration-test-images
+integration-test-images:
+	@set -e; components="$$(go run ./cmd/image-metadata -field components)"; \
+	for component in $$components; do \
+		$(MAKE) integration-test-image-$$component; \
+	done
+
 .PHONY: integration-tests
 integration-tests: local-repos local-apt-repo-next local-rpm-repo-next \
-	local-apt-vendor-repo local-rpm-vendor-repo
+	local-apt-vendor-repo local-rpm-vendor-repo integration-test-images
 	go test -v -timeout 30m ./packaging/tests/...
 
 .PHONY: integration-test-deb-java
@@ -394,19 +506,27 @@ integration-test-rpm-vendor: local-rpm-repo local-rpm-vendor-repo
 # Unit Tests
 # ============================================================================
 
-# Unit tests for the Go commands (e.g. the otel-config-check validator shipped
-# in the Python package).
+# Unit tests for Go commands, the package builder, and package-image
+# configuration. The image-metadata tests construct git histories, so git must
+# be on PATH; no containers or network access are needed.
 .PHONY: go-unit-tests
 go-unit-tests:
-	go test -v ./cmd/...
+	go test -v ./cmd/... ./packaging/builder/ ./packaging/images/
+
+# Unit tests for register.js, the Node.js entry point. They stage fake
+# @opentelemetry packages in a temporary directory, so they need no npm
+# registry access and nothing from build/.
+.PHONY: nodejs-unit-tests
+nodejs-unit-tests:
+	node --test packaging/common/nodejs/register.test.js
 
 # Unit tests for sitecustomize.py. They need the `packaging` module (a runtime
 # dependency of sitecustomize.py itself); a throwaway virtualenv keeps the
 # host Python untouched.
 .PHONY: python-unit-tests
-python-unit-tests:
-	python3 -m venv build/python-unit-tests-venv
-	build/python-unit-tests-venv/bin/pip install --quiet packaging tomli
+python-unit-tests: check-uv-installed
+	uv venv --quiet --clear build/python-unit-tests-venv
+	uv pip install --quiet --python build/python-unit-tests-venv/bin/python packaging tomli
 	build/python-unit-tests-venv/bin/python -m unittest discover \
 		--start-directory packaging/common/python --pattern 'test_*.py' --verbose
 	PYTHONPATH=tools/python/tools build/python-unit-tests-venv/bin/python \
@@ -445,13 +565,14 @@ PYPROTO_SDK_VERSION = $(shell sed -n \
 	's/^opentelemetry-sdk\(\[[^]]*\]\)\{0,1\}==\([^[:space:]]*\)[[:space:]]*$$/\2/p' \
 	packaging/common/python/requirements.txt)
 .PHONY: pyproto-unit-tests
-pyproto-unit-tests:
+pyproto-unit-tests: check-uv-installed
 	@test -n "$(PYPROTO_SDK_VERSION)" || \
 		{ echo "cannot read the opentelemetry-sdk pin from packaging/common/python/requirements.txt"; exit 1; }
-	python3 -m venv $(PYPROTO_DROPIN_VENV)
-	$(PYPROTO_DROPIN_VENV)/bin/pip install --quiet pytest \
-		opentelemetry-sdk==$(PYPROTO_SDK_VERSION) hpack
-	$(PYPROTO_DROPIN_VENV)/bin/pip install --quiet --no-deps \
+	uv venv --quiet --clear --python ">=3.10" $(PYPROTO_DROPIN_VENV)
+	uv pip install --quiet --python $(PYPROTO_DROPIN_VENV)/bin/python \
+		--requirement packaging/common/python/test-requirements-dropin.txt \
+		opentelemetry-sdk==$(PYPROTO_SDK_VERSION)
+	uv pip install --quiet --python $(PYPROTO_DROPIN_VENV)/bin/python --no-deps \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-pyproto \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-common \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-http \
@@ -465,13 +586,15 @@ pyproto-unit-tests:
 			--rootdir $(PYPROTO_VENDOR_DIR)/$${suite%%/*} \
 			$(PYPROTO_VENDOR_DIR)/$$suite; \
 	done
-	python3 -m venv $(PYPROTO_EQUIV_VENV)
-	$(PYPROTO_EQUIV_VENV)/bin/pip install --quiet pytest pytest-benchmark \
+	uv venv --quiet --clear --python ">=3.10" $(PYPROTO_EQUIV_VENV)
+	uv pip install --quiet --python $(PYPROTO_EQUIV_VENV)/bin/python \
+		--requirement packaging/common/python/test-requirements-equivalence.txt \
 		opentelemetry-sdk==1.43.0 \
 		opentelemetry-proto==1.43.0 \
 		opentelemetry-exporter-otlp-proto-http==1.43.0 \
-		opentelemetry-exporter-otlp-proto-grpc==1.43.0
-	$(PYPROTO_EQUIV_VENV)/bin/pip install --quiet --no-deps \
+		opentelemetry-exporter-otlp-proto-grpc==1.43.0 \
+		protobuf==7.36.2
+	uv pip install --quiet --python $(PYPROTO_EQUIV_VENV)/bin/python --no-deps \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-pyproto \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-common \
 		--editable $(PYPROTO_VENDOR_DIR)/opentelemetry-exporter-otlp-pyproto-http \
@@ -492,8 +615,15 @@ check-supported-python-versions:
 	python3 tools/python/tools/check_supported_python_versions.py
 
 # ============================================================================
-# Lint
+# Lint and tooling
 # ============================================================================
+
+.PHONY: check-uv-installed
+check-uv-installed:
+	@if ! uv --version > /dev/null 2>&1; then \
+		echo "error: uv is not installed. See https://docs.astral.sh/uv/getting-started/installation/ for installation instructions."; \
+		exit 1; \
+	fi
 
 .PHONY: check-shellcheck-installed
 check-shellcheck-installed:

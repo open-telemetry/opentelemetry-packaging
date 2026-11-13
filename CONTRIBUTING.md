@@ -2,13 +2,25 @@
 
 ## Prerequisites
 
+- **GNU Make 4.0+** (the Makefile uses constructs that GNU Make 3.81 cannot parse)
 - **Go 1.26+** (package builds and tests are pure Go)
+- **git** (needed by the package-image metadata unit tests, which construct git histories to exercise build-plan selection)
 - **npm** (needed to fetch the Node.js auto-instrumentation agent from the npm registry)
 - **Python 3 with pip** (needed to fetch the Python auto-instrumentation packages; invoked as `python3 -m pip`)
-- **A container engine** (Podman or Docker — needed for local repository generation and integration tests)
+- **[uv](https://docs.astral.sh/uv/)** (needed by the Python test targets, which build their virtualenvs with it; `make python-unit-tests` and `make pyproto-unit-tests` stop with an installation hint if it is missing)
+- **A container engine** (Podman or Docker, needed for package-image builds, local repository generation, and integration tests).
 - **`rpmbuild`** (optional — only for building the source RPM natively; `make srpm-container` runs it in a container instead)
 
 No Ruby, FPM, or special Docker images are required to build packages.
+
+macOS ships GNU Make 3.81 as `make`, which fails on this Makefile with `*** unterminated call to function 'shell': missing ')'`.
+Install a current GNU Make with Homebrew and run the targets through `gmake`:
+
+```sh
+brew install make
+```
+
+Every `make` invocation in this document is then `gmake` instead.
 
 ## Repository layout
 
@@ -16,6 +28,8 @@ No Ruby, FPM, or special Docker images are required to build packages.
 .copr/Makefile               COPR "make srpm" entry point (installs the tooling, then calls make srpm)
 cmd/build-packages/          CLI entry point for building .deb and .rpm packages
 cmd/build-spec/rpm/          CLI entry point for generating and staging the source RPM spec
+cmd/build-spec/deb/          CLI entry point for writing the debbuild specs and source archives built on OBS
+cmd/image-metadata/          Package-image metadata and build plans
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
 packaging/
   builder/                   Go library that drives nfpm to create packages
@@ -24,19 +38,25 @@ packaging/
     download.go              Upstream artifact download helpers
     supported_python_versions.json  Python interpreters the Python package is built for, embedded by download.go
     spec.go                  RPM spec generation for the COPR build (projection of components.go)
-    stage.go                 Payload staging into an rpmbuild buildroot, with generated %files lists
+    debspec.go               debbuild spec generation for the OBS build, one spec per component
+    debsources.go            OBS source archives: the payload staged for every architecture
+    stage.go                 Payload staging into a buildroot, with generated %files lists
   common/                    Shared assets referenced by the builder
     <lang>/otel-config.yaml   Language-specific declarative configuration file, shipped by that language package (valid as shipped)
     scripts/                 POSIX lifecycle scripts (postinstall, preuninstall)
     injector/                Config files, man page template, README, release.txt (version pin)
     java/                    "
-    nodejs/                  " (plus register.js, the --require entry point with declarative-config support)
+    nodejs/                  " (plus register.js, the --require entry point with declarative-config support, and its unit tests)
     dotnet/                  "
-    python/                  Config, man page template, README, requirements.txt (version pins), sitecustomize.py (plus its unit tests)
+    python/                  Config, man page template, README, requirements.txt (bundle version pins), test-requirements-*.txt (pyproto test tooling pins, kept out of vendor/ so Renovate sees them), sitecustomize.py (plus its unit tests)
       vendor/                The pyproto exporter chain, developed here with its test suites (unpublished pure-Python packages; see its README)
-  repo/                      APT and YUM repository generation scripts
+  images/                    Package-image tooling
+    config.json              Supported packages and architectures
+    Dockerfile               Shared package extraction and image definition
+  repo/                      APT and YUM repository generation scripts, and the debbuild rebuild
   tests/                     Integration tests
     metadata/                       Host-side metadata validation (no containers needed)
+    images/                         Package-image contents and copy tests
     pyprotogrpc/                    Pure-Python gRPC transport tests against the otel-sink (host-side)
     {python,java,nodejs,dotnet}/    Matrix E2E tests (deb+rpm × base images) asserting via the otel-sink
                                     (python/ also hosts the sitecustomize.py interpreter compatibility tests)
@@ -102,7 +122,7 @@ Each component in `components.go` declares its identity and lifecycle metadata a
 That separation has one purpose: the metadata alone is enough to generate an RPM spec, so `spec.go` can render one without downloading a single upstream artifact.
 
 Add or change a package relationship in `components.go` and nothing else.
-Both producers read it from there: nfpm through `Component.Info`, and rpmbuild through the generated spec.
+Every producer reads it from there: nfpm through `Component.Info`, and rpmbuild and debbuild through the specs generated from it.
 
 ### Building RPMs with rpmbuild instead of nfpm
 
@@ -187,6 +207,85 @@ copr-cli buildscm opentelemetry/opentelemetry-packaging \
 
 To try a change before it is merged, point `--clone-url` and `--commit` at a fork and a branch, or submit the same command to a COPR project of your own with the same chroots.
 
+### Building DEBs with debbuild on the Open Build Service
+
+DEBs have a second producer too, used by the [Open Build Service](https://build.opensuse.org/) (OBS), which builds, signs, and publishes the Debian and Ubuntu repositories.
+OBS builds have no network access, and the Debian releases do not ship the Go version `go.mod` asks for, so nothing is compiled or downloaded there.
+The payload is staged beforehand, by the same builder as every other path, and committed to OBS in the source archive.
+
+Each component is its own OBS package, so a component can be built and released on its own.
+Write the sources of every component:
+
+```sh
+make deb-sources
+```
+
+Or of a single one:
+
+```sh
+make deb-sources-injector
+```
+
+Both write `build/deb-sources/<package>/`, the content of the OBS package of the same name, by running:
+
+```sh
+go run ./cmd/build-spec/deb -version 1.0.0 -output build/deb-sources
+```
+
+Each directory holds two files.
+`<package>.spec` is a [debbuild](https://github.com/debbuild/debbuild) spec rendered from `components.go`, with nothing to build.
+`<package>-<version>.tar.gz` holds the payload staged for each DEB architecture under `<arch>/root`, or once under `all/root` for an architecture-independent component, with the `%files` list for it alongside.
+The spec picks the tree debbuild's `%{_arch}` names and copies it into the buildroot.
+The archive entries carry the time in [`SOURCE_DATE_EPOCH`](https://reproducible-builds.org/specs/source-date-epoch/), so identical payloads give identical archives and an unchanged component is no change to commit.
+Without it the archive records the current time, and the command warns.
+
+Some properties of the result differ from the nfpm packages, and are worth knowing:
+
+- The DEB version is the one nfpm writes (`1.0.0~rc.1` for `1.0.0-rc.1`), followed by a revision that OBS sets from its own commit and build counters (`-2.1`), so an OBS package sorts above the identically versioned nfpm one.
+- The spec sets `AutoReq: no`, so the dependencies are exactly those in `components.go`, as with nfpm.
+- The file lists declare no `%attr`: debbuild would turn each one into a `chown` and `chmod` in the `postinst`. The modes come from the source archive instead, and the spec sets umask 022 for the directories and man pages debbuild creates itself.
+- debbuild writes no `md5sums` control file. dpkg generates the equivalent at unpack time, so `dpkg --verify` and `debsums` work on an installed package either way; what remains is the advisory lintian `no-md5sums-control-file` tag.
+- The compression follows the build distribution's `dpkg` default: xz on Debian, zstd on Ubuntu.
+- The packages are not byte-reproducible: debbuild stamps the directories it creates, and the man page it recompresses, with the time of the build. The source archives are, which is what matters for OBS, where a changed archive is a rebuild.
+
+### Building the DEB sources locally
+
+`make deb-rebuild-container` builds every generated spec with debbuild in a container, the way OBS does, and `make integration-test-deb-rebuild` runs the metadata tests over the result:
+
+```sh
+make integration-test-deb-rebuild
+```
+
+`DEB_REBUILD_IMAGE` selects the build distribution, `debian:12` by default; CI runs it against `ubuntu:24.04` as well.
+`DEBBUILD_VERSION` pins debbuild itself, which is built from its release tarball because the project publishes no package of its own.
+Keep it pinned: the specs set `%global __mkdir_p` and `%global __gzip`, macros internal to debbuild, and an upstream rename should fail on the commit that moves the pin rather than on an unrelated one.
+
+That is also why the rebuild is worth running at all.
+Every other assertion about this path reads the text of the generated spec, and a spec that is wrong in a way debbuild agrees with passes all of them.
+
+To run debbuild by hand instead, create the `_topdir` skeleton first:
+
+```sh
+mkdir -p "$PWD"/top/{BUILD,BUILDROOT,DEBS,SDEBS,SOURCES,SPECS}
+```
+
+debbuild creates none of those itself, and without them fails with only `Exec of /var/tmp/deb-tmp.prep.NNN failed (%prep): 512` to go on.
+That is the general shape of a debbuild failure: it discards the output of every section it runs unless given `-vv`, so the exit status is all that reaches the log.
+Reach for `-vv` first when a build fails for no stated reason.
+
+```sh
+debbuild --define "_sourcedir $PWD" --define "_topdir $PWD/top" -bb <package>.spec
+```
+
+An OBS repository builds with debbuild when its first path is the debbuild project for that release, for example `Debian:debbuild/Debian_12` before `Debian:12/standard`.
+That project's configuration sets `BuildEngine: debbuild`; it has to come first because some base projects, such as `Debian:13`, reset everything configured before them.
+
+To check the result, download the binaries with `osc getbinaries` and point the metadata tests at them:
+
+```sh
+PACKAGES_DIR=<dir> go test -run TestDeb ./packaging/tests/metadata/
+```
+
 ### Upstream version pins
 
 Each upstream artifact version is pinned in a `packaging/common/<component>/release.txt` file (Python instead pins its packages in `packaging/common/python/requirements.txt`):
@@ -241,14 +340,33 @@ go run ./cmd/build-packages -version <VERSION> -arch <ARCH> -format all -output 
 The Python package ships the `otel-config-check` validator, which the make targets cross-compile beforehand (`make otel-config-check`, producing `build/bin/otel-config-check-<arch>`).
 When invoking `build-packages` directly for the Python component, build that binary first, or point `-config-check-binary` at one.
 
+### Building package images
+
+Build all configured package images:
+
+```sh
+make images
+```
+
+See [the image documentation](packaging/images/README.md) for configuration, image contents, naming, and individual Make tasks.
+
 ## Testing
 
 ### Go command unit tests (fast, no containers)
 
-Unit tests for the Go commands, currently the `otel-config-check` declarative-configuration validator that ships inside the Python package.
+Unit tests cover the Go commands, the package builder, package-image configuration, and build-plan selection.
 
 ```sh
 make go-unit-tests
+```
+
+### Node.js register.js unit tests (fast, no containers)
+
+Unit tests for the routing logic in `packaging/common/nodejs/register.js` (the declarative-configuration branch, the degrade-to-a-warning behavior, and the resolution of the upstream entry points through the published `exports` map).
+They stage fake `@opentelemetry` packages in a temporary directory and load `register.js` with `node --require`, so they need neither npm registry access nor a built package.
+
+```sh
+make nodejs-unit-tests
 ```
 
 ### Python unit tests (fast, no containers)
@@ -322,11 +440,23 @@ These tests parse `.deb` and `.rpm` files natively in Go using [pault.ag/go/debi
 make integration-test-metadata
 ```
 
+### Package-image tests (containers required)
+
+Build and test all configured package images:
+
+```sh
+make integration-test-images
+```
+
+These tests are also included in `make integration-tests`.
+See [the image Make tasks](packaging/images/README.md#make-tasks) for per-component targets.
+
 ### Integration tests (containers required)
 
-End-to-end tests that install packages in Debian/Fedora containers from a local APT/YUM repository, start instrumented applications, and verify telemetry output.
+End-to-end tests install packages in Debian/Fedora containers from a local APT/YUM repository, start instrumented applications, and verify telemetry output.
+The aggregate target also builds and tests package images.
 
-Run all integration tests (builds packages and local repositories first):
+Run all integration tests (builds packages, local repositories, and package images first):
 
 ```sh
 make integration-tests
@@ -410,4 +540,5 @@ To add a new language auto-instrumentation package:
 
 ## Releasing
 
-Cutting a release and publishing the package repositories is a maintainer task documented separately in [RELEASING.md](RELEASING.md).
+System-package releases and automatic package-image publication are documented separately in [RELEASING.md](RELEASING.md).
+Package images follow merged upstream version pins and do not require a system-package release.
