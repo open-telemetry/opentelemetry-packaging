@@ -64,9 +64,9 @@ func TestConfiguredComponentsHavePins(t *testing.T) {
 func TestCheckPins(t *testing.T) {
 	cfg, err := Load("..")
 	require.NoError(t, err)
-	// python's pins live in requirements.txt and meta has no directory, so
-	// both reach CI as configured components that cannot be built.
-	for _, component := range []string{"python", "meta"} {
+	// python's pins live in requirements.txt, so it reaches CI as a configured
+	// component that cannot be built.
+	for _, component := range []string{"python"} {
 		t.Run(component, func(t *testing.T) {
 			unpinned := Config{Packages: []Package{{Component: component}}, Architectures: cfg.Architectures}
 			require.ErrorContains(t, unpinned.CheckPins(".."), component)

@@ -1,0 +1,4 @@
+# Version of the opentelemetry metapackage. It ships no upstream artifact, so
+# it is not managed by Renovate: bump it by hand when the metapackage's own
+# relations or contents change, not when one of the packages it pulls in does.
+0.0.3

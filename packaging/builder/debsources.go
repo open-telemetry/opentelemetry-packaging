@@ -180,24 +180,34 @@ func writeTarGz(w io.Writer, baseDir, top string) error {
 	return gz.Close()
 }
 
-// sourceDateEpoch returns the time every archive entry records.
+// sourceDateEpoch returns the time every archive entry records, warning when
+// SOURCE_DATE_EPOCH is unset: the archive is then not reproducible, which is
+// fine for a local build but not where it is committed to OBS, since a changed
+// archive is a new OBS revision and a rebuild even when the payload is the
+// same.
+func sourceDateEpoch() (time.Time, error) {
+	t, set, err := buildTime()
+	if err == nil && !set {
+		fmt.Fprintln(os.Stderr, "warning: SOURCE_DATE_EPOCH is not set; the source archive records the current time and is not reproducible")
+	}
+	return t, err
+}
+
+// buildTime returns the time a build records, and whether it came from
+// SOURCE_DATE_EPOCH.
 //
 // SOURCE_DATE_EPOCH is the reproducible-builds convention for the timestamp a
 // build should record instead of the current time, as seconds since the Unix
 // epoch (https://reproducible-builds.org/specs/source-date-epoch/). nfpm reads
-// it for the same purpose. Set it where the archive is committed to OBS: a
-// changed archive is a new OBS revision and a rebuild even when the payload is
-// the same. Unset, the archive records the current time, which is fine for a
-// local build, so it only warns.
-func sourceDateEpoch() (time.Time, error) {
+// it for the same purpose. Unset, the build records the current time.
+func buildTime() (t time.Time, set bool, err error) {
 	v := os.Getenv("SOURCE_DATE_EPOCH")
 	if v == "" {
-		fmt.Fprintln(os.Stderr, "warning: SOURCE_DATE_EPOCH is not set; the source archive records the current time and is not reproducible")
-		return time.Now().UTC().Truncate(time.Second), nil
+		return time.Now().UTC().Truncate(time.Second), false, nil
 	}
 	secs, err := strconv.ParseInt(v, 10, 64)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid SOURCE_DATE_EPOCH %q: %w", v, err)
+		return time.Time{}, true, fmt.Errorf("invalid SOURCE_DATE_EPOCH %q: %w", v, err)
 	}
-	return time.Unix(secs, 0).UTC(), nil
+	return time.Unix(secs, 0).UTC(), true, nil
 }

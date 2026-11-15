@@ -201,13 +201,22 @@ func main() {
 	buildPlan := flag.Bool("plan", false, "Print a build plan as GitHub Actions outputs")
 	base := flag.String("base", "", "Select packages changed since this git ref (default: all)")
 	publishRef := flag.String("publish-ref", "", "Check for superseding inputs for the same component and version at this git ref")
+	target := flag.String("target", "images", "What to plan for: images (package images) or obs (DEBs on the Open Build Service)")
+	selection := flag.String("components", "", "With -target obs: all, or a comma-separated list of components, instead of selecting by -base")
 	flag.Parse()
 	var err error
-	if *buildPlan {
+	switch {
+	case *target == "obs" && *buildPlan:
+		err = obsPlan(os.Stdout, *root, *base, *selection)
+	case *target == "obs":
+		err = fmt.Errorf("-target obs supports only -plan")
+	case *target != "images":
+		err = fmt.Errorf("unknown target %q (expected images or obs)", *target)
+	case *buildPlan:
 		err = planFromRef(os.Stdout, *root, *base)
-	} else if *publishRef != "" {
+	case *publishRef != "":
 		err = checkPublication(os.Stdout, *root, *component, *publishRef)
-	} else {
+	default:
 		err = run(os.Stdout, *root, *component, *field)
 	}
 	if err != nil {
