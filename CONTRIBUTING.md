@@ -261,11 +261,8 @@ Some properties of the DEBs differ from the nfpm packages, and are worth knowing
 - The compression follows the build distribution's `dpkg` default: xz on Debian, zstd on Ubuntu.
 - The packages are not byte-reproducible: debbuild stamps the directories it creates, and the man page it recompresses, with the time of the build. The source archives are, which is what matters for OBS, where a changed archive is a rebuild.
 
-The RPMs built from the same spec differ from the source RPM the COPR path produced in two ways:
-
-- Nothing is compiled or downloaded at build time. The spec has no `BuildRequires`, because the payload is staged beforehand.
-- The Python package is not built for EL, whose interpreter does not match the bundled wheels. On OBS that package is disabled in the EL repository; locally, `RPM_REBUILD_SKIP=python` leaves it out.
-
+Unlike the source RPM the COPR path produced, nothing is compiled or downloaded at build time.
+The spec has no `BuildRequires`, because the payload is staged beforehand.
 The spec sets the same globals the source RPM did: no debuginfo, no stripping of the prebuilt binaries, and no private libraries published as `Provides`.
 `AutoReq` stays on for rpm, so the glibc symbol versions the binaries need remain install constraints.
 
@@ -287,7 +284,7 @@ Every other assertion about this path reads the text of the generated spec, and 
 `make obs-rpm-rebuild-container` builds the same specs with rpmbuild, and `make integration-test-obs-rpm-rebuild` runs the RPM metadata tests over the result:
 
 ```sh
-make integration-test-obs-rpm-rebuild RPM_REBUILD_IMAGE=docker.io/almalinux/9-base RPM_REBUILD_SKIP=python
+make integration-test-obs-rpm-rebuild RPM_REBUILD_IMAGE=docker.io/almalinux/9-base
 ```
 
 `RPM_REBUILD_IMAGE` defaults to Fedora 44.

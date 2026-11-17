@@ -31,7 +31,7 @@ make pyproto-unit-tests        # Vendored pyproto exporter test suites (throwawa
 make integration-test-metadata # Fast metadata tests (no containers)
 make integration-test-deb-rebuild   # Same metadata tests over the debbuild output
 make obs-rpm-rebuild-container # Build the same specs with rpmbuild the way OBS does
-                               #   RPM_REBUILD_IMAGE=docker.io/almalinux/9-base RPM_REBUILD_SKIP=python for EL
+                               #   RPM_REBUILD_IMAGE=docker.io/almalinux/9-base to exercise the EL rpm
 make integration-test-obs-rpm-rebuild # RPM metadata tests over the rpmbuild output
 make integration-tests         # Full E2E tests (requires Podman/Docker)
 make integration-test-deb-java # Single E2E test
