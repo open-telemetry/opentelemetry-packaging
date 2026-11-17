@@ -62,7 +62,7 @@ func Stage(cfg Config, comp Component, root, filelistDir string) error {
 }
 
 // Names of the file lists StageOBS writes beside the payload, one per package format.
-// The unified spec (see debspec.go) picks the one for the build it is running under.
+// The unified spec (see obsspec.go) picks the one for the build it is running under.
 const (
 	RPMFileListSuffix = ".rpm.files"
 	DEBFileListSuffix = ".deb.files"

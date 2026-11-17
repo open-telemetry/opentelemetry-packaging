@@ -19,7 +19,7 @@ import (
 // The planner, the publisher and the workflow are deliberately not among them:
 // they decide what is uploaded, not what it contains, so a change to them
 // republishes nothing. The first upload after they change is a manual dispatch.
-var obsInputs = []string{"cmd/build-spec/deb"}
+var obsInputs = []string{"cmd/build-spec/obs"}
 
 func obsShared() []string {
 	return append(append([]string(nil), changes.PackageInputs...), obsInputs...)

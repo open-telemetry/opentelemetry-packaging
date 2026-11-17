@@ -122,8 +122,8 @@ func TestOBSPlanSelectsChangesSinceBase(t *testing.T) {
 		{"python requirements", "packaging/common/python/requirements.txt", []string{"python"}},
 		{"metapackage", "packaging/common/meta/release.txt", []string{"meta"}},
 		{"component config", "packaging/common/injector/otel-injector.conf", []string{"injector"}},
-		{"builder", "packaging/builder/debspec.go", []string{"injector", "java", "nodejs", "dotnet", "python", "meta"}},
-		{"DEB source generator", "cmd/build-spec/deb/main.go", []string{"injector", "java", "nodejs", "dotnet", "python", "meta"}},
+		{"builder", "packaging/builder/obsspec.go", []string{"injector", "java", "nodejs", "dotnet", "python", "meta"}},
+		{"DEB source generator", "cmd/build-spec/obs/main.go", []string{"injector", "java", "nodejs", "dotnet", "python", "meta"}},
 		// The workflow and the tools around it decide what is uploaded, not
 		// what it contains.
 		{"workflow", ".github/workflows/obs.yml", []string{}},

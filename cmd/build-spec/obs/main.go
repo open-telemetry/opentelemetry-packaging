@@ -1,9 +1,8 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Command build-spec/deb writes the sources of the DEB packages built by debbuild
-// on the Open Build Service: for each component, a spec and a source archive
-// holding the payload already staged for every architecture.
+// Command build-spec/obs writes the sources of the DEB and RPM packages built on the Open Build Service.
+// For each component it writes one spec, built by debbuild for the DEB repositories and by rpmbuild for the RPM ones, and a source archive holding the payload already staged for every architecture.
 //
 // Each component lands in its own directory, named after its package, which is
 // the content of the OBS package of the same name.
@@ -13,9 +12,9 @@
 //
 // Usage:
 //
-//	go run ./cmd/build-spec/deb -output build/deb-sources
-//	go run ./cmd/build-spec/deb -component injector -output build/deb-sources
-//	go run ./cmd/build-spec/deb -version 1.0.0 -output build/deb-sources
+//	go run ./cmd/build-spec/obs -output build/obs-sources
+//	go run ./cmd/build-spec/obs -component injector -output build/obs-sources
+//	go run ./cmd/build-spec/obs -version 1.0.0 -output build/obs-sources
 package main
 
 import (
@@ -36,7 +35,7 @@ func main() {
 		"Print the architectures the source archives are staged for, one per line, and exit")
 	version := flag.String("version", "", "Package version for every component (defaults to each component's upstream version pin)")
 	release := flag.String("release", "", "Packaging revision (defaults to 1)")
-	outputDir := flag.String("output", "build/deb-sources", "Output directory; each component gets a subdirectory named after its package")
+	outputDir := flag.String("output", "build/obs-sources", "Output directory; each component gets a subdirectory named after its package")
 	component := flag.String("component", "all", "Component to write: injector, java, nodejs, dotnet, python, meta, or all")
 	packagingDir := flag.String("packaging-dir", "", "Path to packaging/ directory (auto-detected if empty)")
 	configCheckDir := flag.String("config-check-dir", filepath.Join("build", "bin"),
@@ -106,7 +105,7 @@ func main() {
 		if err := os.RemoveAll(dir); err != nil {
 			log.Fatalf("error: %v", err)
 		}
-		sources, err := builder.WriteDebSources(cfg, comp, configCheckBinary, dir)
+		sources, err := builder.WriteOBSSources(cfg, comp, configCheckBinary, dir)
 		if err != nil {
 			log.Fatalf("error: %v", err)
 		}

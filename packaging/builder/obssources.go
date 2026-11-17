@@ -14,13 +14,13 @@ import (
 	"time"
 )
 
-// DebSources are the files of one component's OBS package.
-type DebSources struct {
+// OBSSources are the files of one component's OBS package.
+type OBSSources struct {
 	Spec    string // Path to the generated spec
 	Archive string // Path to the source archive it names as Source0
 }
 
-// WriteDebSources writes a component's debbuild spec and source archive into
+// WriteOBSSources writes a component's spec and source archive into
 // outputDir, ready to be committed to an OBS package.
 //
 // The archive holds one staged payload per architecture in Architectures, each
@@ -28,25 +28,25 @@ type DebSources struct {
 // under <prefix>/all for an architecture-independent component. cfg.Arch is
 // ignored. configCheckBinary returns the otel-config-check binary built for an
 // architecture, which the Python payload bundles.
-func WriteDebSources(cfg Config, comp Component, configCheckBinary func(arch string) string, outputDir string) (*DebSources, error) {
-	version, _, err := DebVersionRelease(cfg)
+func WriteOBSSources(cfg Config, comp Component, configCheckBinary func(arch string) string, outputDir string) (*OBSSources, error) {
+	version, _, err := OBSVersionRelease(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	workDir, err := os.MkdirTemp("", "otel-deb-sources-*")
+	workDir, err := os.MkdirTemp("", "otel-obs-sources-*")
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(workDir)
 
-	prefix := DebSourcePrefix(comp, version)
-	for _, arch := range debPayloadArchs(comp) {
+	prefix := OBSSourcePrefix(comp, version)
+	for _, arch := range obsPayloadArchs(comp) {
 		archCfg := cfg
 		archCfg.Arch = arch
 		archCfg.ConfigCheckBinary = configCheckBinary(arch)
 
-		dir := filepath.Join(workDir, prefix, debPayloadDir(comp, arch))
+		dir := filepath.Join(workDir, prefix, obsPayloadDir(comp, arch))
 		if err := StageOBS(archCfg, comp, filepath.Join(dir, "root"), dir); err != nil {
 			return nil, err
 		}
@@ -56,12 +56,12 @@ func WriteDebSources(cfg Config, comp Component, configCheckBinary func(arch str
 		return nil, err
 	}
 
-	sources := &DebSources{
+	sources := &OBSSources{
 		Spec:    filepath.Join(outputDir, comp.PackageName+".spec"),
-		Archive: filepath.Join(outputDir, DebSourceArchiveName(comp, version)),
+		Archive: filepath.Join(outputDir, OBSSourceArchiveName(comp, version)),
 	}
 	if err := writeFileWith(sources.Spec, func(w io.Writer) error {
-		return WriteDebSpec(cfg, comp, w)
+		return WriteOBSSpec(cfg, comp, w)
 	}); err != nil {
 		return nil, fmt.Errorf("writing spec for %s: %w", comp.Name, err)
 	}
@@ -73,20 +73,20 @@ func WriteDebSources(cfg Config, comp Component, configCheckBinary func(arch str
 	return sources, nil
 }
 
-// debPayloadArchs returns the architectures a component is staged for. They
+// obsPayloadArchs returns the architectures a component is staged for. They
 // are DEB architecture names, which is what debbuild expands %{_arch} to. An
 // architecture-independent payload is the same for every one, so it is staged
 // once.
-func debPayloadArchs(comp Component) []string {
+func obsPayloadArchs(comp Component) []string {
 	if comp.Noarch {
 		return Architectures[:1]
 	}
 	return Architectures
 }
 
-func debPayloadDir(comp Component, arch string) string {
+func obsPayloadDir(comp Component, arch string) string {
 	if comp.Noarch {
-		return DebNoarchDir
+		return OBSNoarchDir
 	}
 	return arch
 }

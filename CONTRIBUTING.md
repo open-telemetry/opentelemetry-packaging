@@ -28,7 +28,7 @@ Every `make` invocation in this document is then `gmake` instead.
 .copr/Makefile               COPR "make srpm" entry point (installs the tooling, then calls make srpm)
 cmd/build-packages/          CLI entry point for building .deb and .rpm packages
 cmd/build-spec/rpm/          CLI entry point for generating and staging the source RPM spec
-cmd/build-spec/deb/          CLI entry point for writing the specs and source archives built on OBS
+cmd/build-spec/obs/          CLI entry point for writing the specs and source archives built on OBS
 cmd/package-metadata/        Per-component package metadata and build plans for CI (package images, OBS)
 cmd/obs-publish/             CLI entry point for uploading, building, and releasing one package on OBS
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
@@ -38,8 +38,8 @@ packaging/
     components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
     download.go              Upstream artifact download helpers
     spec.go                  RPM spec generation for the COPR build (projection of components.go)
-    debspec.go               Unified debbuild and rpmbuild spec generation for the OBS build, one spec per component
-    debsources.go            OBS source archives: the payload staged for every architecture
+    obsspec.go               Unified debbuild and rpmbuild spec generation for the OBS build, one spec per component
+    obssources.go            OBS source archives: the payload staged for every architecture
     stage.go                 Payload staging into a buildroot, with generated %files lists
   common/                    Shared assets referenced by the builder
     <lang>/otel-config.yaml   Language-specific declarative configuration file, shipped by that language package (valid as shipped)
@@ -215,19 +215,19 @@ Each is versioned by the upstream agent it ships, the version in its pin (see "U
 Write the sources of every component:
 
 ```sh
-make deb-sources
+make obs-sources
 ```
 
 Or of a single one:
 
 ```sh
-make deb-sources-injector
+make obs-sources-injector
 ```
 
-Both write `build/deb-sources/<package>/`, the content of the OBS package of the same name, by running:
+Both write `build/obs-sources/<package>/`, the content of the OBS package of the same name, by running:
 
 ```sh
-go run ./cmd/build-spec/deb -output build/deb-sources
+go run ./cmd/build-spec/obs -output build/obs-sources
 ```
 
 `-version` overrides every component's version, for testing.
@@ -249,7 +249,7 @@ Renovate bumps that pin on its own, in a PR of its own: the next upload then reb
 To check that a component's sources are reproducible, write them twice with the same `SOURCE_DATE_EPOCH` and compare the two, which CI does for Python:
 
 ```sh
-make check-reproducible-deb-sources-python
+make check-reproducible-obs-sources-python
 ```
 
 Some properties of the DEBs differ from the nfpm packages, and are worth knowing:

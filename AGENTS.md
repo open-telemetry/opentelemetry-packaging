@@ -19,9 +19,9 @@ make srpm-container            # Same, running rpmbuild in a container instead
 make srpm-sources              # Generated spec + vendored source tarball only
 make rpm-rebuild-container     # Rebuild the SRPM into binary RPMs the way COPR does
                                #   REBUILD_IMAGE=almalinux:9 to exercise the EL rpm
-make deb-sources               # Unified spec (debbuild and rpmbuild) + staged source archives for OBS (build/deb-sources/<package>/), each at its upstream version
-make deb-sources-<component>   # Same, for one component
-make check-reproducible-deb-sources-<component> # Write one component's DEB sources twice and fail unless byte-identical
+make obs-sources               # Unified spec (debbuild and rpmbuild) + staged source archives for OBS (build/obs-sources/<package>/), each at its upstream version
+make obs-sources-<component>   # Same, for one component
+make check-reproducible-obs-sources-<component> # Write one component's OBS sources twice and fail unless byte-identical
 make deb-rebuild-container     # Build those specs with debbuild the way OBS does
                                #   DEB_REBUILD_IMAGE=ubuntu:24.04 to exercise the Ubuntu dpkg
 
@@ -48,7 +48,7 @@ make clean                     # Remove build/
 - `.copr/Makefile` — COPR "make srpm" entry point; installs the tooling and delegates to `make srpm`
 - `cmd/build-packages/` — CLI entry point; calls `packaging/builder/`
 - `cmd/build-spec/rpm/` — source RPM spec generation and rpmbuild payload staging
-- `cmd/build-spec/deb/` — unified spec and pre-staged source archive per component, built by debbuild and rpmbuild on OBS
+- `cmd/build-spec/obs/` — unified spec and pre-staged source archive per component, built by debbuild and rpmbuild on OBS
 - `cmd/package-metadata/` — CI build plans: package images (`-target images`) and OBS uploads (`-target obs`)
 - `cmd/obs-publish/` + `packaging/obs/` — OBS API client that commits one package's sources, waits for every build of that revision, and releases it (used by `.github/workflows/obs.yml`)
 - `packaging/changes/` — maps changed paths to the components they affect, shared by the image and OBS workflows

@@ -15,9 +15,9 @@ import (
 
 var (
 	//go:embed opentelemetry.spec.tmpl
-	debSpecTemplateSource string
+	obsSpecTemplateSource string
 
-	debSpecTemplate = template.Must(template.New("opentelemetry.spec.tmpl").Parse(debSpecTemplateSource))
+	obsSpecTemplate = template.Must(template.New("opentelemetry.spec.tmpl").Parse(obsSpecTemplateSource))
 )
 
 // rpmArch returns the RPM spelling of a payload architecture, which is named after its DEB architecture in the source archive.
@@ -32,13 +32,13 @@ func rpmArch(debArch string) string {
 	}
 }
 
-// DebNoarchDir is the payload directory of an architecture-independent
+// OBSNoarchDir is the payload directory of an architecture-independent
 // component in the DEB source archive. It is the DEB architecture name such a
 // package carries.
-const DebNoarchDir = "all"
+const OBSNoarchDir = "all"
 
-// debSpecData is the template input describing one component's spec.
-type debSpecData struct {
+// obsSpecData is the template input describing one component's spec.
+type obsSpecData struct {
 	Name        string
 	Version     string
 	Release     string
@@ -68,7 +68,7 @@ type debSpecData struct {
 	Scriptlets  []specScriptlet
 }
 
-// DebVersionRelease returns the Version and Release fields of a debbuild spec.
+// OBSVersionRelease returns the Version and Release fields of the spec.
 //
 // The version is the one nfpm writes into its DEB packages, a pre-release
 // suffix after a tilde, so packages from both producers compare the same way.
@@ -77,7 +77,7 @@ type debSpecData struct {
 // default of 1. The Open Build Service replaces the Release field with its own
 // commit and build counters, so there the revision grows with every commit and
 // stays above the unrevised version nfpm writes.
-func DebVersionRelease(cfg Config) (version, release string, err error) {
+func OBSVersionRelease(cfg Config) (version, release string, err error) {
 	v := strings.TrimPrefix(strings.TrimSpace(cfg.Version), "v")
 	if v == "" {
 		return "", "", fmt.Errorf("empty version")
@@ -99,33 +99,33 @@ func DebVersionRelease(cfg Config) (version, release string, err error) {
 	return version, release, nil
 }
 
-// DebSourceArchiveName returns the file name of a component's source archive,
+// OBSSourceArchiveName returns the file name of a component's source archive,
 // which is also the spec's Source0.
-func DebSourceArchiveName(comp Component, version string) string {
-	return DebSourcePrefix(comp, version) + ".tar.gz"
+func OBSSourceArchiveName(comp Component, version string) string {
+	return OBSSourcePrefix(comp, version) + ".tar.gz"
 }
 
-// DebSourcePrefix returns the top directory of a component's source archive,
+// OBSSourcePrefix returns the top directory of a component's source archive,
 // where debbuild's setup macro expects it.
-func DebSourcePrefix(comp Component, version string) string {
+func OBSSourcePrefix(comp Component, version string) string {
 	return comp.PackageName + "-" + version
 }
 
-// WriteDebSpec renders the debbuild spec for one component.
+// WriteOBSSpec renders the spec for one component.
 //
 // Every component gets its own spec, and therefore its own OBS package, so a
 // component can be built and released on its own. Unlike WriteSpec, the spec
-// builds nothing: the payload is staged ahead of time, by WriteDebSources, into
+// builds nothing: the payload is staged ahead of time, by WriteOBSSources, into
 // the source archive, and the spec only copies it into place.
-func WriteDebSpec(cfg Config, comp Component, w io.Writer) error {
-	version, release, err := DebVersionRelease(cfg)
+func WriteOBSSpec(cfg Config, comp Component, w io.Writer) error {
+	version, release, err := OBSVersionRelease(cfg)
 	if err != nil {
 		return err
 	}
 
 	var debArchs, rpmArchs string
 	if !comp.Noarch {
-		archs := debPayloadArchs(comp)
+		archs := obsPayloadArchs(comp)
 		debArchs = strings.Join(archs, " ")
 		rpmNames := make([]string, 0, len(archs))
 		for _, arch := range archs {
@@ -139,7 +139,7 @@ func WriteDebSpec(cfg Config, comp Component, w io.Writer) error {
 		return err
 	}
 
-	data := &debSpecData{
+	data := &obsSpecData{
 		Name:    comp.PackageName,
 		Version: version,
 		Release: release,
@@ -152,7 +152,7 @@ func WriteDebSpec(cfg Config, comp Component, w io.Writer) error {
 		Packager:    cfg.maintainer(),
 		Section:     cfg.section(),
 		Noarch:      comp.Noarch,
-		PayloadDir:  DebNoarchDir,
+		PayloadDir:  OBSNoarchDir,
 		DebArchs:    debArchs,
 		RPMArchs:    rpmArchs,
 		Component:   comp.Name,
@@ -167,5 +167,5 @@ func WriteDebSpec(cfg Config, comp Component, w io.Writer) error {
 		Scriptlets:  scriptlets,
 	}
 
-	return debSpecTemplate.Execute(w, data)
+	return obsSpecTemplate.Execute(w, data)
 }
