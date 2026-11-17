@@ -136,7 +136,7 @@ jobs:
           # an unchanged archive. The value is arbitrary here, the test caring
           # only that the two runs agree.
           SOURCE_DATE_EPOCH: "1700000000"
-        run: make deb-sources VERSION=0.0.0-dev
+        run: make obs-sources VERSION=0.0.0-dev
 
       - name: Build the specs with debbuild and check the metadata
         run: make integration-test-deb-rebuild ARCH=${{ matrix.arch }} DEB_REBUILD_IMAGE=${{ matrix.image }}
@@ -146,13 +146,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - image: registry.fedoraproject.org/fedora:44
-            skip: ""
-          # The oldest rpm the specs have to parse under.
-          # The Python package is not built for EL, whose interpreter does not match the bundled wheels.
-          - image: docker.io/almalinux/9-base
-            skip: python
+        # Fedora, and the oldest rpm the specs have to parse under.
+        image: [ "registry.fedoraproject.org/fedora:44", "docker.io/almalinux/9-base" ]
         arch: [ "amd64", "arm64" ]
     runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     steps:
@@ -166,10 +161,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SOURCE_DATE_EPOCH: "1700000000"
-        run: make deb-sources VERSION=0.0.0-dev
+        run: make obs-sources VERSION=0.0.0-dev
 
+      # The Python package is not built for EL, whose interpreter does not match the bundled wheels.
       - name: Build the specs with rpmbuild and check the metadata
-        run: make integration-test-obs-rpm-rebuild ARCH=${{ matrix.arch }} RPM_REBUILD_IMAGE=${{ matrix.image }} RPM_REBUILD_SKIP=${{ matrix.skip }}
+        run: make integration-test-obs-rpm-rebuild ARCH=${{ matrix.arch }} RPM_REBUILD_IMAGE=${{ matrix.image }} RPM_REBUILD_SKIP=${{ contains(matrix.image, 'almalinux') && 'python' || '' }}
 
   integration-tests:
     needs: build-packages

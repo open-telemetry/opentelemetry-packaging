@@ -157,7 +157,7 @@ jobs:
           SOURCE_DATE_EPOCH: ${{ matrix.package.source_date_epoch }}
         run: |
           make otel-config-check-all
-          go run ./cmd/build-spec/deb -component "$COMPONENT" -output build/deb-sources
+          go run ./cmd/build-spec/obs -component "$COMPONENT" -output build/obs-sources
 
       - name: Upload, build, and release
         env:
@@ -183,5 +183,5 @@ jobs:
             fi
           fi
           go run ./cmd/obs-publish -project "$obs_project" -package "$PACKAGE" \
-            -dir "build/deb-sources/$PACKAGE" -timeout 200m \
+            -dir "build/obs-sources/$PACKAGE" -timeout 200m \
             -message "$PACKAGE $VERSION from $GITHUB_REPOSITORY@$SHA" "${args[@]}"

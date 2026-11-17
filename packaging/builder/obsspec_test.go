@@ -19,14 +19,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func renderDebSpec(t *testing.T, version string, comp Component) string {
+func renderOBSSpec(t *testing.T, version string, comp Component) string {
 	t.Helper()
 	var b strings.Builder
-	require.NoError(t, WriteDebSpec(testConfig(t, version), comp, &b))
+	require.NoError(t, WriteOBSSpec(testConfig(t, version), comp, &b))
 	return b.String()
 }
 
-func TestDebVersionRelease(t *testing.T) {
+func TestOBSVersionRelease(t *testing.T) {
 	tests := []struct {
 		name        string
 		version     string
@@ -46,7 +46,7 @@ func TestDebVersionRelease(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			version, release, err := DebVersionRelease(Config{Version: tt.version, Release: tt.release})
+			version, release, err := OBSVersionRelease(Config{Version: tt.version, Release: tt.release})
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
@@ -60,7 +60,7 @@ func TestDebVersionRelease(t *testing.T) {
 
 // The version must be the one nfpm writes, so a DEB built by debbuild and one
 // built by nfpm from the same tag compare as the same upstream version.
-func TestDebVersionReleaseMatchesNfpm(t *testing.T) {
+func TestOBSVersionReleaseMatchesNfpm(t *testing.T) {
 	packager, err := nfpm.Get("deb")
 	require.NoError(t, err)
 
@@ -75,14 +75,14 @@ func TestDebVersionReleaseMatchesNfpm(t *testing.T) {
 		// writes, after the defaults it applies while packaging.
 		name := packager.ConventionalFileName(nfpm.WithDefaults(info))
 
-		version, _, err := DebVersionRelease(testConfig(t, v))
+		version, _, err := OBSVersionRelease(testConfig(t, v))
 		require.NoError(t, err)
 		assert.Equal(t, Meta.PackageName+"_"+version+"_all.deb", name, "version %s", v)
 	}
 }
 
-func TestWriteDebSpecPreamble(t *testing.T) {
-	spec := renderDebSpec(t, "1.2.3", Injector)
+func TestWriteOBSSpecPreamble(t *testing.T) {
+	spec := renderOBSSpec(t, "1.2.3", Injector)
 
 	assert.Contains(t, spec, "Name:           opentelemetry-injector\n")
 	assert.Contains(t, spec, "Version:        1.2.3\n")
@@ -106,16 +106,16 @@ func TestWriteDebSpecPreamble(t *testing.T) {
 
 // Under the build's umask of 002 debbuild would ship group-writable directories
 // and man pages; these are the two commands it creates them with.
-func TestWriteDebSpecPackagesUnderUmask022(t *testing.T) {
-	debbuild, rpm := vendorBranches(t, renderDebSpec(t, "1.2.3", Injector))
+func TestWriteOBSSpecPackagesUnderUmask022(t *testing.T) {
+	debbuild, rpm := vendorBranches(t, renderOBSSpec(t, "1.2.3", Injector))
 	assert.Contains(t, debbuild, "%global __mkdir_p umask 022 && /bin/mkdir -p\n")
 	assert.Contains(t, debbuild, "%global __gzip umask 022 && /bin/gzip\n")
 	assert.NotContains(t, rpm, "__mkdir_p", "rpm builds with its own macros")
 }
 
 // The prebuilt payload must reach rpm untouched, and its glibc symbol versions must remain install constraints; the same globals the source RPM sets.
-func TestWriteDebSpecKeepsPrebuiltBinariesIntactUnderRpm(t *testing.T) {
-	debbuild, rpm := vendorBranches(t, renderDebSpec(t, "1.2.3", Injector))
+func TestWriteOBSSpecKeepsPrebuiltBinariesIntactUnderRpm(t *testing.T) {
+	debbuild, rpm := vendorBranches(t, renderOBSSpec(t, "1.2.3", Injector))
 	for _, want := range []string{
 		"%global debug_package %{nil}\n",
 		"%global __strip /bin/true\n",
@@ -169,10 +169,10 @@ func vendorBranches(t *testing.T, spec string) (debbuild, rpm string) {
 	return d.String(), r.String()
 }
 
-func TestWriteDebSpecMirrorsTheDependencyModel(t *testing.T) {
+func TestWriteOBSSpecMirrorsTheDependencyModel(t *testing.T) {
 	for _, comp := range AllComponents {
 		t.Run(comp.Name, func(t *testing.T) {
-			spec := renderDebSpec(t, "1.2.3", comp)
+			spec := renderOBSSpec(t, "1.2.3", comp)
 			for _, p := range comp.Relations.Provides {
 				assert.Contains(t, spec, "Provides:       "+p+"\n")
 			}
@@ -190,7 +190,7 @@ func TestWriteDebSpecMirrorsTheDependencyModel(t *testing.T) {
 }
 
 // The relationship is Replaces to debbuild and Obsoletes to rpm.
-func TestWriteDebSpecDisplacementRelations(t *testing.T) {
+func TestWriteOBSSpecDisplacementRelations(t *testing.T) {
 	comp := Component{
 		Name:        "fixture",
 		PackageName: "acme-java-autoinstrumentation",
@@ -200,7 +200,7 @@ func TestWriteDebSpecDisplacementRelations(t *testing.T) {
 			Replaces:  []string{"opentelemetry-java-autoinstrumentation"},
 		},
 	}
-	spec := renderDebSpec(t, "1.2.3", comp)
+	spec := renderOBSSpec(t, "1.2.3", comp)
 
 	assert.Contains(t, spec, "Conflicts:      opentelemetry-java-autoinstrumentation\n")
 	debbuild, rpm := vendorBranches(t, spec)
@@ -210,8 +210,8 @@ func TestWriteDebSpecDisplacementRelations(t *testing.T) {
 	assert.NotContains(t, rpm, "Replaces:")
 }
 
-func TestWriteDebSpecSelectsThePayloadByArchitecture(t *testing.T) {
-	spec := renderDebSpec(t, "1.2.3", Injector)
+func TestWriteOBSSpecSelectsThePayloadByArchitecture(t *testing.T) {
+	spec := renderOBSSpec(t, "1.2.3", Injector)
 	assert.Contains(t, spec, "%{name}-%{version}/%{payload_arch}/root")
 	assert.Contains(t, spec, "%files -f %{payload_arch}/%{filelist}\n")
 	assert.NotContains(t, spec, "BuildArch:")
@@ -226,7 +226,7 @@ func TestWriteDebSpecSelectsThePayloadByArchitecture(t *testing.T) {
 	assert.Contains(t, debbuild, "%global filelist injector.deb.files\n")
 	assert.Contains(t, rpm, "%global filelist injector.rpm.files\n")
 
-	noarch := renderDebSpec(t, "1.2.3", Java)
+	noarch := renderOBSSpec(t, "1.2.3", Java)
 	assert.Contains(t, noarch, "BuildArch:      noarch\n")
 	assert.Contains(t, noarch, "%global payload_arch all\n")
 	assert.NotContains(t, noarch, "%{_arch}")
@@ -236,8 +236,8 @@ func TestWriteDebSpecSelectsThePayloadByArchitecture(t *testing.T) {
 // An architecture the archive carries no payload for would otherwise fail in
 // the install section, whose output debbuild discards, leaving nothing to go
 // on but the exit status. The guard reports it while the spec is read.
-func TestWriteDebSpecGuardsUnstagedArchitectures(t *testing.T) {
-	spec := renderDebSpec(t, "1.2.3", Injector)
+func TestWriteOBSSpecGuardsUnstagedArchitectures(t *testing.T) {
+	spec := renderOBSSpec(t, "1.2.3", Injector)
 	debbuild, rpm := vendorBranches(t, spec)
 	assert.Contains(t, debbuild, "%global payload_archs "+strings.Join(Architectures, " ")+"\n")
 	assert.Contains(t, rpm, "%global payload_archs x86_64 aarch64\n")
@@ -245,11 +245,11 @@ func TestWriteDebSpecGuardsUnstagedArchitectures(t *testing.T) {
 	assert.Contains(t, spec, "%{error:this package is built for %{payload_archs}, not %{_arch}}\n")
 
 	// A noarch payload serves every architecture, so there is nothing to guard.
-	assert.NotContains(t, renderDebSpec(t, "1.2.3", Java), "%ifnarch %{payload_archs}")
+	assert.NotContains(t, renderOBSSpec(t, "1.2.3", Java), "%ifnarch %{payload_archs}")
 }
 
-func TestWriteDebSpecInlinesLifecycleScripts(t *testing.T) {
-	spec := renderDebSpec(t, "1.2.3", Injector)
+func TestWriteOBSSpecInlinesLifecycleScripts(t *testing.T) {
+	spec := renderOBSSpec(t, "1.2.3", Injector)
 
 	// One spec per package, so the scriptlets belong to the main package.
 	assert.Contains(t, spec, "%post\n")
@@ -258,13 +258,13 @@ func TestWriteDebSpecInlinesLifecycleScripts(t *testing.T) {
 	// Percent signs in the scripts are escaped from macro expansion.
 	assert.Contains(t, spec, "%%")
 
-	assert.NotContains(t, renderDebSpec(t, "1.2.3", Java), "%post")
+	assert.NotContains(t, renderOBSSpec(t, "1.2.3", Java), "%post")
 }
 
 // Comments are macro-expanded too, so the template must not name a section
 // with its percent sign anywhere but where the section starts.
-func TestWriteDebSpecSectionsAppearOnce(t *testing.T) {
-	spec := renderDebSpec(t, "1.2.3", Injector)
+func TestWriteOBSSpecSectionsAppearOnce(t *testing.T) {
+	spec := renderOBSSpec(t, "1.2.3", Injector)
 	for _, section := range []string{"%description", "%prep", "%build", "%install", "%files", "%post", "%preun"} {
 		count := 0
 		for line := range strings.SplitSeq(spec, "\n") {
@@ -355,7 +355,7 @@ func readArchive(t *testing.T, path string) map[string]*tar.Header {
 	}
 }
 
-func debFixtureComponent(t *testing.T, noarch bool) Component {
+func obsFixtureComponent(t *testing.T, noarch bool) Component {
 	t.Helper()
 	src := writeSource(t, "payload.bin", "payload")
 	return Component{
@@ -371,16 +371,16 @@ func debFixtureComponent(t *testing.T, noarch bool) Component {
 	}
 }
 
-func TestWriteDebSourcesStagesEveryArchitecture(t *testing.T) {
+func TestWriteOBSSourcesStagesEveryArchitecture(t *testing.T) {
 	out := t.TempDir()
-	comp := debFixtureComponent(t, false)
+	comp := obsFixtureComponent(t, false)
 	var checkBinaries []string
 	checkBinary := func(arch string) string {
 		checkBinaries = append(checkBinaries, arch)
 		return "/nonexistent/otel-config-check-" + arch
 	}
 
-	sources, err := WriteDebSources(testConfig(t, "1.2.3"), comp, checkBinary, out)
+	sources, err := WriteOBSSources(testConfig(t, "1.2.3"), comp, checkBinary, out)
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(out, "opentelemetry-fixture.spec"), sources.Spec)
 	assert.Equal(t, filepath.Join(out, "opentelemetry-fixture-1.2.3.tar.gz"), sources.Archive)
@@ -403,8 +403,8 @@ func TestWriteDebSourcesStagesEveryArchitecture(t *testing.T) {
 	assert.Contains(t, string(spec), "Name:           opentelemetry-fixture\n")
 }
 
-func TestWriteDebSourcesStagesNoarchOnce(t *testing.T) {
-	sources, err := WriteDebSources(testConfig(t, "1.2.3"), debFixtureComponent(t, true),
+func TestWriteOBSSourcesStagesNoarchOnce(t *testing.T) {
+	sources, err := WriteOBSSources(testConfig(t, "1.2.3"), obsFixtureComponent(t, true),
 		func(string) string { return "" }, t.TempDir())
 	require.NoError(t, err)
 
@@ -415,17 +415,17 @@ func TestWriteDebSourcesStagesNoarchOnce(t *testing.T) {
 			dirs = append(dirs, parts[1])
 		}
 	}
-	assert.Equal(t, []string{DebNoarchDir}, dirs)
+	assert.Equal(t, []string{OBSNoarchDir}, dirs)
 }
 
-func TestWriteDebSourcesIsReproducible(t *testing.T) {
+func TestWriteOBSSourcesIsReproducible(t *testing.T) {
 	t.Setenv("SOURCE_DATE_EPOCH", "1700000000")
-	comp := debFixtureComponent(t, false)
+	comp := obsFixtureComponent(t, false)
 	noCheck := func(string) string { return "" }
 
-	first, err := WriteDebSources(testConfig(t, "1.2.3"), comp, noCheck, t.TempDir())
+	first, err := WriteOBSSources(testConfig(t, "1.2.3"), comp, noCheck, t.TempDir())
 	require.NoError(t, err)
-	second, err := WriteDebSources(testConfig(t, "1.2.3"), comp, noCheck, t.TempDir())
+	second, err := WriteOBSSources(testConfig(t, "1.2.3"), comp, noCheck, t.TempDir())
 	require.NoError(t, err)
 
 	a, err := os.ReadFile(first.Archive)
@@ -437,10 +437,10 @@ func TestWriteDebSourcesIsReproducible(t *testing.T) {
 
 // rpm expands macros in comments, and an unescaped section macro in one makes rpm 4.16 (EL 9) start that section there: "second install" is how it fails.
 // Fedora's newer rpm tolerates it, so nothing but this test and an EL build catches a comment that names a section with its percent sign.
-func TestWriteDebSpecCommentsNameNoMacros(t *testing.T) {
+func TestWriteOBSSpecCommentsNameNoMacros(t *testing.T) {
 	for _, comp := range AllComponents {
 		t.Run(comp.Name, func(t *testing.T) {
-			for line := range strings.SplitSeq(renderDebSpec(t, "1.2.3", comp), "\n") {
+			for line := range strings.SplitSeq(renderOBSSpec(t, "1.2.3", comp), "\n") {
 				// A doubled percent sign is escaped, as in the lifecycle scripts.
 				if strings.HasPrefix(line, "#") {
 					assert.NotContains(t, strings.ReplaceAll(line, "%%", ""), "%",

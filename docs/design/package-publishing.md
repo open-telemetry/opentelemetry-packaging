@@ -193,7 +193,7 @@ Nothing is compiled on OBS: its build roots have no network access.
 Debian 12 also cannot supply the Go version this repository needs, so a build cannot compile the tools either.
 
 Instead, CI prepares everything a build needs, as Kubernetes does (see [Prior art](#prior-art)).
-For each package, `make deb-sources` (or `make deb-sources-<component>`) writes the 2 files that make up its OBS sources.
+For each package, `make obs-sources` (or `make obs-sources-<component>`) writes the 2 files that make up its OBS sources.
 
 - `<package>-<version>.tar.gz` holds the prepared package contents for every architecture, a directory per architecture, plus the file lists.
   It is prepared with the same code as the nfpm packages, so the contents cannot drift between the two.
