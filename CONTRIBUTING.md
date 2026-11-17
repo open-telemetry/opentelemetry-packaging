@@ -28,7 +28,7 @@ Every `make` invocation in this document is then `gmake` instead.
 .copr/Makefile               COPR "make srpm" entry point (installs the tooling, then calls make srpm)
 cmd/build-packages/          CLI entry point for building .deb and .rpm packages
 cmd/build-spec/rpm/          CLI entry point for generating and staging the source RPM spec
-cmd/build-spec/deb/          CLI entry point for writing the debbuild specs and source archives built on OBS
+cmd/build-spec/deb/          CLI entry point for writing the specs and source archives built on OBS
 cmd/package-metadata/        Per-component package metadata and build plans for CI (package images, OBS)
 cmd/obs-publish/             CLI entry point for uploading, building, and releasing one package on OBS
 cmd/otel-config-check/       Declarative-config validator shipped inside the Python package
@@ -38,7 +38,7 @@ packaging/
     components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
     download.go              Upstream artifact download helpers
     spec.go                  RPM spec generation for the COPR build (projection of components.go)
-    debspec.go               debbuild spec generation for the OBS build, one spec per component
+    debspec.go               Unified debbuild and rpmbuild spec generation for the OBS build, one spec per component
     debsources.go            OBS source archives: the payload staged for every architecture
     stage.go                 Payload staging into a buildroot, with generated %files lists
   common/                    Shared assets referenced by the builder
@@ -203,9 +203,10 @@ copr-cli buildscm opentelemetry/opentelemetry-packaging \
 
 To try a change before it is merged, point `--clone-url` and `--commit` at a fork and a branch, or submit the same command to a COPR project of your own with the same chroots.
 
-### Building DEBs with debbuild on the Open Build Service
+### Building DEBs and RPMs on the Open Build Service
 
-DEBs have a second producer too, used by the [Open Build Service](https://build.opensuse.org/) (OBS), which builds, signs, and publishes the Debian and Ubuntu repositories.
+DEBs and RPMs have a second producer too, used by the [Open Build Service](https://build.opensuse.org/) (OBS), which builds, signs, and publishes the repositories.
+One spec per component serves both: OBS builds it with debbuild for the Debian and Ubuntu repositories, and with rpmbuild for the Fedora and EL ones.
 OBS builds have no network access, and the Debian releases do not ship the Go version `go.mod` asks for, so nothing is compiled or downloaded there.
 The payload is staged beforehand, by the same builder as every other path, and committed to OBS in the source archive.
 
@@ -232,16 +233,18 @@ go run ./cmd/build-spec/deb -output build/deb-sources
 `-version` overrides every component's version, for testing.
 
 Each directory holds two files.
-`<package>.spec` is a [debbuild](https://github.com/debbuild/debbuild) spec rendered from `components.go`, with nothing to build.
-`<package>-<version>.tar.gz` holds the payload staged for each DEB architecture under `<arch>/root`, or once under `all/root` for an architecture-independent component, with the `%files` list for it alongside.
-The spec picks the tree debbuild's `%{_arch}` names and copies it into the buildroot.
+`<package>.spec` is a spec rendered from `components.go`, with nothing to build.
+`<package>-<version>.tar.gz` holds the payload staged for each architecture, named by its DEB architecture, under `<arch>/root`, or once under `all/root` for an architecture-independent component.
+Beside each tree are two file lists, `<component>.deb.files` and `<component>.rpm.files`: the RPM one carries `%attr` and the `%config(noreplace)` qualifiers rpmbuild needs, the DEB one does neither.
+The spec picks the tree and the list for the architecture and the builder it runs under, and copies the tree into the buildroot.
+The few differences between the two builders sit under `%if "%{_vendor}" == "debbuild"`; everything else, including the lifecycle scriptlets, is shared.
 The archive entries, and the date in the man pages, carry the time in [`SOURCE_DATE_EPOCH`](https://reproducible-builds.org/specs/source-date-epoch/), so identical payloads give identical archives and an unchanged component is no change to commit.
 Without it the archive records the current time, and the command warns.
 The `otel-config-check` binary the Python payload bundles is the only compiled part of an archive, and it is built with `-buildvcs=false`: a binary stamped with the commit it was built from would make that archive differ at every commit, whatever its inputs did.
 Which compiler builds it is an input too, so the [Build on OBS workflow](.github/workflows/obs.yml) pins the toolchain to `.go-version` and runs with `GOTOOLCHAIN=local`, rather than taking whatever the runner image ships that week.
 Renovate bumps that pin on its own, in a PR of its own: the next upload then rebuilds and releases every package, which is why it is not grouped with the other dependency updates.
 
-Some properties of the result differ from the nfpm packages, and are worth knowing:
+Some properties of the DEBs differ from the nfpm packages, and are worth knowing:
 
 - The DEB version is the upstream version written the way nfpm would (`1.0.0~rc.1` for `1.0.0-rc.1`), followed by a revision that OBS sets from its own commit and build counters (`-2.1`). A packaging-only change keeps the version and gets a higher revision, so it still upgrades.
 - The spec sets `AutoReq: no`, so the dependencies are exactly those in `components.go`, as with nfpm.
@@ -250,7 +253,15 @@ Some properties of the result differ from the nfpm packages, and are worth knowi
 - The compression follows the build distribution's `dpkg` default: xz on Debian, zstd on Ubuntu.
 - The packages are not byte-reproducible: debbuild stamps the directories it creates, and the man page it recompresses, with the time of the build. The source archives are, which is what matters for OBS, where a changed archive is a rebuild.
 
-### Building the DEB sources locally
+The RPMs built from the same spec differ from the source RPM the COPR path produced in two ways:
+
+- Nothing is compiled or downloaded at build time. The spec has no `BuildRequires`, because the payload is staged beforehand.
+- The Python package is not built for EL, whose interpreter does not match the bundled wheels. On OBS that package is disabled in the EL repository; locally, `RPM_REBUILD_SKIP=python` leaves it out.
+
+The spec sets the same globals the source RPM did: no debuginfo, no stripping of the prebuilt binaries, and no private libraries published as `Provides`.
+`AutoReq` stays on for rpm, so the glibc symbol versions the binaries need remain install constraints.
+
+### Building the sources locally
 
 `make deb-rebuild-container` builds every generated spec with debbuild in a container, the way OBS does, and `make integration-test-deb-rebuild` runs the metadata tests over the result:
 
@@ -264,6 +275,15 @@ Keep it pinned: the specs set `%global __mkdir_p` and `%global __gzip`, macros i
 
 That is also why the rebuild is worth running at all.
 Every other assertion about this path reads the text of the generated spec, and a spec that is wrong in a way debbuild agrees with passes all of them.
+
+`make obs-rpm-rebuild-container` builds the same specs with rpmbuild, and `make integration-test-obs-rpm-rebuild` runs the RPM metadata tests over the result:
+
+```sh
+make integration-test-obs-rpm-rebuild RPM_REBUILD_IMAGE=docker.io/almalinux/9-base RPM_REBUILD_SKIP=python
+```
+
+`RPM_REBUILD_IMAGE` defaults to Fedora 44.
+The EL 9 image exercises the oldest rpm, 4.16, which has to parse the spec too.
 
 To run debbuild by hand instead, create the `_topdir` skeleton first:
 

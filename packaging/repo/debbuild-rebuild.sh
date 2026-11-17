@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Copyright The OpenTelemetry Authors
 # SPDX-License-Identifier: Apache-2.0

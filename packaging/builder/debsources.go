@@ -47,7 +47,7 @@ func WriteDebSources(cfg Config, comp Component, configCheckBinary func(arch str
 		archCfg.ConfigCheckBinary = configCheckBinary(arch)
 
 		dir := filepath.Join(workDir, prefix, debPayloadDir(comp, arch))
-		if err := StageDeb(archCfg, comp, filepath.Join(dir, "root"), dir); err != nil {
+		if err := StageOBS(archCfg, comp, filepath.Join(dir, "root"), dir); err != nil {
 			return nil, err
 		}
 	}

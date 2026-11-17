@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -87,22 +88,85 @@ func TestWriteDebSpecPreamble(t *testing.T) {
 	assert.Contains(t, spec, "Version:        1.2.3\n")
 	assert.Contains(t, spec, "Release:        1\n")
 	assert.Contains(t, spec, "License:        Apache-2.0\n")
-	assert.Contains(t, spec, "Packager:       The OpenTelemetry Authors\n")
-	// debbuild writes Group out as the DEB Section field, and omits the field
-	// altogether when the tag is absent.
-	assert.Contains(t, spec, "Group:          utils\n")
 	assert.Contains(t, spec, "Source0:        %{name}-%{version}.tar.gz\n")
+
+	// debbuild writes Group out as the DEB Section field, and omits the field altogether when the tag is absent.
+	// Packager becomes the Maintainer.
+	// rpm gets neither, so both sit under the debbuild branch.
+	debbuild, rpm := vendorBranches(t, spec)
+	assert.Contains(t, debbuild, "Group:          utils\n")
+	assert.NotContains(t, rpm, "Group:")
+	assert.Contains(t, spec, "Packager:       The OpenTelemetry Authors\n")
 	// The dependencies are the declared ones only, as in the nfpm packages.
-	assert.Contains(t, spec, "AutoReq:        no\n")
+	// For rpm they are whatever it generates from the binaries, which is how the glibc symbol versions reach its Requires.
+	assert.Contains(t, debbuild, "AutoReq:        no\n")
+	assert.NotContains(t, rpm, "AutoReq")
 	assert.NotContains(t, spec, "BuildRequires:", "the payload is prebuilt, the build needs nothing")
 }
 
 // Under the build's umask of 002 debbuild would ship group-writable directories
 // and man pages; these are the two commands it creates them with.
 func TestWriteDebSpecPackagesUnderUmask022(t *testing.T) {
-	spec := renderDebSpec(t, "1.2.3", Injector)
-	assert.Contains(t, spec, "%global __mkdir_p umask 022 && /bin/mkdir -p\n")
-	assert.Contains(t, spec, "%global __gzip umask 022 && /bin/gzip\n")
+	debbuild, rpm := vendorBranches(t, renderDebSpec(t, "1.2.3", Injector))
+	assert.Contains(t, debbuild, "%global __mkdir_p umask 022 && /bin/mkdir -p\n")
+	assert.Contains(t, debbuild, "%global __gzip umask 022 && /bin/gzip\n")
+	assert.NotContains(t, rpm, "__mkdir_p", "rpm builds with its own macros")
+}
+
+// The prebuilt payload must reach rpm untouched, and its glibc symbol versions must remain install constraints; the same globals the source RPM sets.
+func TestWriteDebSpecKeepsPrebuiltBinariesIntactUnderRpm(t *testing.T) {
+	debbuild, rpm := vendorBranches(t, renderDebSpec(t, "1.2.3", Injector))
+	for _, want := range []string{
+		"%global debug_package %{nil}\n",
+		"%global __strip /bin/true\n",
+		"%global _build_id_links none\n",
+		"%global source_date_epoch_from_changelog 0\n",
+		"%global __provides_exclude_from ^%{_prefix}/lib/opentelemetry/.*$\n",
+		"%global __requires_exclude ^%{_bindir}/(node|python3)$\n",
+	} {
+		assert.Contains(t, rpm, want)
+		assert.NotContains(t, debbuild, want)
+	}
+}
+
+// vendorBranches splits the part of a spec that is conditional on the vendor into what debbuild sees and what rpm sees.
+// It handles the top level conditionals only, which is all the template has.
+func vendorBranches(t *testing.T, spec string) (debbuild, rpm string) {
+	t.Helper()
+	var d, r strings.Builder
+	// state: 0 outside, 1 debbuild branch, 2 rpm branch
+	state := 0
+	nested := 0
+	for line := range strings.SplitSeq(spec, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case state == 0 && trimmed == `%if "%{_vendor}" == "debbuild"`:
+			state = 1
+			continue
+		case state != 0 && strings.HasPrefix(trimmed, "%if"):
+			nested++
+		case state != 0 && strings.HasPrefix(trimmed, "%ifarch"):
+			nested++
+		case state != 0 && nested == 0 && trimmed == "%else":
+			state = 2
+			continue
+		case state != 0 && trimmed == "%endif":
+			if nested > 0 {
+				nested--
+				break
+			}
+			state = 0
+			continue
+		}
+		switch state {
+		case 1:
+			d.WriteString(line + "\n")
+		case 2:
+			r.WriteString(line + "\n")
+		}
+	}
+	require.Equal(t, 0, state, "unbalanced vendor conditional")
+	return d.String(), r.String()
 }
 
 func TestWriteDebSpecMirrorsTheDependencyModel(t *testing.T) {
@@ -125,8 +189,7 @@ func TestWriteDebSpecMirrorsTheDependencyModel(t *testing.T) {
 	}
 }
 
-// debbuild reads Replaces directly; the RPM spec's Obsoletes spelling would
-// work too, but the DEB field is what the relationship is called here.
+// The relationship is Replaces to debbuild and Obsoletes to rpm.
 func TestWriteDebSpecDisplacementRelations(t *testing.T) {
 	comp := Component{
 		Name:        "fixture",
@@ -140,21 +203,34 @@ func TestWriteDebSpecDisplacementRelations(t *testing.T) {
 	spec := renderDebSpec(t, "1.2.3", comp)
 
 	assert.Contains(t, spec, "Conflicts:      opentelemetry-java-autoinstrumentation\n")
-	assert.Contains(t, spec, "Replaces:       opentelemetry-java-autoinstrumentation\n")
-	assert.NotContains(t, spec, "Obsoletes:")
+	debbuild, rpm := vendorBranches(t, spec)
+	assert.Contains(t, debbuild, "Replaces:       opentelemetry-java-autoinstrumentation\n")
+	assert.NotContains(t, debbuild, "Obsoletes:")
+	assert.Contains(t, rpm, "Obsoletes:      opentelemetry-java-autoinstrumentation\n")
+	assert.NotContains(t, rpm, "Replaces:")
 }
 
 func TestWriteDebSpecSelectsThePayloadByArchitecture(t *testing.T) {
 	spec := renderDebSpec(t, "1.2.3", Injector)
-	assert.Contains(t, spec, "%{name}-%{version}/%{_arch}/root")
-	assert.Contains(t, spec, "%files -f %{_arch}/injector.files\n")
+	assert.Contains(t, spec, "%{name}-%{version}/%{payload_arch}/root")
+	assert.Contains(t, spec, "%files -f %{payload_arch}/%{filelist}\n")
 	assert.NotContains(t, spec, "BuildArch:")
+
+	// The archive names payloads after the DEB architectures, so rpm maps its own.
+	debbuild, rpm := vendorBranches(t, spec)
+	assert.Contains(t, debbuild, "%global payload_arch %{_arch}\n")
+	assert.Contains(t, rpm, "%ifarch x86_64\n%global payload_arch amd64\n%endif\n")
+	assert.Contains(t, rpm, "%ifarch aarch64\n%global payload_arch arm64\n%endif\n")
+
+	// Each format reads the file list written for it.
+	assert.Contains(t, debbuild, "%global filelist injector.deb.files\n")
+	assert.Contains(t, rpm, "%global filelist injector.rpm.files\n")
 
 	noarch := renderDebSpec(t, "1.2.3", Java)
 	assert.Contains(t, noarch, "BuildArch:      noarch\n")
-	assert.Contains(t, noarch, "%{name}-%{version}/all/root")
-	assert.Contains(t, noarch, "%files -f all/java.files\n")
+	assert.Contains(t, noarch, "%global payload_arch all\n")
 	assert.NotContains(t, noarch, "%{_arch}")
+	assert.NotContains(t, noarch, "%ifarch")
 }
 
 // An architecture the archive carries no payload for would otherwise fail in
@@ -162,12 +238,14 @@ func TestWriteDebSpecSelectsThePayloadByArchitecture(t *testing.T) {
 // on but the exit status. The guard reports it while the spec is read.
 func TestWriteDebSpecGuardsUnstagedArchitectures(t *testing.T) {
 	spec := renderDebSpec(t, "1.2.3", Injector)
-	archs := strings.Join(Architectures, " ")
-	assert.Contains(t, spec, "%ifnarch "+archs+"\n")
-	assert.Contains(t, spec, "%{error:this package is built for "+archs+", not %{_arch}}\n")
+	debbuild, rpm := vendorBranches(t, spec)
+	assert.Contains(t, debbuild, "%global payload_archs "+strings.Join(Architectures, " ")+"\n")
+	assert.Contains(t, rpm, "%global payload_archs x86_64 aarch64\n")
+	assert.Contains(t, spec, "%ifnarch %{payload_archs}\n")
+	assert.Contains(t, spec, "%{error:this package is built for %{payload_archs}, not %{_arch}}\n")
 
 	// A noarch payload serves every architecture, so there is nothing to guard.
-	assert.NotContains(t, renderDebSpec(t, "1.2.3", Java), "%ifnarch")
+	assert.NotContains(t, renderDebSpec(t, "1.2.3", Java), "%ifnarch %{payload_archs}")
 }
 
 func TestWriteDebSpecInlinesLifecycleScripts(t *testing.T) {
@@ -198,7 +276,7 @@ func TestWriteDebSpecSectionsAppearOnce(t *testing.T) {
 	}
 }
 
-func TestStageDebFileListCarriesNoAttributes(t *testing.T) {
+func TestStageOBSWritesAFileListPerFormat(t *testing.T) {
 	src := writeSource(t, "libotelinject.so", "payload")
 	conf := writeSource(t, "injector.conf", "conf\n")
 
@@ -215,23 +293,45 @@ func TestStageDebFileListCarriesNoAttributes(t *testing.T) {
 			}, func() {}, nil
 		},
 	}
-	require.NoError(t, StageDeb(testConfig(t, "1.2.3"), comp, root, filelistDir))
+	require.NoError(t, StageOBS(testConfig(t, "1.2.3"), comp, root, filelistDir))
 
-	data, err := os.ReadFile(filepath.Join(filelistDir, "fixture.files"))
+	data, err := os.ReadFile(filepath.Join(filelistDir, "fixture"+DEBFileListSuffix))
 	require.NoError(t, err)
-	list := string(data)
+	deb := string(data)
 
 	// debbuild would turn every attr into a chown and chmod in the postinst.
-	assert.NotContains(t, list, "%attr")
-	assert.Contains(t, list, injectorInstallDir+"/libotelinject.so\n")
+	assert.NotContains(t, deb, "%attr")
+	assert.Contains(t, deb, injectorInstallDir+"/libotelinject.so\n")
 	// dpkg treats conffiles as noreplace anyway; debbuild knows no qualifier.
-	assert.Contains(t, list, "%config "+injectorConfigDir+"/injector.conf\n")
-	assert.Contains(t, list, "%dir "+injectorInstallDir+"\n")
+	assert.Contains(t, deb, "%config "+injectorConfigDir+"/injector.conf\n")
+	assert.Contains(t, deb, "%dir "+injectorInstallDir+"\n")
 
-	// The mode the file list leaves out is in the staged tree.
+	// rpmbuild runs as an unprivileged user and needs the ownership spelled out.
+	data, err = os.ReadFile(filepath.Join(filelistDir, "fixture"+RPMFileListSuffix))
+	require.NoError(t, err)
+	rpm := string(data)
+	assert.Contains(t, rpm, "%attr(0755,root,root) "+injectorInstallDir+"/libotelinject.so\n")
+	assert.Contains(t, rpm, "%config(noreplace) %attr(0644,root,root) "+injectorConfigDir+"/injector.conf\n")
+	assert.Contains(t, rpm, "%dir %attr(")
+
+	// The same files, whichever format lists them.
+	assert.Equal(t, listedPaths(deb), listedPaths(rpm))
+
+	// The mode the DEB file list leaves out is in the staged tree.
 	info, err := os.Stat(filepath.Join(root, injectorInstallDir, "libotelinject.so"))
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm())
+}
+
+// listedPaths returns the paths a file list names, without its directives.
+func listedPaths(list string) []string {
+	var paths []string
+	for line := range strings.SplitSeq(strings.TrimSpace(list), "\n") {
+		fields := strings.Fields(line)
+		paths = append(paths, fields[len(fields)-1])
+	}
+	sort.Strings(paths)
+	return paths
 }
 
 // readArchive returns the entries of a gzipped tar by name.
@@ -294,7 +394,8 @@ func TestWriteDebSourcesStagesEveryArchitecture(t *testing.T) {
 		assert.Equal(t, int64(0o755), bin.Mode&0o777)
 		assert.Equal(t, 0, bin.Uid)
 		assert.Equal(t, "root", bin.Uname)
-		assert.NotNil(t, entries[prefix+"fixture.files"], "file list for %s", arch)
+		assert.NotNil(t, entries[prefix+"fixture"+DEBFileListSuffix], "DEB file list for %s", arch)
+		assert.NotNil(t, entries[prefix+"fixture"+RPMFileListSuffix], "RPM file list for %s", arch)
 	}
 
 	spec, err := os.ReadFile(sources.Spec)
@@ -332,4 +433,20 @@ func TestWriteDebSourcesIsReproducible(t *testing.T) {
 	b, err := os.ReadFile(second.Archive)
 	require.NoError(t, err)
 	assert.Equal(t, a, b, "identical payloads must give identical archives")
+}
+
+// rpm expands macros in comments, and an unescaped section macro in one makes rpm 4.16 (EL 9) start that section there: "second install" is how it fails.
+// Fedora's newer rpm tolerates it, so nothing but this test and an EL build catches a comment that names a section with its percent sign.
+func TestWriteDebSpecCommentsNameNoMacros(t *testing.T) {
+	for _, comp := range AllComponents {
+		t.Run(comp.Name, func(t *testing.T) {
+			for line := range strings.SplitSeq(renderDebSpec(t, "1.2.3", comp), "\n") {
+				// A doubled percent sign is escaped, as in the lifecycle scripts.
+				if strings.HasPrefix(line, "#") {
+					assert.NotContains(t, strings.ReplaceAll(line, "%%", ""), "%",
+						"comment expands as a macro: %q", line)
+				}
+			}
+		})
+	}
 }
