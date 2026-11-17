@@ -116,7 +116,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [ "debian:12", "ubuntu:24.04" ]
+        image:
+          - debian@sha256:268fb24c39bca92d326dd83ea3abebe4a3f7751c804ffef23bb6d857dd343ff8 # debian:12
+          - ubuntu@sha256:73b999393d07f2bf65a40373778a44dc9a6d54ad7718d29247d8ff9413c4d6a8 # ubuntu:24.04
         arch: [ "amd64", "arm64" ]
     runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     steps:
@@ -169,7 +171,9 @@ jobs:
       fail-fast: false
       matrix:
         # Fedora, and the oldest rpm the specs have to parse under.
-        image: [ "registry.fedoraproject.org/fedora:44", "docker.io/almalinux/9-base" ]
+        image:
+          - registry.fedoraproject.org/fedora@sha256:98b558564d3510363f0f706a44b1ee9de461b030373d741c5729ae3f24d8cb26 # fedora:44
+          - docker.io/almalinux/9-base@sha256:2edb3541b7909af131c4ca8ae2c8cb985b20c80364e1f1230de88fb1131a0228 # almalinux/9-base
         arch: [ "amd64", "arm64" ]
     runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     steps:
