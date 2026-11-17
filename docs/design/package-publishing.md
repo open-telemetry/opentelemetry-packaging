@@ -185,7 +185,7 @@ In phase 1, the stable build project has 2 repositories, both built for the `x86
 The package contents do not depend on the distribution release they are built against, so the packages are expected to install on newer releases of the same distribution.
 Debian and Ubuntu get separate repositories in case the content of the packages needs to diverge.
 
-The sandbox instead has a repository per release (Debian 12 and 13, Ubuntu 22.04, 24.04, and 26.04), each for both architectures so that it is possible to compare the same package across releases before it reaches users.
+The sandbox has the same repositories as the stable build project, so that a change is tried the way it will be built for users.
 
 ### Sources
 
