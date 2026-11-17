@@ -163,9 +163,8 @@ jobs:
           SOURCE_DATE_EPOCH: "1700000000"
         run: make obs-sources VERSION=0.0.0-dev
 
-      # The Python package is not built for EL, whose interpreter does not match the bundled wheels.
       - name: Build the specs with rpmbuild and check the metadata
-        run: make integration-test-obs-rpm-rebuild ARCH=${{ matrix.arch }} RPM_REBUILD_IMAGE=${{ matrix.image }} RPM_REBUILD_SKIP=${{ contains(matrix.image, 'almalinux') && 'python' || '' }}
+        run: make integration-test-obs-rpm-rebuild ARCH=${{ matrix.arch }} RPM_REBUILD_IMAGE=${{ matrix.image }}
 
   integration-tests:
     needs: build-packages

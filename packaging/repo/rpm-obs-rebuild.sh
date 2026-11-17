@@ -6,22 +6,18 @@
 # Build the generated OBS specs with rpmbuild the way the Open Build Service does.
 # This script is meant to run inside a Fedora or EL container.
 #
-# Usage: rpm-obs-rebuild.sh <sources_dir> <output_dir> [skipped_component ...]
+# Usage: rpm-obs-rebuild.sh <sources_dir> <output_dir>
 #
 # Expected structure:
 #   <sources_dir>/<package>/<package>.spec
 #   <sources_dir>/<package>/<package>-<version>.tar.gz
 #
 # Every package found is built, and the .rpm files are copied to <output_dir>.
-# A package named as a skipped component is left out.
-# The Python package is not built for EL, whose interpreter does not match the bundled wheels.
 
 set -euo pipefail
 
-sources_dir="${1:?usage: rpm-obs-rebuild.sh <sources_dir> <output_dir> [skipped_component ...]}"
-output_dir="${2:?usage: rpm-obs-rebuild.sh <sources_dir> <output_dir> [skipped_component ...]}"
-shift 2
-skipped=("$@")
+sources_dir="${1:?usage: rpm-obs-rebuild.sh <sources_dir> <output_dir>}"
+output_dir="${2:?usage: rpm-obs-rebuild.sh <sources_dir> <output_dir>}"
 
 echo "Installing the build dependencies"
 # The payload is prebuilt, so rpmbuild is all a build needs.
@@ -37,17 +33,6 @@ built=0
 for spec in "$sources_dir"/*/*.spec; do
     [ -e "$spec" ] || continue
     package="$(basename "$(dirname "$spec")")"
-
-    skip=false
-    for component in "${skipped[@]}"; do
-        if [ "$package" = "opentelemetry-${component}-autoinstrumentation" ]; then
-            skip=true
-        fi
-    done
-    if [ "$skip" = true ]; then
-        echo "Skipping $package"
-        continue
-    fi
 
     work="/tmp/rpmbuild/$package"
 

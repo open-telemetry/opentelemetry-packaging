@@ -319,9 +319,7 @@ integration-test-deb-rebuild: deb-rebuild-container
 # Builds the same generated specs with rpmbuild in a container, the way OBS does for the RPM repositories, and runs the RPM metadata tests over the result.
 #
 # RPM_REBUILD_IMAGE selects the build distribution; almalinux:9 exercises the oldest rpm (4.16) the specs have to parse under.
-# RPM_REBUILD_SKIP lists the components to leave out: python is not built for EL, whose interpreter does not match the bundled wheels.
 RPM_REBUILD_IMAGE ?= registry.fedoraproject.org/fedora:44
-RPM_REBUILD_SKIP ?=
 RPM_REBUILD_OUTPUT_DIR ?= $(CURDIR)/build/rpm-rebuild
 
 .PHONY: obs-rpm-rebuild-container
@@ -337,11 +335,11 @@ obs-rpm-rebuild-container:
 		-v $(RPM_REBUILD_OUTPUT_DIR):/out \
 		-v $(CURDIR)/packaging/repo:/scripts:ro \
 		$(RPM_REBUILD_IMAGE) \
-		/scripts/rpm-obs-rebuild.sh /sources /out $(RPM_REBUILD_SKIP)
+		/scripts/rpm-obs-rebuild.sh /sources /out
 
 .PHONY: integration-test-obs-rpm-rebuild
 integration-test-obs-rpm-rebuild: obs-rpm-rebuild-container
-	PACKAGES_DIR=$(RPM_REBUILD_OUTPUT_DIR) go test -v -timeout 5m -run TestRpm $(if $(findstring python,$(RPM_REBUILD_SKIP)),-skip Python) ./packaging/tests/metadata/
+	PACKAGES_DIR=$(RPM_REBUILD_OUTPUT_DIR) go test -v -timeout 5m -run TestRpm ./packaging/tests/metadata/
 
 # ============================================================================
 # Local Package Repositories for Testing
