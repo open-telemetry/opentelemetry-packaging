@@ -288,7 +288,7 @@ obs-sources-%: otel-config-check-all
 #
 # DEB_REBUILD_IMAGE selects the build distribution. Debian and Ubuntu differ in
 # the compression dpkg-deb defaults to, and in little else here.
-DEB_REBUILD_IMAGE ?= debian:12
+DEB_REBUILD_IMAGE ?= debian@sha256:268fb24c39bca92d326dd83ea3abebe4a3f7751c804ffef23bb6d857dd343ff8 # debian:12
 DEB_REBUILD_OUTPUT_DIR ?= $(CURDIR)/build/deb-rebuild
 
 # Pinned, so that an upstream change to the macros the specs rely on fails on a
@@ -319,7 +319,7 @@ integration-test-deb-rebuild: deb-rebuild-container
 # Builds the same generated specs with rpmbuild in a container, the way OBS does for the RPM repositories, and runs the RPM metadata tests over the result.
 #
 # RPM_REBUILD_IMAGE selects the build distribution; almalinux:9 exercises the oldest rpm (4.16) the specs have to parse under.
-RPM_REBUILD_IMAGE ?= registry.fedoraproject.org/fedora:44
+RPM_REBUILD_IMAGE ?= registry.fedoraproject.org/fedora@sha256:98b558564d3510363f0f706a44b1ee9de461b030373d741c5729ae3f24d8cb26 # fedora:44
 RPM_REBUILD_OUTPUT_DIR ?= $(CURDIR)/build/rpm-rebuild
 
 .PHONY: obs-rpm-rebuild-container
