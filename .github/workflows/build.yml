@@ -163,6 +163,36 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: make check-reproducible-deb-sources-python
 
+  # The same generated specs, built with rpmbuild the way OBS builds the Fedora and EL repositories, then checked by the RPM metadata tests.
+  rpm-source-rebuild:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: registry.fedoraproject.org/fedora:44
+            skip: ""
+          # The oldest rpm the specs have to parse under.
+          # The Python package is not built for EL, whose interpreter does not match the bundled wheels.
+          - image: docker.io/almalinux/9-base
+            skip: python
+        arch: [ "amd64", "arm64" ]
+    runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
+    steps:
+      - name: Check out the codebase.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Write the sources
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_DATE_EPOCH: "1700000000"
+        run: make deb-sources VERSION=0.0.0-dev
+
+      - name: Build the specs with rpmbuild and check the metadata
+        run: make integration-test-obs-rpm-rebuild ARCH=${{ matrix.arch }} RPM_REBUILD_IMAGE=${{ matrix.image }} RPM_REBUILD_SKIP=${{ matrix.skip }}
+
   integration-tests:
     needs: build-packages
     strategy:
