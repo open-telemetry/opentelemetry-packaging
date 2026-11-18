@@ -104,7 +104,7 @@ Restart the service after editing the file.
 Check that the configured endpoint is reachable before enabling the service:
 
 ```sh
-sudo systemd-run --wait --pipe --collect --service-type=exec -p EnvironmentFile=-/etc/opentelemetry/jmx-scraper/jmx-scraper.env -p Environment=JDK_JAVA_OPTIONS=--add-exports=java.security.sasl/com.sun.security.sasl=ALL-UNNAMED -p DynamicUser=yes -p ProtectHome=yes /usr/bin/env java -jar /usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar -test -config /etc/opentelemetry/jmx-scraper/config.properties
+sudo systemd-run --wait --pipe --collect --service-type=exec -p EnvironmentFile=-/etc/opentelemetry/jmx-scraper/jmx-scraper.env -p Environment=JDK_JAVA_OPTIONS=--add-exports=java.security.sasl/com.sun.security.sasl=ALL-UNNAMED -p DynamicUser=yes -p ProtectHome=yes /usr/bin/env java -jar /usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar -test
 ```
 
 The command connects, prints `JMX connection test OK` or `JMX connection test ERROR`, and exits without scraping or exporting anything.
