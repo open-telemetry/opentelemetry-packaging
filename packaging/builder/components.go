@@ -133,10 +133,11 @@ var Meta = Component{
 
 // JMXScraper is the standalone opentelemetry-jmx-scraper package.
 var JMXScraper = Component{
-	Name:        "jmx-scraper",
-	PackageName: "opentelemetry-jmx-scraper",
-	Description: jmxScraperDescription,
-	Noarch:      true,
+	Name:            "jmx-scraper",
+	PackageName:     "opentelemetry-jmx-scraper",
+	Description:     jmxScraperDescription,
+	LongDescription: jmxScraperLongDescription,
+	Noarch:          true,
 	Relations: Relations{
 		Deb: DebOverride{Suggests: []string{"default-jre | java8-runtime"}},
 		Rpm: RpmOverride{Suggests: []string{"java-headless"}},
@@ -216,6 +217,9 @@ host report traces, metrics, and logs without being rebuilt or reconfigured.
 This package contains no instrumentation of its own. Install the individual
 opentelemetry-*-autoinstrumentation packages instead to cover only the
 languages a host actually runs.`
+
+	jmxScraperLongDescription = `Installs the OpenTelemetry JMX scraper as a systemd service.
+It connects to a configured JMX endpoint and exports metrics through OTLP.`
 )
 
 func injectorContents(cfg Config) (files.Contents, func(), error) {

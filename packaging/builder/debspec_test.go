@@ -118,11 +118,7 @@ func TestWriteDebSpecMirrorsTheDependencyModel(t *testing.T) {
 			for _, r := range comp.Relations.Recommends {
 				assert.Contains(t, spec, "Recommends:     "+r+"\n")
 			}
-<<<<<<< HEAD
-			for _, s := range comp.Relations.Suggests {
-=======
 			for _, s := range debbuildAlternatives(comp.Relations.suggests("deb")) {
->>>>>>> 68784af (fix(debspec): list suggested alternatives separately for debbuild)
 				assert.Contains(t, spec, "Suggests:       "+s+"\n")
 			}
 		})
