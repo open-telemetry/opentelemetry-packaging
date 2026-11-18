@@ -9,6 +9,7 @@ package metadata_test
 
 import (
 	"archive/tar"
+	"compress/gzip"
 	"io"
 	"os"
 	"path"
@@ -16,10 +17,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cavaliergopher/cpio"
 	"github.com/cavaliergopher/rpm"
+	"github.com/klauspost/compress/zstd"
 	"github.com/open-telemetry/opentelemetry-packaging/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/ulikunitz/xz"
 	"pault.ag/go/debian/deb"
 )
 
@@ -450,6 +454,57 @@ func TestDebPackagesAreNotGroupWritable(t *testing.T) {
 	}
 }
 
+// configDir is where the packages ship the files administrators edit.
+const configDir = "/etc/opentelemetry/"
+
+// assertEndsWithNewline fails unless a non-empty config file ends with "\n".
+//
+// The README has administrators append settings with `tee -a`. Without a final
+// newline, the first appended line is glued onto the file's last line, which
+// is a comment, and the setting is silently ignored (issue #204).
+func assertEndsWithNewline(t *testing.T, name string, data []byte) {
+	t.Helper()
+	if len(data) == 0 {
+		return
+	}
+	assert.True(t, data[len(data)-1] == '\n',
+		"%s does not end with a newline, so a line appended to it joins its last line", name)
+}
+
+// Every config file must end with a newline, so appending to it starts a new
+// line.
+func TestDebConfigFilesEndWithNewline(t *testing.T) {
+	skipIfNoDebPackages(t)
+
+	matches, err := filepath.Glob(filepath.Join(packagesDir(t), "*.deb"))
+	require.NoError(t, err)
+	require.NotEmpty(t, matches)
+
+	checked := 0
+	for _, pkg := range matches {
+		d, closer, err := deb.LoadFile(pkg)
+		require.NoError(t, err)
+
+		for {
+			hdr, err := d.Data.Next()
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+			name := "/" + strings.TrimPrefix(path.Clean(hdr.Name), "/")
+			if hdr.Typeflag != tar.TypeReg || !strings.HasPrefix(name, configDir) {
+				continue
+			}
+			data, err := io.ReadAll(d.Data)
+			require.NoError(t, err)
+			assertEndsWithNewline(t, filepath.Base(pkg)+":"+name, data)
+			checked++
+		}
+		closer()
+	}
+	require.NotZero(t, checked, "no config files found under %s", configDir)
+}
+
 func TestDebMetapackageMetadata(t *testing.T) {
 	skipIfNoDebPackages(t)
 
@@ -803,6 +858,69 @@ func TestRpmMetapackageRecommendsLanguagePackages(t *testing.T) {
 	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-nodejs-autoinstrumentation1"))
 	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-dotnet-autoinstrumentation1"))
 	assert.True(t, rpmDepsContain(p.Recommends(), "opentelemetry-python-autoinstrumentation1"))
+}
+
+// rpmPayloadReader opens the decompressed cpio payload of an RPM. nfpm writes
+// gzip, and rpmbuild xz or zstd depending on the distribution.
+func rpmPayloadReader(t *testing.T, path string) *cpio.Reader {
+	t.Helper()
+	f, err := os.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { f.Close() })
+
+	p, err := rpm.Read(f)
+	require.NoError(t, err)
+	require.Equal(t, "cpio", p.PayloadFormat())
+
+	var r io.Reader
+	switch c := p.PayloadCompression(); c {
+	case "gzip":
+		gz, err := gzip.NewReader(f)
+		require.NoError(t, err)
+		r = gz
+	case "xz":
+		r, err = xz.NewReader(f)
+		require.NoError(t, err)
+	case "zstd":
+		zr, err := zstd.NewReader(f)
+		require.NoError(t, err)
+		t.Cleanup(zr.Close)
+		r = zr
+	default:
+		t.Fatalf("%s: unsupported payload compression %q", path, c)
+	}
+	return cpio.NewReader(r)
+}
+
+// Every config file must end with a newline, so appending to it starts a new
+// line.
+func TestRpmConfigFilesEndWithNewline(t *testing.T) {
+	skipIfNoRpmPackages(t)
+
+	matches, err := filepath.Glob(filepath.Join(packagesDir(t), "*.rpm"))
+	require.NoError(t, err)
+	require.NotEmpty(t, matches)
+
+	checked := 0
+	for _, pkg := range matches {
+		r := rpmPayloadReader(t, pkg)
+		for {
+			hdr, err := r.Next()
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+			name := "/" + strings.TrimPrefix(path.Clean(hdr.Name), "/")
+			if !hdr.Mode.IsRegular() || !strings.HasPrefix(name, configDir) {
+				continue
+			}
+			data, err := io.ReadAll(r)
+			require.NoError(t, err)
+			assertEndsWithNewline(t, filepath.Base(pkg)+":"+name, data)
+			checked++
+		}
+	}
+	require.NotZero(t, checked, "no config files found under %s", configDir)
 }
 
 // --------------------------------------------------------------------------
