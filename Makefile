@@ -279,6 +279,27 @@ deb-sources: otel-config-check-all
 deb-sources-%: otel-config-check-all
 	go run ./cmd/build-spec/deb -component $* -output $(DEB_SOURCES_DIR)
 
+# Writes the DEB sources of one component twice, with the same
+# SOURCE_DATE_EPOCH, and fails unless the two outputs are byte-identical. OBS
+# rebuilds and releases a package whenever its committed archive changes, so an
+# archive that differs between two generations of an unchanged payload means a
+# new release of identical content on every run that selects the component.
+REPRODUCIBLE_SOURCES_DIR ?= build/deb-sources-reproducible
+REPRODUCIBLE_SOURCE_DATE_EPOCH ?= 1700000000
+
+.PHONY: check-reproducible-deb-sources-%
+check-reproducible-deb-sources-%: otel-config-check-all
+	@rm -rf $(REPRODUCIBLE_SOURCES_DIR)/$*
+	@set -e; for run in first second; do \
+		SOURCE_DATE_EPOCH=$(REPRODUCIBLE_SOURCE_DATE_EPOCH) \
+			go run ./cmd/build-spec/deb -component $* -output $(REPRODUCIBLE_SOURCES_DIR)/$*/$$run; \
+	done
+	@if ! diff -r $(REPRODUCIBLE_SOURCES_DIR)/$*/first $(REPRODUCIBLE_SOURCES_DIR)/$*/second; then \
+		echo "error: two generations of the $* DEB sources differ"; \
+		exit 1; \
+	fi
+	@echo "The $* DEB sources are reproducible."
+
 # Builds the generated specs with debbuild in a container, the way OBS does.
 #
 # Everything else about the DEB source path is asserted against the text of the
