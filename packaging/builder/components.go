@@ -28,18 +28,18 @@ func SupportedArchitecture(arch string) bool {
 const (
 	installDir           = "/usr/lib/opentelemetry"
 	configDir            = "/etc/opentelemetry"
+	dotnetInstallDir     = installDir + "/dotnet"
+	dotnetConfigDir      = configDir + "/dotnet"
 	injectorInstallDir   = installDir + "/injector"
 	injectorConfigDir    = configDir + "/injector"
 	javaInstallDir       = installDir + "/java"
 	javaConfigDir        = configDir + "/java"
-	nodejsInstallDir     = installDir + "/nodejs"
-	nodejsConfigDir      = configDir + "/nodejs"
-	dotnetInstallDir     = installDir + "/dotnet"
-	dotnetConfigDir      = configDir + "/dotnet"
-	pythonInstallDir     = installDir + "/python"
-	pythonConfigDir      = configDir + "/python"
 	jmxScraperInstallDir = "/usr/lib/opentelemetry-jmx-scraper"
 	jmxScraperConfigDir  = configDir + "/jmx-scraper"
+	nodejsInstallDir     = installDir + "/nodejs"
+	nodejsConfigDir      = configDir + "/nodejs"
+	pythonInstallDir     = installDir + "/python"
+	pythonConfigDir      = configDir + "/python"
 )
 
 // Injector is the opentelemetry-injector package component.
