@@ -211,9 +211,11 @@ Every repository lists the matching debbuild project ahead of the distribution i
 The release counter is meaningful only if CI makes source commits when the sources really changed.
 CI dates each package by its **source date**: the time of the last Git commit that touched that package's inputs, passed to the generator as [`SOURCE_DATE_EPOCH`](https://reproducible-builds.org/specs/source-date-epoch/).
 The archive entries are sorted, owned by root, and dated with the source date, and so are the man pages.
+The Python payload carries no `direct_url.json` files, in which pip would record the temporary directory it installed each package from.
 
 An unchanged package regenerates byte-identical sources.
 CI compares their file names and MD5 sums with the sources stored on OBS, and skips the upload when they match.
+The Build workflow guards this for Python, writing its sources twice with the same source date and failing unless the two are identical.
 
 ## Rebuild triggers
 

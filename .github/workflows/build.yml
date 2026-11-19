@@ -133,13 +133,35 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           # The archives are committed to OBS, where a changed archive is a
           # rebuild; pinning the timestamp keeps an unchanged payload producing
-          # an unchanged archive. The value is arbitrary here, the test caring
-          # only that the two runs agree.
+          # an unchanged archive. The value is arbitrary here: debbuild does not
+          # care, and the reproducible-deb-sources job checks the reproducibility.
           SOURCE_DATE_EPOCH: "1700000000"
         run: make deb-sources VERSION=0.0.0-dev
 
       - name: Build the specs with debbuild and check the metadata
         run: make integration-test-deb-rebuild ARCH=${{ matrix.arch }} DEB_REBUILD_IMAGE=${{ matrix.image }}
+
+  # Writes the Python DEB sources twice with the same SOURCE_DATE_EPOCH and
+  # fails unless the two are byte-identical. OBS commits and releases a package
+  # whenever its source archive changes, so an archive that differs between two
+  # generations of the same payload releases identical content on every run
+  # that selects the package (#205). Python is the component whose payload pip
+  # writes, and the one that regressed.
+  reproducible-deb-sources:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the codebase.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Write the Python DEB sources twice and compare them
+        env:
+          # Raises the GitHub API rate limit for the release-asset digest
+          # lookups the payload staging makes, as build-packages does.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: make check-reproducible-deb-sources-python
 
   integration-tests:
     needs: build-packages

@@ -237,9 +237,17 @@ Each directory holds two files.
 The spec picks the tree debbuild's `%{_arch}` names and copies it into the buildroot.
 The archive entries, and the date in the man pages, carry the time in [`SOURCE_DATE_EPOCH`](https://reproducible-builds.org/specs/source-date-epoch/), so identical payloads give identical archives and an unchanged component is no change to commit.
 Without it the archive records the current time, and the command warns.
+The Python payload is the one pip writes, and pip records in every `*.dist-info/direct_url.json` the URL it installed the package from, a temporary directory that changes at every run.
+The builder deletes those files, which [PEP 610](https://peps.python.org/pep-0610/) makes optional, and drops their rows from each `RECORD`.
 The `otel-config-check` binary the Python payload bundles is the only compiled part of an archive, and it is built with `-buildvcs=false`: a binary stamped with the commit it was built from would make that archive differ at every commit, whatever its inputs did.
 Which compiler builds it is an input too, so the [Build on OBS workflow](.github/workflows/obs.yml) pins the toolchain to `.go-version` and runs with `GOTOOLCHAIN=local`, rather than taking whatever the runner image ships that week.
 Renovate bumps that pin on its own, in a PR of its own: the next upload then rebuilds and releases every package, which is why it is not grouped with the other dependency updates.
+
+To check that a component's sources are reproducible, write them twice with the same `SOURCE_DATE_EPOCH` and compare the two, which CI does for Python:
+
+```sh
+make check-reproducible-deb-sources-python
+```
 
 Some properties of the result differ from the nfpm packages, and are worth knowing:
 

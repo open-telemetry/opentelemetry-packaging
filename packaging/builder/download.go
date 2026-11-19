@@ -814,7 +814,66 @@ func downloadPythonAgent(cfg Config, destDir string) error {
 		}
 	}
 
+	if err := removeDirectURLs(destDir); err != nil {
+		return fmt.Errorf("removing direct_url.json files: %w", err)
+	}
+
 	return nil
+}
+
+// removeDirectURLs deletes every *.dist-info/direct_url.json under root and
+// drops its entry from the sibling RECORD. pip writes the file (PEP 610) with
+// the file:// URL of the wheel or source tree it installed from, which here is
+// a fresh temporary directory on the build host: left in place, it makes every
+// build of an unchanged payload differ, and leaks build-machine paths into the
+// installed package. PEP 610 makes the file optional and nothing in the payload
+// reads it.
+func removeDirectURLs(root string) error {
+	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || d.Name() != "direct_url.json" {
+			return nil
+		}
+		distInfo := filepath.Dir(path)
+		if !strings.HasSuffix(distInfo, ".dist-info") {
+			return nil
+		}
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+		return dropRecordEntry(
+			filepath.Join(distInfo, "RECORD"),
+			filepath.Base(distInfo)+"/direct_url.json")
+	})
+}
+
+// dropRecordEntry rewrites a dist-info RECORD without the row for entry, a
+// path relative to the installation directory. The other rows are kept
+// byte-for-byte; a dist-info name cannot contain a comma or a quote, so the
+// row for one of its files is never CSV-quoted and always starts with
+// "<entry>,".
+func dropRecordEntry(recordPath, entry string) error {
+	data, err := os.ReadFile(recordPath)
+	if err != nil {
+		return err
+	}
+	lines := strings.SplitAfter(string(data), "\n")
+	kept := lines[:0]
+	for _, line := range lines {
+		if !strings.HasPrefix(line, entry+",") {
+			kept = append(kept, line)
+		}
+	}
+	if len(kept) == len(lines) {
+		return fmt.Errorf("%s has no entry for %s", recordPath, entry)
+	}
+	info, err := os.Stat(recordPath)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(recordPath, []byte(strings.Join(kept, "")), info.Mode().Perm())
 }
 
 var supportedPythonMinorsPattern = regexp.MustCompile(

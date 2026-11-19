@@ -224,3 +224,78 @@ func equalStrings(got, want []string) bool {
 	}
 	return true
 }
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRemoveDirectURLsDropsTheFileAndItsRecordEntry(t *testing.T) {
+	root := t.TempDir()
+	for _, distInfo := range []string{
+		filepath.Join(root, "wrapt-2.0.1.dist-info"),
+		filepath.Join(root, "cp310", "rpds_py-0.30.0.dist-info"),
+	} {
+		name := filepath.Base(distInfo)
+		writeFile(t, filepath.Join(distInfo, "direct_url.json"),
+			`{"archive_info": {}, "url": "file:///tmp/otel-python-download-123/x.whl"}`)
+		writeFile(t, filepath.Join(distInfo, "RECORD"),
+			name+"/INSTALLER,sha256=abc,4\n"+
+				name+"/RECORD,,\n"+
+				name+"/direct_url.json,sha256=def,96\n"+
+				"\"pkg/a,b.py\",sha256=ghi,10\n")
+	}
+
+	if err := removeDirectURLs(root); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, distInfo := range []string{
+		filepath.Join(root, "wrapt-2.0.1.dist-info"),
+		filepath.Join(root, "cp310", "rpds_py-0.30.0.dist-info"),
+	} {
+		name := filepath.Base(distInfo)
+		if _, err := os.Stat(filepath.Join(distInfo, "direct_url.json")); !os.IsNotExist(err) {
+			t.Errorf("%s/direct_url.json still present (err=%v)", name, err)
+		}
+		data, err := os.ReadFile(filepath.Join(distInfo, "RECORD"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := name + "/INSTALLER,sha256=abc,4\n" +
+			name + "/RECORD,,\n" +
+			"\"pkg/a,b.py\",sha256=ghi,10\n"
+		if string(data) != want {
+			t.Errorf("%s RECORD:\ngot:\n%s\nwant:\n%s", name, data, want)
+		}
+	}
+}
+
+func TestRemoveDirectURLsLeavesOtherFilesAlone(t *testing.T) {
+	root := t.TempDir()
+	// A package's own data file of the same name, outside any dist-info.
+	writeFile(t, filepath.Join(root, "pkg", "direct_url.json"), "{}")
+
+	if err := removeDirectURLs(root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "pkg", "direct_url.json")); err != nil {
+		t.Errorf("pkg/direct_url.json was removed: %v", err)
+	}
+}
+
+func TestRemoveDirectURLsFailsWhenTheRecordDoesNotListIt(t *testing.T) {
+	root := t.TempDir()
+	distInfo := filepath.Join(root, "wrapt-2.0.1.dist-info")
+	writeFile(t, filepath.Join(distInfo, "direct_url.json"), "{}")
+	writeFile(t, filepath.Join(distInfo, "RECORD"), "wrapt-2.0.1.dist-info/RECORD,,\n")
+
+	if err := removeDirectURLs(root); err == nil {
+		t.Error("expected an error for a RECORD without a direct_url.json entry")
+	}
+}
