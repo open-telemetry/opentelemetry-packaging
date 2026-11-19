@@ -116,9 +116,11 @@ belong here rather than in config.properties; see SECURITY.
 Options the Java 9 and later launcher prepends to the command line. The unit
 sets it to
 .B \-\-add\-exports=java.security.sasl/com.sun.security.sasl=ALL\-UNNAMED
-\(em without it the scraper cannot install the SASL security provider on Java 16
-and later, and every SASL remote profile fails to authenticate. Override this
-only if that export is kept.
+\(em without it the scraper, which tries to install the SASL security provider
+on every connection attempt, logs "SASL unsupported in current environment"
+each time on Java 16 and later. The pinned scraper does not pass a SASL remote
+profile or realm to the connection, so SASL authentication is not available
+yet either way. Override this only if that export is kept.
 .TP
 .B PATH
 Where the unit resolves

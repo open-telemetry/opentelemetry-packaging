@@ -7,12 +7,15 @@ Wants=network-online.target
 [Service]
 Type=simple
 Environment=JMX_SCRAPER_CONFIG=/etc/opentelemetry/jmx-scraper/config.properties
-# The scraper installs the SASL security provider reflectively, which the module
-# system restricts unless the package is exported. Java 9 to 15 permit it and log
-# a four-line illegal-access warning; Java 16 and later deny it outright, so the
-# scraper logs "SASL unsupported in current environment" on every connection
-# attempt and never installs the callback handler that supplies the username,
-# password, and realm, and every SASL remote profile fails to authenticate.
+# On every connection attempt, the scraper installs the SASL security provider
+# reflectively, which the module system restricts unless the package is
+# exported. Java 9 to 15 permit it and log a four-line illegal-access warning;
+# Java 16 and later deny it outright, so the scraper logs "SASL unsupported in
+# current environment" on every connection attempt. The pinned scraper does not
+# pass a SASL remote profile or realm to the connection, so the export does
+# not enable SASL authentication: it keeps the journal free of that
+# warning, and keeps the provider installable once upstream wires those
+# settings through.
 #
 # The option goes in JDK_JAVA_OPTIONS rather than on the command line because
 # the scraper still runs on Java 8, where --add-exports is an unrecognized

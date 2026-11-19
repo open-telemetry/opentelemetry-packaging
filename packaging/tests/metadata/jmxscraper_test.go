@@ -285,8 +285,8 @@ func TestJMXScraperUnitIsHardened(t *testing.T) {
 		"MemoryDenyWriteExecute stops the JVM from starting; see the comment in the unit")
 
 	// Without this export the scraper cannot install the SASL security
-	// provider on Java 16 and later, and every SASL profile fails to
-	// authenticate. The "=" spelling matters: systemd splits an Environment=
+	// provider on Java 16 and later, and logs a warning on every connection
+	// attempt. The "=" spelling matters: systemd splits an Environment=
 	// value on whitespace, so the spaced form reaches the JVM as a bare
 	// --add-exports and the service fails to start.
 	assert.Contains(t, unit,

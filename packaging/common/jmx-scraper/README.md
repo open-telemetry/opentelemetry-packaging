@@ -56,6 +56,11 @@ For what each target system collects, see the [upstream jmx-scraper documentatio
 When the target JVM requires authentication, set `OTEL_JMX_USERNAME` and `OTEL_JMX_PASSWORD` in `jmx-scraper.env` rather than `/etc/opentelemetry/jmx-scraper/config.properties`.
 See [Security](#security) for why credentials belong there.
 
+The packaged scraper does not pass a SASL remote profile or realm to the JMX connection, so SASL authentication is not available yet.
+It still tries to install the JDK's SASL security provider on every connection attempt, reflectively, which the Java module system restricts.
+The unit therefore sets `JDK_JAVA_OPTIONS=--add-exports=java.security.sasl/com.sun.security.sasl=ALL-UNNAMED`: without it, Java 16 and later log `SASL unsupported in current environment` at every connection attempt, and Java 9 to 15 log a four-line illegal-access warning.
+Override `JDK_JAVA_OPTIONS` in `jmx-scraper.env` only if you keep that export.
+
 > [!NOTE]
 > The export is carried in `JDK_JAVA_OPTIONS` rather than on the unit's `ExecStart` line because the scraper JAR targets Java 8 bytecode and this package suggests `java8-runtime` as an alternative runtime.
 > On a Java 8 JVM `--add-exports` is an unrecognized option, so putting it on the command line would stop the service from starting at all on a runtime we explicitly support.
