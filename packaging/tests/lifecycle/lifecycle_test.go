@@ -3,8 +3,9 @@
 
 // Package lifecycle contains end-to-end tests for package lifecycle behavior:
 // the injector's /etc/ld.so.preload management (postinstall/preremove
-// scripts), config file handling across remove, purge, and upgrade, and
-// install/remove dependency scenarios including the metapackage.
+// scripts), config file handling across remove, purge, and upgrade,
+// install/remove dependency scenarios including the metapackage, and the JMX
+// scraper's service handling on removal.
 //
 // Unlike the language E2E suites, no packages are installed at image build
 // time: every scenario starts from a pristine container that only has the
@@ -68,10 +69,11 @@ type scenario struct {
 func TestLifecycle(t *testing.T) {
 	ctx := context.Background()
 
-	scenarios := make([]scenario, 0, len(preloadScenarios)+len(configScenarios)+len(installScenarios))
+	scenarios := make([]scenario, 0, len(preloadScenarios)+len(configScenarios)+len(installScenarios)+len(jmxScraperScenarios))
 	scenarios = append(scenarios, preloadScenarios...)
 	scenarios = append(scenarios, configScenarios...)
 	scenarios = append(scenarios, installScenarios...)
+	scenarios = append(scenarios, jmxScraperScenarios...)
 
 	byFormat := map[string][]target{}
 	for _, tg := range matrix {
