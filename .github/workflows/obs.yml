@@ -52,7 +52,7 @@ jobs:
   plan:
     # Pushes publish only from the official repository; forks dispatch.
     if: github.event_name == 'workflow_dispatch' || github.repository == 'open-telemetry/opentelemetry-packaging'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     timeout-minutes: 10
@@ -125,7 +125,7 @@ jobs:
       fail-fast: false
       matrix:
         package: ${{ fromJSON(needs.plan.outputs.packages) }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     # One upload of a package at a time: a commit and its release must not
