@@ -99,10 +99,13 @@ Restart the service after editing the file.
 Check that the configured endpoint is reachable before enabling the service:
 
 ```sh
-sudo systemd-run --wait --pipe --collect --service-type=exec -p EnvironmentFile=-/etc/opentelemetry/jmx-scraper/jmx-scraper.env -p Environment=JDK_JAVA_OPTIONS=--add-exports=java.security.sasl/com.sun.security.sasl=ALL-UNNAMED -p DynamicUser=yes -p ProtectHome=yes /usr/bin/env java -jar /usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar -test
+sudo systemd-run --wait --pipe --collect --service-type=exec -p Environment=JMX_SCRAPER_CONFIG=/etc/opentelemetry/jmx-scraper/config.properties -p EnvironmentFile=-/etc/opentelemetry/jmx-scraper/jmx-scraper.env -p Environment=JDK_JAVA_OPTIONS=--add-exports=java.security.sasl/com.sun.security.sasl=ALL-UNNAMED -p DynamicUser=yes -p ProtectHome=yes /usr/bin/env java -jar /usr/lib/opentelemetry-jmx-scraper/opentelemetry-jmx-scraper.jar -test -config '${JMX_SCRAPER_CONFIG}'
 ```
 
 The command connects, prints `JMX connection test OK` or `JMX connection test ERROR`, and exits without scraping or exporting anything.
+The single quotes keep your shell from expanding `${JMX_SCRAPER_CONFIG}`, so systemd expands it inside the transient service after reading `jmx-scraper.env`, exactly as the unit does.
+The check therefore reads the same configuration file as the service, including a relocated one.
+Do not drop `-config`: without it the scraper reads no file at all, and the check fails for lack of `otel.jmx.service.url`.
 Run it after every change to `config.properties` or `jmx-scraper.env`.
 
 > [!IMPORTANT]
