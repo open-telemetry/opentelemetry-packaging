@@ -11,7 +11,7 @@
 // Usage:
 //
 //	go run ./cmd/obs-publish -project home:opentelemetry:stable:build \
-//	    -package opentelemetry-injector -dir build/deb-sources/opentelemetry-injector \
+//	    -package opentelemetry-injector -dir build/obs-sources/opentelemetry-injector \
 //	    -message "opentelemetry-injector 0.11.0" -release
 package main
 

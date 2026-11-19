@@ -185,7 +185,7 @@ In phase 1, the stable build project has 2 repositories, both built for the `x86
 The package contents do not depend on the distribution release they are built against, so the packages are expected to install on newer releases of the same distribution.
 Debian and Ubuntu get separate repositories in case the content of the packages needs to diverge.
 
-The sandbox instead has a repository per release (Debian 12 and 13, Ubuntu 22.04, 24.04, and 26.04), each for both architectures so that it is possible to compare the same package across releases before it reaches users.
+The sandbox has the same repositories as the stable build project, so that a change is tried the way it will be built for users.
 
 ### Sources
 
@@ -193,7 +193,7 @@ Nothing is compiled on OBS: its build roots have no network access.
 Debian 12 also cannot supply the Go version this repository needs, so a build cannot compile the tools either.
 
 Instead, CI prepares everything a build needs, as Kubernetes does (see [Prior art](#prior-art)).
-For each package, `make deb-sources` (or `make deb-sources-<component>`) writes the 2 files that make up its OBS sources.
+For each package, `make obs-sources` (or `make obs-sources-<component>`) writes the 2 files that make up its OBS sources.
 
 - `<package>-<version>.tar.gz` holds the prepared package contents for every architecture, a directory per architecture, plus the file lists.
   It is prepared with the same code as the nfpm packages, so the contents cannot drift between the two.
