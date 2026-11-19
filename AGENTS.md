@@ -26,6 +26,7 @@ make deb-rebuild-container     # Build those specs with debbuild the way OBS doe
 
 make go-unit-tests             # Go command unit tests (otel-config-check)
 make python-unit-tests         # sitecustomize.py unit tests (throwaway venv, no containers)
+make check-supported-python-versions # Python package still resolves for every supported Python version (needs PyPI)
 make pyproto-unit-tests        # Vendored pyproto exporter test suites (throwaway venvs, no containers)
 make integration-test-metadata # Fast metadata tests (no containers)
 make integration-test-deb-rebuild   # Same metadata tests over the debbuild output
@@ -49,6 +50,7 @@ make clean                     # Remove build/
 - `cmd/obs-publish/` + `packaging/obs/` — OBS API client that commits one package's sources, waits for every build of that revision, and releases it (used by `.github/workflows/obs.yml`)
 - `packaging/changes/` — maps changed paths to the components they affect, shared by the image and OBS workflows
 - `cmd/otel-config-check/` — declarative-config validator, cross-compiled into the Python package and invoked by sitecustomize.py
+- `cmd/check-supported-python-versions/` — CI check that the Python package still resolves for every version in `packaging/builder/supported_python_versions.json`
 - `packaging/builder/` — Go package that constructs nfpm.Info per component and writes .deb/.rpm
 - `packaging/common/` — Config files, POSIX lifecycle scripts, man page templates (referenced by builder)
 - `packaging/repo/` — APT/YUM repo generation scripts (run in containers)
