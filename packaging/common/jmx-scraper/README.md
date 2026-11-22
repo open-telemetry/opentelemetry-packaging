@@ -62,7 +62,7 @@ The unit therefore sets `JDK_JAVA_OPTIONS=--add-exports=java.security.sasl/com.s
 Override `JDK_JAVA_OPTIONS` in `jmx-scraper.env` only if you keep that export.
 
 > [!NOTE]
-> The export is carried in `JDK_JAVA_OPTIONS` rather than on the unit's `ExecStart` line because the scraper JAR targets Java 8 bytecode and this package suggests `java8-runtime` as an alternative runtime.
+> The export is carried in `JDK_JAVA_OPTIONS` rather than on the unit's `ExecStart` line because the scraper JAR targets Java 8 bytecode, so it can run on a Java 8 runtime.
 > On a Java 8 JVM `--add-exports` is an unrecognized option, so putting it on the command line would stop the service from starting at all on a runtime we explicitly support.
 > Only the Java 9 and later launcher reads `JDK_JAVA_OPTIONS`, which is exactly the range where the export matters, so Java 8 ignores it harmlessly.
 > The option is spelled `--add-exports=...` rather than with a space, because systemd splits an `Environment=` value on whitespace into separate assignments and the JVM would then be handed a bare `--add-exports`.

@@ -371,7 +371,7 @@ See [Independent packages](#independent-packages) for why it has no relationship
 | Field | DEB | RPM |
 |-------|-----|-----|
 | Architecture | `all` | `noarch` |
-| Suggests | `default-jre \| java8-runtime` | `java-headless` |
+| Suggests | `default-jre` | `java-headless` |
 | Config files | `/etc/opentelemetry/jmx-scraper/config.properties`, `/etc/opentelemetry/jmx-scraper/jmx-scraper.env` | Same |
 | Post-install | `systemctl daemon-reload` (unit not enabled by default) | Same |
 | Pre-uninstall | `systemctl disable --now opentelemetry-jmx-scraper.service` if active | Same |

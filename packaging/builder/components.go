@@ -139,7 +139,7 @@ var JMXScraper = Component{
 	LongDescription: jmxScraperLongDescription,
 	Noarch:          true,
 	Relations: Relations{
-		Deb: DebOverride{Suggests: []string{"default-jre | java8-runtime"}},
+		Deb: DebOverride{Suggests: []string{"default-jre"}},
 		Rpm: RpmOverride{Suggests: []string{"java-headless"}},
 	},
 	PostInstall:  "postinstall-jmx-scraper.sh",

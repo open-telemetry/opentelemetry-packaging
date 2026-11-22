@@ -51,8 +51,7 @@ var jmxScraperConfigFiles = []string{
 // --------------------------------------------------------------------------
 
 // The Java runtime must stay a suggestion: a hard dependency would conflict
-// with a JVM installed by a version manager or by hand. The DEB spelling is an
-// alternation, which has no RPM equivalent.
+// with a JVM installed by a version manager or by hand.
 func TestDebJMXScraperSuggestsJavaRuntime(t *testing.T) {
 	skipIfNoDebPackages(t)
 
@@ -61,8 +60,6 @@ func TestDebJMXScraperSuggestsJavaRuntime(t *testing.T) {
 	suggests := d.Control.Suggests.String()
 	assert.Contains(t, suggests, "default-jre",
 		"the JMX scraper should suggest the Debian default JRE")
-	assert.Contains(t, suggests, "java8-runtime",
-		"the suggestion should offer the java8-runtime virtual as an alternative")
 }
 
 // The scraper is deliberately outside the dependency graph: no injector
