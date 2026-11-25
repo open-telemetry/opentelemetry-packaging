@@ -1,2 +1,2 @@
 # renovate: datasource=github-releases depName=open-telemetry/opentelemetry-dotnet-instrumentation
-v1.19.1
+v1.20.0
