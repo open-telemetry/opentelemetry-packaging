@@ -71,6 +71,17 @@ Validate that the injector's lifecycle scripts correctly manage `/etc/ld.so.prel
 **Implementation:** Install/remove the injector package in a container and inspect `/etc/ld.so.preload` at each stage.
 Implemented in `packaging/tests/lifecycle/preload_test.go`.
 
+The JMX scraper's pre-uninstall scriptlet stops and disables its systemd service on removal.
+
+| Test | What it validates |
+|------|-------------------|
+| Remove stops a service that was started but never enabled | Pre-uninstall |
+| Remove disables a service that was enabled but is not running | Pre-uninstall |
+| Remove leaves a service that is neither running nor enabled alone | No spurious `disable` |
+
+**Implementation:** The lifecycle containers do not run systemd, so the test creates `/run/systemd/system` and replaces `systemctl` with a stub that logs its calls and reports the unit's state from marker files, then asserts on the logged calls.
+Implemented in `packaging/tests/lifecycle/jmxscraper_test.go`.
+
 ### 4. Config file lifecycle
 
 Validate that configuration files are handled correctly across package lifecycle events.

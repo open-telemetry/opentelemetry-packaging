@@ -27,6 +27,7 @@ func newOBSRepo(t *testing.T) obsRepo {
 	r.git("", "init", "--quiet")
 	writeFixture(t, "packaging/common/injector/release.txt", "v0.11.0\n")
 	writeFixture(t, "packaging/common/java/release.txt", "v2.32.0\n")
+	writeFixture(t, "packaging/common/jmx-scraper/release.txt", "v1.60.0\n")
 	writeFixture(t, "packaging/common/nodejs/release.txt", "0.81.1\n")
 	writeFixture(t, "packaging/common/dotnet/release.txt", "v1.18.0\n")
 	writeFixture(t, "packaging/common/python/requirements.txt", "opentelemetry-distro==0.66b2\n")
@@ -86,6 +87,7 @@ func TestOBSPlanVersionsEachPackageByItsPin(t *testing.T) {
 		{Component: "dotnet", Package: "opentelemetry-dotnet-autoinstrumentation", Version: "1.18.0", SourceDateEpoch: "1000000000"},
 		{Component: "python", Package: "opentelemetry-python-autoinstrumentation", Version: "0.66b2", SourceDateEpoch: "1000000000"},
 		{Component: "meta", Package: "opentelemetry", Version: "0.0.3", SourceDateEpoch: "1000000000"},
+		{Component: "jmx-scraper", Package: "opentelemetry-jmx-scraper", Version: "1.60.0", SourceDateEpoch: "1000000000"},
 	}, runOBSPlan(t, "", ""))
 }
 
@@ -122,8 +124,8 @@ func TestOBSPlanSelectsChangesSinceBase(t *testing.T) {
 		{"python requirements", "packaging/common/python/requirements.txt", []string{"python"}},
 		{"metapackage", "packaging/common/meta/release.txt", []string{"meta"}},
 		{"component config", "packaging/common/injector/otel-injector.conf", []string{"injector"}},
-		{"builder", "packaging/builder/debspec.go", []string{"injector", "java", "nodejs", "dotnet", "python", "meta"}},
-		{"DEB source generator", "cmd/build-spec/deb/main.go", []string{"injector", "java", "nodejs", "dotnet", "python", "meta"}},
+		{"builder", "packaging/builder/debspec.go", []string{"injector", "java", "nodejs", "dotnet", "python", "meta", "jmx-scraper"}},
+		{"DEB source generator", "cmd/build-spec/deb/main.go", []string{"injector", "java", "nodejs", "dotnet", "python", "meta", "jmx-scraper"}},
 		// The workflow and the tools around it decide what is uploaded, not
 		// what it contains.
 		{"workflow", ".github/workflows/obs.yml", []string{}},

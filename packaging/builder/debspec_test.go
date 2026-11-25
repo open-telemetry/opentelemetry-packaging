@@ -118,11 +118,26 @@ func TestWriteDebSpecMirrorsTheDependencyModel(t *testing.T) {
 			for _, r := range comp.Relations.Recommends {
 				assert.Contains(t, spec, "Recommends:     "+r+"\n")
 			}
-			for _, s := range comp.Relations.Suggests {
+			for _, s := range debbuildAlternatives(comp.Relations.suggests("deb")) {
 				assert.Contains(t, spec, "Suggests:       "+s+"\n")
 			}
 		})
 	}
+}
+
+// debbuild has no syntax for "a | b", and would keep only the last name of
+// one, so each alternative of a suggestion gets its own Suggests line.
+func TestWriteDebSpecListsSuggestedAlternativesSeparately(t *testing.T) {
+	comp := Component{
+		Name:        "fixture",
+		PackageName: "acme-fixture",
+		Description: "fixture",
+		Relations:   Relations{Deb: DebOverride{Suggests: []string{"default-jre | java8-runtime"}}},
+	}
+	spec := renderDebSpec(t, "1.2.3", comp)
+	assert.Contains(t, spec, "Suggests:       default-jre\n")
+	assert.Contains(t, spec, "Suggests:       java8-runtime\n")
+	assert.NotContains(t, spec, "Suggests:       default-jre |")
 }
 
 // debbuild reads Replaces directly; the RPM spec's Obsoletes spelling would
