@@ -52,7 +52,6 @@ func main() {
 		return
 	}
 
-
 	pkgDir := *packagingDir
 	if pkgDir == "" {
 		if _, err := os.Stat("packaging"); err == nil {
