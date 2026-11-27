@@ -56,16 +56,35 @@ var (
 // Like Build, it derives both outputs from ContentsFunc, keeping the staged
 // payload and file list consistent. It calls the returned cleanup after staging.
 func Stage(cfg Config, comp Component, root, filelistDir string) error {
-	return stage(cfg, comp, root, filelistDir, rpmFileList)
+	return stageFormats(cfg, comp, root, filelistDir, []stagedList{
+		{format: rpmFileList, name: comp.Name + ".files"},
+	})
 }
 
-// StageDeb is Stage for the debbuild spec (see debspec.go). The file list
-// declares no ownership or modes, which dpkg takes from the staged tree.
-func StageDeb(cfg Config, comp Component, root, filelistDir string) error {
-	return stage(cfg, comp, root, filelistDir, debFileList)
+// Names of the file lists StageOBS writes beside the payload, one per package format.
+// The unified spec (see obsspec.go) picks the one for the build it is running under.
+const (
+	RPMFileListSuffix = ".rpm.files"
+	DEBFileListSuffix = ".deb.files"
+)
+
+// StageOBS stages a component's payload once under root and writes both of its file lists to filelistDir: <component>.rpm.files for rpmbuild, with the ownership and %config qualifiers it needs, and <component>.deb.files for debbuild, which declares no modes (dpkg takes them from the staged tree).
+//
+// The payload is the same for both formats, so one source archive serves the DEB and RPM repositories of an OBS package.
+func StageOBS(cfg Config, comp Component, root, filelistDir string) error {
+	return stageFormats(cfg, comp, root, filelistDir, []stagedList{
+		{format: rpmFileList, name: comp.Name + RPMFileListSuffix},
+		{format: debFileList, name: comp.Name + DEBFileListSuffix},
+	})
 }
 
-func stage(cfg Config, comp Component, root, filelistDir string, format fileListFormat) error {
+// stagedList is one file list to write while staging.
+type stagedList struct {
+	format fileListFormat
+	name   string
+}
+
+func stageFormats(cfg Config, comp Component, root, filelistDir string, lists []stagedList) error {
 	contents, cleanup, err := comp.ContentsFunc(cfg)
 	if cleanup != nil {
 		defer cleanup()
@@ -74,48 +93,57 @@ func stage(cfg Config, comp Component, root, filelistDir string, format fileList
 		return fmt.Errorf("staging contents for %s: %w", comp.Name, err)
 	}
 
-	// Match nfpm's expansion of trees, globs, and implicit parent directories.
-	prepared, err := files.PrepareForPackager(contents, stageUmask, format.packager, false, time.Now())
-	if err != nil {
-		return fmt.Errorf("preparing contents for %s: %w", comp.Name, err)
-	}
-
-	var lines []string
-	for _, content := range prepared {
-		line, err := stageContent(content, root, format)
-		if err != nil {
-			return fmt.Errorf("staging %s for %s: %w", content.Destination, comp.Name, err)
-		}
-		if line != "" {
-			lines = append(lines, line)
-		}
-	}
-
-	sort.Strings(lines)
-
 	if err := os.MkdirAll(filelistDir, 0o755); err != nil {
 		return err
 	}
-	listPath := filepath.Join(filelistDir, comp.Name+".files")
-	body := strings.Join(lines, "\n") + "\n"
-	if err := os.WriteFile(listPath, []byte(body), 0o644); err != nil {
-		return fmt.Errorf("writing file list %s: %w", listPath, err)
-	}
 
-	fmt.Printf("Staged %s: %d entries -> %s\n", comp.Name, len(lines), listPath)
+	for i, list := range lists {
+		// Match nfpm's expansion of trees, globs, and implicit parent directories.
+		prepared, err := files.PrepareForPackager(contents, stageUmask, list.format.packager, false, time.Now())
+		if err != nil {
+			return fmt.Errorf("preparing contents for %s: %w", comp.Name, err)
+		}
+
+		// The payload is the same whichever packager prepared it, so only the first list writes the tree.
+		write := i == 0
+
+		var lines []string
+		for _, content := range prepared {
+			line, err := stageContent(content, root, list.format, write)
+			if err != nil {
+				return fmt.Errorf("staging %s for %s: %w", content.Destination, comp.Name, err)
+			}
+			if line != "" {
+				lines = append(lines, line)
+			}
+		}
+
+		sort.Strings(lines)
+
+		listPath := filepath.Join(filelistDir, list.name)
+		body := strings.Join(lines, "\n") + "\n"
+		if err := os.WriteFile(listPath, []byte(body), 0o644); err != nil {
+			return fmt.Errorf("writing file list %s: %w", listPath, err)
+		}
+
+		fmt.Printf("Staged %s: %d entries -> %s\n", comp.Name, len(lines), listPath)
+	}
 	return nil
 }
 
 // stageContent writes a single content entry under root and returns the %files
 // line describing it, or an empty string when the entry needs no line.
-func stageContent(content *files.Content, root string, format fileListFormat) (string, error) {
+// With write false it only returns the line, for a list over a tree already written.
+func stageContent(content *files.Content, root string, format fileListFormat, write bool) (string, error) {
 	dst := content.Destination
 	target := filepath.Join(root, filepath.FromSlash(dst))
 
 	switch content.Type {
 	case files.TypeImplicitDir:
-		if err := os.MkdirAll(target, content.Mode()); err != nil {
-			return "", err
+		if write {
+			if err := os.MkdirAll(target, content.Mode()); err != nil {
+				return "", err
+			}
 		}
 		// Distribution-owned parents must exist in the buildroot but remain
 		// unclaimed; RPM permits unowned directories, though not unpackaged files.
@@ -124,27 +152,35 @@ func stageContent(content *files.Content, root string, format fileListFormat) (s
 		}
 		return dirLine(content, format), nil
 	case files.TypeDir:
-		if err := os.MkdirAll(target, content.Mode()); err != nil {
-			return "", err
+		if write {
+			if err := os.MkdirAll(target, content.Mode()); err != nil {
+				return "", err
+			}
 		}
 		return dirLine(content, format), nil
 	case files.TypeSymlink:
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return "", err
-		}
-		if err := os.Symlink(content.Source, target); err != nil && !os.IsExist(err) {
-			return "", err
+		if write {
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return "", err
+			}
+			if err := os.Symlink(content.Source, target); err != nil && !os.IsExist(err) {
+				return "", err
+			}
 		}
 		// A symlink has no meaningful mode of its own in RPM.
 		return filelistPath(dst), nil
 	case files.TypeConfig, files.TypeConfigNoReplace, files.TypeConfigMissingOK:
-		if err := copyStagedFile(content, target); err != nil {
-			return "", err
+		if write {
+			if err := copyStagedFile(content, target); err != nil {
+				return "", err
+			}
 		}
 		return fileLine(content, format, configDirective(content.Type, format)), nil
 	case files.TypeFile, "":
-		if err := copyStagedFile(content, target); err != nil {
-			return "", err
+		if write {
+			if err := copyStagedFile(content, target); err != nil {
+				return "", err
+			}
 		}
 		return fileLine(content, format, ""), nil
 	default:

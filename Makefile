@@ -247,14 +247,12 @@ rpm-rebuild-container:
 	@ls -1 $(REBUILD_OUTPUT_DIR)/*.rpm
 
 # ============================================================================
-# DEB sources for the Open Build Service (debbuild path)
+# Sources for the Open Build Service (DEB and RPM)
 # ============================================================================
 
-# The Open Build Service builds the DEB packages with debbuild, one OBS package
-# per component, and its builds have no network access. So the payload is
-# staged here, for every architecture, into each component's source archive,
-# and the generated spec only copies it into place.
-DEB_SOURCES_DIR ?= build/deb-sources
+# The Open Build Service builds the DEB packages with debbuild and the RPM ones with rpmbuild, one OBS package per component, and its builds have no network access.
+# So the payload is staged here, for every architecture, into each component's source archive, and the generated spec only copies it into place.
+OBS_SOURCES_DIR ?= build/obs-sources
 
 # Cross-compiles otel-config-check for every supported architecture. Source
 # packages carry the payload of all of them, and the Python payload bundles the
@@ -263,42 +261,42 @@ DEB_SOURCES_DIR ?= build/deb-sources
 # architecture to builder.Architectures is the only edit it takes.
 .PHONY: otel-config-check-all
 otel-config-check-all:
-	@set -e; for arch in $$(go run ./cmd/build-spec/deb -print-architectures); do \
+	@set -e; for arch in $$(go run ./cmd/build-spec/obs -print-architectures); do \
 		$(MAKE) --no-print-directory otel-config-check ARCH=$$arch; \
 	done
 
-# Writes $(DEB_SOURCES_DIR)/<package>/ with the debbuild spec and source archive
-# of every component; deb-sources-<component> writes one. Each package takes the
+# Writes $(OBS_SOURCES_DIR)/<package>/ with the spec and source archive
+# of every component; obs-sources-<component> writes one. Each package takes the
 # version of the upstream agent it ships, not $(VERSION): on OBS every package
 # is versioned and released on its own.
-.PHONY: deb-sources
-deb-sources: otel-config-check-all
-	go run ./cmd/build-spec/deb -output $(DEB_SOURCES_DIR)
+.PHONY: obs-sources
+obs-sources: otel-config-check-all
+	go run ./cmd/build-spec/obs -output $(OBS_SOURCES_DIR)
 
-.PHONY: deb-sources-%
-deb-sources-%: otel-config-check-all
-	go run ./cmd/build-spec/deb -component $* -output $(DEB_SOURCES_DIR)
+.PHONY: obs-sources-%
+obs-sources-%: otel-config-check-all
+	go run ./cmd/build-spec/obs -component $* -output $(OBS_SOURCES_DIR)
 
-# Writes the DEB sources of one component twice, with the same
+# Writes the OBS sources of one component twice, with the same
 # SOURCE_DATE_EPOCH, and fails unless the two outputs are byte-identical. OBS
 # rebuilds and releases a package whenever its committed archive changes, so an
 # archive that differs between two generations of an unchanged payload means a
 # new release of identical content on every run that selects the component.
-REPRODUCIBLE_SOURCES_DIR ?= build/deb-sources-reproducible
+REPRODUCIBLE_SOURCES_DIR ?= build/obs-sources-reproducible
 REPRODUCIBLE_SOURCE_DATE_EPOCH ?= 1700000000
 
-.PHONY: check-reproducible-deb-sources-%
-check-reproducible-deb-sources-%: otel-config-check-all
+.PHONY: check-reproducible-obs-sources-%
+check-reproducible-obs-sources-%: otel-config-check-all
 	@rm -rf $(REPRODUCIBLE_SOURCES_DIR)/$*
 	@set -e; for run in first second; do \
 		SOURCE_DATE_EPOCH=$(REPRODUCIBLE_SOURCE_DATE_EPOCH) \
-			go run ./cmd/build-spec/deb -component $* -output $(REPRODUCIBLE_SOURCES_DIR)/$*/$$run; \
+			go run ./cmd/build-spec/obs -component $* -output $(REPRODUCIBLE_SOURCES_DIR)/$*/$$run; \
 	done
 	@if ! diff -r $(REPRODUCIBLE_SOURCES_DIR)/$*/first $(REPRODUCIBLE_SOURCES_DIR)/$*/second; then \
-		echo "error: two generations of the $* DEB sources differ"; \
+		echo "error: two generations of the $* OBS sources differ"; \
 		exit 1; \
 	fi
-	@echo "The $* DEB sources are reproducible."
+	@echo "The $* OBS sources are reproducible."
 
 # Builds the generated specs with debbuild in a container, the way OBS does.
 #
@@ -311,7 +309,7 @@ check-reproducible-deb-sources-%: otel-config-check-all
 #
 # DEB_REBUILD_IMAGE selects the build distribution. Debian and Ubuntu differ in
 # the compression dpkg-deb defaults to, and in little else here.
-DEB_REBUILD_IMAGE ?= debian:12
+DEB_REBUILD_IMAGE ?= debian@sha256:268fb24c39bca92d326dd83ea3abebe4a3f7751c804ffef23bb6d857dd343ff8 # debian:12
 DEB_REBUILD_OUTPUT_DIR ?= $(CURDIR)/build/deb-rebuild
 
 # Pinned, so that an upstream change to the macros the specs rely on fails on a
@@ -320,14 +318,14 @@ DEBBUILD_VERSION ?= 24.12.0
 
 .PHONY: deb-rebuild-container
 deb-rebuild-container:
-	@if [ -z "$$(ls $(DEB_SOURCES_DIR)/*/*.spec 2>/dev/null)" ]; then \
-		echo "error: no spec found in $(DEB_SOURCES_DIR). Run \`make deb-sources\` first."; \
+	@if [ -z "$$(ls $(OBS_SOURCES_DIR)/*/*.spec 2>/dev/null)" ]; then \
+		echo "error: no spec found in $(OBS_SOURCES_DIR). Run \`make obs-sources\` first."; \
 		exit 1; \
 	fi
 	@rm -rf $(DEB_REBUILD_OUTPUT_DIR)
 	@mkdir -p $(DEB_REBUILD_OUTPUT_DIR)
 	$(CONTAINER_ENGINE) run --rm --platform linux/$(ARCH) \
-		-v $(abspath $(DEB_SOURCES_DIR)):/sources:ro \
+		-v $(abspath $(OBS_SOURCES_DIR)):/sources:ro \
 		-v $(DEB_REBUILD_OUTPUT_DIR):/out \
 		-v $(CURDIR)/packaging/repo:/scripts:ro \
 		$(DEB_REBUILD_IMAGE) \
@@ -338,6 +336,31 @@ deb-rebuild-container:
 .PHONY: integration-test-deb-rebuild
 integration-test-deb-rebuild: deb-rebuild-container
 	PACKAGES_DIR=$(DEB_REBUILD_OUTPUT_DIR) go test -v -timeout 5m -run TestDeb ./packaging/tests/metadata/
+
+# Builds the same generated specs with rpmbuild in a container, the way OBS does for the RPM repositories, and runs the RPM metadata tests over the result.
+#
+# RPM_REBUILD_IMAGE selects the build distribution; almalinux:9 exercises the oldest rpm (4.16) the specs have to parse under.
+RPM_REBUILD_IMAGE ?= registry.fedoraproject.org/fedora@sha256:98b558564d3510363f0f706a44b1ee9de461b030373d741c5729ae3f24d8cb26 # fedora:44
+RPM_REBUILD_OUTPUT_DIR ?= $(CURDIR)/build/rpm-rebuild
+
+.PHONY: obs-rpm-rebuild-container
+obs-rpm-rebuild-container:
+	@if [ -z "$$(ls $(OBS_SOURCES_DIR)/*/*.spec 2>/dev/null)" ]; then \
+		echo "error: no spec found in $(OBS_SOURCES_DIR). Run \`make obs-sources\` first."; \
+		exit 1; \
+	fi
+	@rm -rf $(RPM_REBUILD_OUTPUT_DIR)
+	@mkdir -p $(RPM_REBUILD_OUTPUT_DIR)
+	$(CONTAINER_ENGINE) run --rm --platform linux/$(ARCH) \
+		-v $(abspath $(OBS_SOURCES_DIR)):/sources:ro \
+		-v $(RPM_REBUILD_OUTPUT_DIR):/out \
+		-v $(CURDIR)/packaging/repo:/scripts:ro \
+		$(RPM_REBUILD_IMAGE) \
+		/scripts/rpm-obs-rebuild.sh /sources /out
+
+.PHONY: integration-test-obs-rpm-rebuild
+integration-test-obs-rpm-rebuild: obs-rpm-rebuild-container
+	PACKAGES_DIR=$(RPM_REBUILD_OUTPUT_DIR) go test -v -timeout 5m -run TestRpm ./packaging/tests/metadata/
 
 # ============================================================================
 # Local Package Repositories for Testing

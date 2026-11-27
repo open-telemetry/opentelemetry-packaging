@@ -116,7 +116,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [ "debian:12", "ubuntu:24.04" ]
+        image:
+          - debian@sha256:268fb24c39bca92d326dd83ea3abebe4a3f7751c804ffef23bb6d857dd343ff8 # debian:12
+          - ubuntu@sha256:73b999393d07f2bf65a40373778a44dc9a6d54ad7718d29247d8ff9413c4d6a8 # ubuntu:24.04
         arch: [ "amd64", "arm64" ]
     runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     steps:
@@ -136,7 +138,7 @@ jobs:
           # an unchanged archive. The value is arbitrary here: debbuild does not
           # care, and the reproducible-deb-sources job checks the reproducibility.
           SOURCE_DATE_EPOCH: "1700000000"
-        run: make deb-sources VERSION=0.0.0-dev
+        run: make obs-sources VERSION=0.0.0-dev
 
       - name: Build the specs with debbuild and check the metadata
         run: make integration-test-deb-rebuild ARCH=${{ matrix.arch }} DEB_REBUILD_IMAGE=${{ matrix.image }}
@@ -161,7 +163,34 @@ jobs:
           # Raises the GitHub API rate limit for the release-asset digest
           # lookups the payload staging makes, as build-packages does.
           GITHUB_TOKEN: ${{ github.token }}
-        run: make check-reproducible-deb-sources-python
+        run: make check-reproducible-obs-sources-python
+
+  # The same generated specs, built with rpmbuild the way OBS builds the Fedora and EL repositories, then checked by the RPM metadata tests.
+  rpm-source-rebuild:
+    strategy:
+      fail-fast: false
+      matrix:
+        # Fedora, and the oldest rpm the specs have to parse under.
+        image:
+          - registry.fedoraproject.org/fedora@sha256:98b558564d3510363f0f706a44b1ee9de461b030373d741c5729ae3f24d8cb26 # fedora:44
+          - docker.io/almalinux/9-base@sha256:2edb3541b7909af131c4ca8ae2c8cb985b20c80364e1f1230de88fb1131a0228 # almalinux/9-base
+        arch: [ "amd64", "arm64" ]
+    runs-on: ${{ matrix.arch == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
+    steps:
+      - name: Check out the codebase.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Write the sources
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_DATE_EPOCH: "1700000000"
+        run: make obs-sources VERSION=0.0.0-dev
+
+      - name: Build the specs with rpmbuild and check the metadata
+        run: make integration-test-obs-rpm-rebuild ARCH=${{ matrix.arch }} RPM_REBUILD_IMAGE=${{ matrix.image }}
 
   integration-tests:
     needs: build-packages
