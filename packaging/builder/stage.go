@@ -50,17 +50,6 @@ var (
 	debFileList = fileListFormat{packager: "deb"}
 )
 
-// Stage materializes a component's payload under root and writes its RPM %files
-// fragment to filelistDir/<component>.files.
-//
-// Like Build, it derives both outputs from ContentsFunc, keeping the staged
-// payload and file list consistent. It calls the returned cleanup after staging.
-func Stage(cfg Config, comp Component, root, filelistDir string) error {
-	return stageFormats(cfg, comp, root, filelistDir, []stagedList{
-		{format: rpmFileList, name: comp.Name + ".files"},
-	})
-}
-
 // Names of the file lists StageOBS writes beside the payload, one per package format.
 // The unified spec (see obsspec.go) picks the one for the build it is running under.
 const (

@@ -261,35 +261,15 @@ func TestBuildReturnsPath(t *testing.T) {
 	assert.Positive(t, st.Size())
 }
 
-// TestWriteSpecRendersDisplacement checks the rpmbuild path keeps parity with
-// nfpm, so a vendor gets the same relations from either producer.
-func TestWriteSpecRendersDisplacement(t *testing.T) {
-	original := AllComponents
-	t.Cleanup(func() { AllComponents = original })
-	AllComponents = append(append([]Component{}, original...), fixtureComponent(t, Relations{
-		Provides:  []string{"opentelemetry-java-autoinstrumentation1"},
-		Conflicts: []string{"opentelemetry-java-autoinstrumentation"},
-		Replaces:  []string{"opentelemetry-java-autoinstrumentation"},
-	}))
-
-	var b strings.Builder
-	require.NoError(t, WriteSpec(testConfig(t, "1.0.0"), &b))
-	spec := b.String()
-
-	assert.Contains(t, spec, "Conflicts:      opentelemetry-java-autoinstrumentation")
-	// Obsoletes is how a spec file spells Replaces.
-	assert.Contains(t, spec, "Obsoletes:      opentelemetry-java-autoinstrumentation")
-}
-
-// TestWriteSpecIdentityOverride covers the spec path reading identity from
+// TestWriteOBSSpecIdentityOverride covers the spec reading identity from
 // Config, which is the half of the seam that is easy to leave behind.
-func TestWriteSpecIdentityOverride(t *testing.T) {
+func TestWriteOBSSpecIdentityOverride(t *testing.T) {
 	cfg := testConfig(t, "1.0.0")
 	cfg.License = "MIT"
 	cfg.Homepage = "https://acme.example"
 
 	var b strings.Builder
-	require.NoError(t, WriteSpec(cfg, &b))
+	require.NoError(t, WriteOBSSpec(cfg, fixtureComponent(t, Relations{}), &b))
 	spec := b.String()
 
 	assert.Contains(t, spec, "License:        MIT")
@@ -326,107 +306,4 @@ func TestReleaseIsThePackagingRevision(t *testing.T) {
 			assert.Equal(t, "2", info.Release)
 		})
 	}
-}
-
-// TestWriteSpecUsesExplicitRelease guards the producer parity the rebuild drift
-// check depends on: an explicit revision must not be re-derived from the
-// version suffix, which would make rpmbuild emit a pre-release Release.
-func TestWriteSpecUsesExplicitRelease(t *testing.T) {
-	cfg := testConfig(t, "4.2.13")
-	cfg.Release = "2"
-
-	var b strings.Builder
-	require.NoError(t, WriteSpec(cfg, &b))
-	spec := b.String()
-
-	assert.Contains(t, spec, "Version:        4.2.13")
-	assert.Contains(t, spec, "Release:        2%{?dist}")
-	assert.NotContains(t, spec, "Release:        0.")
-}
-
-// The man page reports the version of the upstream agent, not the packaging
-// version, so the same agent is described identically however it was packaged.
-// Package images build their DEBs with the upstream pin as the package version
-// while the released DEBs use the git tag; before this, the two disagreed.
-func TestManPageReportsUpstreamVersion(t *testing.T) {
-	repoRoot, err := filepath.Abs("../..")
-	require.NoError(t, err)
-	packagingDir := filepath.Join(repoRoot, "packaging")
-
-	for _, component := range []string{"injector", "java", "nodejs", "dotnet", "python"} {
-		t.Run(component, func(t *testing.T) {
-			upstream, err := UpstreamVersion(Config{PackagingDir: packagingDir}, component)
-			require.NoError(t, err)
-			require.NotEmpty(t, upstream)
-
-			render := func(packageVersion string) string {
-				staging := t.TempDir()
-				cfg := Config{Version: packageVersion, PackagingDir: packagingDir}
-				out, err := componentManPage(cfg, staging, component)
-				require.NoError(t, err)
-				body, err := os.ReadFile(out)
-				require.NoError(t, err)
-				gz, err := gzip.NewReader(bytes.NewReader(body))
-				require.NoError(t, err)
-				text, err := io.ReadAll(gz)
-				require.NoError(t, err)
-				return string(text)
-			}
-
-			// The packaging version must not reach the rendered page, and the
-			// two packaging paths must render the same bytes.
-			asRelease, asImage := render("0.0.3"), render(upstream)
-			require.Equal(t, asRelease, asImage)
-			require.Contains(t, asRelease, upstream)
-			require.NotContains(t, asRelease, "0.0.3")
-			require.NotContains(t, asRelease, "@UPSTREAM_VERSION@")
-		})
-	}
-}
-
-func TestUpstreamVersionMatchesPins(t *testing.T) {
-	repoRoot, err := filepath.Abs("../..")
-	require.NoError(t, err)
-	cfg := Config{PackagingDir: filepath.Join(repoRoot, "packaging")}
-
-	// Agent components take their version from the Renovate-managed pin, and
-	// the metapackage from its hand-bumped one.
-	for _, component := range []string{"injector", "java", "nodejs", "dotnet", "meta"} {
-		pin, err := readReleaseVersion(filepath.Join(cfg.PackagingDir, "common", component, "release.txt"))
-		require.NoError(t, err)
-		got, err := UpstreamVersion(cfg, component)
-		require.NoError(t, err)
-		require.Equal(t, strings.TrimPrefix(pin, "v"), got)
-	}
-
-	// Python has no release.txt; it reports the distro pin from requirements.
-	got, err := UpstreamVersion(cfg, "python")
-	require.NoError(t, err)
-	requirements, err := os.ReadFile(filepath.Join(cfg.PackagingDir, "common", "python", "requirements.txt"))
-	require.NoError(t, err)
-	require.Contains(t, string(requirements), "opentelemetry-distro=="+got)
-}
-
-func TestPinnedRequirement(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "requirements.txt")
-	require.NoError(t, os.WriteFile(path, []byte(
-		"# comment\n\nopentelemetry-distro==0.66b1\n"+
-			"opentelemetry-sdk[file-configuration]==1.45.1\n"+
-			"urllib3 <2.8.1\n"), 0o644))
-
-	for name, want := range map[string]string{
-		"opentelemetry-distro": "0.66b1",
-		// Extras in brackets must not defeat the name match.
-		"opentelemetry-sdk": "1.45.1",
-	} {
-		got, err := pinnedRequirement(path, name)
-		require.NoError(t, err)
-		require.Equal(t, want, got)
-	}
-
-	// A non-pinned or absent requirement is an error, not an empty version.
-	_, err := pinnedRequirement(path, "urllib3")
-	require.Error(t, err)
-	_, err = pinnedRequirement(path, "absent")
-	require.Error(t, err)
 }

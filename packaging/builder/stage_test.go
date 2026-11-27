@@ -31,9 +31,9 @@ func stageFixture(t *testing.T, contents files.Contents) (root string, lines []s
 		},
 	}
 
-	require.NoError(t, Stage(testConfig(t, "1.2.3"), comp, root, filelistDir))
+	require.NoError(t, StageOBS(testConfig(t, "1.2.3"), comp, root, filelistDir))
 
-	data, err := os.ReadFile(filepath.Join(filelistDir, "fixture.files"))
+	data, err := os.ReadFile(filepath.Join(filelistDir, "fixture"+RPMFileListSuffix))
 	require.NoError(t, err)
 
 	for line := range strings.SplitSeq(strings.TrimSpace(string(data)), "\n") {
@@ -196,7 +196,7 @@ func TestStageRejectsUnsupportedContentType(t *testing.T) {
 		},
 	}
 
-	err := Stage(testConfig(t, "1.2.3"), comp, t.TempDir(), t.TempDir())
+	err := StageOBS(testConfig(t, "1.2.3"), comp, t.TempDir(), t.TempDir())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported content type")
 }
