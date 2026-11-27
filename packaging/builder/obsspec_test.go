@@ -120,6 +120,8 @@ func TestWriteOBSSpecKeepsPrebuiltBinariesIntactUnderRpm(t *testing.T) {
 		"%global debug_package %{nil}\n",
 		"%global __strip /bin/true\n",
 		"%global _build_id_links none\n",
+		"%global __brp_mangle_shebangs %{nil}\n",
+		"%global __brp_python_bytecompile %{nil}\n",
 		"%global source_date_epoch_from_changelog 0\n",
 		"%global __provides_exclude_from ^%{_prefix}/lib/opentelemetry/.*$\n",
 		"%global __requires_exclude ^%{_bindir}/(node|python3)$\n",

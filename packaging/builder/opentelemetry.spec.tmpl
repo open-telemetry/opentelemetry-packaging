@@ -42,9 +42,13 @@ AutoReq:        no
 {{ end -}}
 %else
 # The bundled agents are prebuilt binaries: no stripping, no debuginfo, and no build-id links.
+# The payload must also reach the package byte for byte as it is in the source archive, which is what the DEB packages ship.
+# Two post-install scripts rewrite files in the buildroot unless switched off: brp-mangle-shebangs, which turns "#!/usr/bin/env node" into "#!/usr/bin/node" and so breaks the scripts on a host whose node is elsewhere, and brp-python-bytecompile, which would write unpackaged __pycache__ files.
 %global debug_package %{nil}
 %global __strip /bin/true
 %global _build_id_links none
+%global __brp_mangle_shebangs %{nil}
+%global __brp_python_bytecompile %{nil}
 
 # This spec carries no changelog, so there is no date in it to derive SOURCE_DATE_EPOCH from.
 # Saying so is better than fabricating an entry to satisfy the macro, which would otherwise warn on every build.
