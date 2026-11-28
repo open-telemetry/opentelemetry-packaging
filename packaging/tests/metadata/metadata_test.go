@@ -33,9 +33,8 @@ import (
 
 // packagesDir returns the directory the packages under test live in.
 //
-// It defaults to the nfpm build output. PACKAGES_DIR overrides it, so the same
-// assertions can run against the rpmbuild output — the COPR path — and catch
-// drift between the two producers.
+// It defaults to the nfpm build output.
+// PACKAGES_DIR overrides it, so the same assertions can run against the rpmbuild and debbuild output of the OBS spec and catch drift between the producers.
 //
 // A relative override resolves against the repository root, not the working
 // directory: go test runs in the package directory, so filepath.Abs would look

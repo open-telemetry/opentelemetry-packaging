@@ -9,7 +9,6 @@
 - **Python 3 with pip** (needed to fetch the Python auto-instrumentation packages; invoked as `python3 -m pip`)
 - **[uv](https://docs.astral.sh/uv/)** (needed by the Python test targets, which build their virtualenvs with it; `make python-unit-tests` and `make pyproto-unit-tests` stop with an installation hint if it is missing)
 - **A container engine** (Podman or Docker, needed for package-image builds, local repository generation, and integration tests).
-- **`rpmbuild`** (optional — only for building the source RPM natively; `make srpm-container` runs it in a container instead)
 
 No Ruby, FPM, or special Docker images are required to build packages.
 
@@ -25,9 +24,7 @@ Every `make` invocation in this document is then `gmake` instead.
 ## Repository layout
 
 ```
-.copr/Makefile               COPR "make srpm" entry point (installs the tooling, then calls make srpm)
 cmd/build-packages/          CLI entry point for building .deb and .rpm packages
-cmd/build-spec/rpm/          CLI entry point for generating and staging the source RPM spec
 cmd/build-spec/obs/          CLI entry point for writing the specs and source archives built on OBS
 cmd/package-metadata/        Per-component package metadata and build plans for CI (package images, OBS)
 cmd/obs-publish/             CLI entry point for uploading, building, and releasing one package on OBS
@@ -37,7 +34,6 @@ packaging/
     builder.go               Build orchestration, common metadata
     components.go            Per-component definitions (injector, java, nodejs, dotnet, python, meta)
     download.go              Upstream artifact download helpers
-    spec.go                  RPM spec generation for the COPR build (projection of components.go)
     obsspec.go               Unified debbuild and rpmbuild spec generation for the OBS build, one spec per component
     obssources.go            OBS source archives: the payload staged for every architecture
     stage.go                 Payload staging into a buildroot, with generated %files lists
@@ -115,93 +111,20 @@ The `cmd/build-packages` program:
 ### Where package metadata lives
 
 Each component in `components.go` declares its identity and lifecycle metadata as fields, with `Provides`, `Requires`, `Recommends`, and `Suggests` grouped under `Relations`, separately from the `ContentsFunc` that stages its payload.
-That separation has one purpose: the metadata alone is enough to generate an RPM spec, so `spec.go` can render one without downloading a single upstream artifact.
+That separation has one purpose: the metadata alone is enough to generate an RPM spec, so `obsspec.go` can render one without downloading a single upstream artifact.
 
 Add or change a package relationship in `components.go` and nothing else.
 Every producer reads it from there: nfpm through `Component.Info`, and rpmbuild and debbuild through the specs generated from it.
 
-### Building RPMs with rpmbuild instead of nfpm
+### Dependencies rpmbuild adds
 
-RPMs have a second producer, used by the [COPR](https://copr.fedorainfracloud.org/) build, where mock owns the packaging step and only accepts a source RPM.
-
-```sh
-go run ./cmd/build-spec/rpm -version 1.0.0 -output build/srpm/SPECS
-```
-
-That renders `opentelemetry-packaging.spec`, whose `%install` section calls the same builder back in staging mode:
-
-```sh
-go run ./cmd/build-spec/rpm -version 1.0.0 -arch amd64 -component injector -stage-root /path/to/buildroot -filelist-dir /path/to/filelists
-```
-
-Staging materializes the component's `files.Contents` into the buildroot and writes the matching `%files` fragment, so the file lists and the packaged tree come from one traversal and cannot disagree.
-The generated spec is never committed, and never edited by hand.
-
-Those two invocations are wired together by the source RPM targets, which is what COPR drives:
-
-```sh
-make srpm
-```
-
-That renders the spec, exports the working tree (not `HEAD`, so uncommitted work is testable), vendors the Go modules into the source tarball, and runs `rpmbuild -bs` with `_topdir` as its only define.
-The vendored modules are what let the per-chroot build compile without network access for the Go dependencies; only the upstream agents are still fetched at build time.
-
-On a host without `rpmbuild`, run `rpmbuild` in a container instead:
-
-```sh
-make srpm-container
-```
-
-Only `build/srpm` is mounted into that container, and nothing but `rpmbuild` runs inside it — no Go, no git, no repository — so it also works when the checkout is a git worktree.
-`make srpm-sources` stops after the spec and the tarball, for inspecting either without any RPM tooling.
-
-Two consequences of rpmbuild owning the packaging step are worth knowing.
-Its `Release` carries the distribution tag (`0.dev.1.fc44`), so a COPR package sorts above the identically versioned one built by nfpm.
-It also generates dependencies automatically from the payload, which nfpm does not: the Node.js package gains `Requires: /usr/bin/node`, the Python package `Requires: /usr/bin/python3`, and both the .NET and Python packages pick up the glibc symbol versions their bundled binaries need.
+An RPM built by rpmbuild from the spec of the Open Build Service build, rather than by nfpm, also gets dependencies generated automatically from the payload.
+The Node.js package gains `Requires: /usr/bin/node`, the Python package `Requires: /usr/bin/python3`, and both the .NET and Python packages pick up the glibc symbol versions their bundled binaries need.
 Those requirements are kept, since they are real constraints on where a package can install.
 
 The matching `Provides` are not.
-The spec sets `__provides_exclude_from` for `/usr/lib/opentelemetry`, so the bundled libraries never advertise their SONAMEs as system-wide providers — the injector is preloaded by absolute path and is never resolved by SONAME, so publishing `libinjector.so()(64bit)` would only risk satisfying an unrelated package's dependency.
-
-### Verifying the rpmbuild path
-
-Rebuild the source RPM into binary RPMs the way COPR does, with `--rebuild` and no defines at all, so the spec embedded in the SRPM is what gets built:
-
-```sh
-make rpm-rebuild-container
-```
-
-`REBUILD_IMAGE` selects the buildroot, which matters because the EL rpm is older than Fedora's and is stricter about the preamble:
-
-```sh
-make rpm-rebuild-container REBUILD_IMAGE=almalinux:9 REBUILD_OUTPUT_DIR=build/rebuild/el9
-```
-
-The metadata tests accept a `PACKAGES_DIR` override, so the same assertions that cover the nfpm packages can be pointed at the rebuilt ones to catch drift between the two producers:
-
-```sh
-PACKAGES_DIR=build/rebuild/fedora go test -run TestRpm ./packaging/tests/metadata/
-```
-
-### Building in COPR
-
-The RPMs are built in the [`opentelemetry/opentelemetry-packaging`](https://copr.fedorainfracloud.org/coprs/opentelemetry/opentelemetry-packaging/) COPR project with the SCM source type and the "make srpm" build method.
-COPR clones the repository and runs `make -f .copr/Makefile srpm outdir=<dir>`, which installs Go, git, and `rpmbuild`, calls `make srpm`, and copies the source RPM into `<dir>`.
-That step has network access, so it fetches the Go toolchain `go.mod` asks for and vendors the modules; COPR then rebuilds the source RPM once per chroot with mock, which is the step `make rpm-rebuild-container` reproduces locally.
-
-The version comes from the newest `v*` tag in the clone, as in every other target, so a build of a branch without tags gets the `0.0.0-dev` placeholder.
-
-Builds are normally requested by the [Build in COPR workflow](.github/workflows/copr-build.yml), on every published release or on demand; [RELEASING.md](RELEASING.md) describes it.
-A maintainer of the project can also submit a build of any branch, tag, or commit directly with [`copr-cli`](https://developer.fedoraproject.org/deployment/copr/copr-cli.html):
-
-```sh
-copr-cli buildscm opentelemetry/opentelemetry-packaging \
-  --clone-url https://github.com/open-telemetry/opentelemetry-packaging \
-  --commit main \
-  --method make_srpm
-```
-
-To try a change before it is merged, point `--clone-url` and `--commit` at a fork and a branch, or submit the same command to a COPR project of your own with the same chroots.
+The spec sets `__provides_exclude_from` for `/usr/lib/opentelemetry`, so the bundled libraries never advertise their SONAMEs as system-wide providers.
+The injector is preloaded by absolute path and is never resolved by SONAME, so publishing `libinjector.so()(64bit)` would only risk satisfying an unrelated package's dependency.
 
 ### Building DEBs and RPMs on the Open Build Service
 
@@ -261,9 +184,9 @@ Some properties of the DEBs differ from the nfpm packages, and are worth knowing
 - The compression follows the build distribution's `dpkg` default: xz on Debian, zstd on Ubuntu.
 - The packages are not byte-reproducible: debbuild stamps the directories it creates, and the man page it recompresses, with the time of the build. The source archives are, which is what matters for OBS, where a changed archive is a rebuild.
 
-Unlike the source RPM the COPR path produced, nothing is compiled or downloaded at build time.
+Nothing is compiled or downloaded at build time.
 The spec has no `BuildRequires`, because the payload is staged beforehand.
-The spec sets the same globals the source RPM did: no debuginfo, no stripping of the prebuilt binaries, and no private libraries published as `Provides`.
+The spec sets globals for rpm: no debuginfo, no stripping of the prebuilt binaries, and no private libraries published as `Provides`.
 `AutoReq` stays on for rpm, so the glibc symbol versions the binaries need remain install constraints.
 
 ### Building the sources locally

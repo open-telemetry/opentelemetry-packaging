@@ -7,6 +7,8 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"text/template"
 
@@ -113,10 +115,8 @@ func OBSSourcePrefix(comp Component, version string) string {
 
 // WriteOBSSpec renders the spec for one component.
 //
-// Every component gets its own spec, and therefore its own OBS package, so a
-// component can be built and released on its own. Unlike WriteSpec, the spec
-// builds nothing: the payload is staged ahead of time, by WriteOBSSources, into
-// the source archive, and the spec only copies it into place.
+// Every component gets its own spec, and therefore its own OBS package, so a component can be built and released on its own.
+// The spec builds nothing: the payload is staged ahead of time, by WriteOBSSources, into the source archive, and the spec only copies it into place.
 func WriteOBSSpec(cfg Config, comp Component, w io.Writer) error {
 	version, release, err := OBSVersionRelease(cfg)
 	if err != nil {
@@ -168,4 +168,53 @@ func WriteOBSSpec(cfg Config, comp Component, w io.Writer) error {
 	}
 
 	return obsSpecTemplate.Execute(w, data)
+}
+
+// specScriptlet is one lifecycle scriptlet, with its body already escaped for inclusion in a spec.
+type specScriptlet struct {
+	Section     string
+	PackageName string
+	Body        string
+}
+
+func componentScriptlets(cfg Config, comp Component) ([]specScriptlet, error) {
+	sources := []struct {
+		section string
+		file    string
+	}{
+		{"post", comp.PostInstall},
+		{"preun", comp.PreRemove},
+	}
+
+	var scriptlets []specScriptlet
+	for _, s := range sources {
+		if s.file == "" {
+			continue
+		}
+		body, err := readScript(cfg, s.file)
+		if err != nil {
+			return nil, err
+		}
+		scriptlets = append(scriptlets, specScriptlet{
+			Section:     s.section,
+			PackageName: comp.PackageName,
+			Body:        body,
+		})
+	}
+	return scriptlets, nil
+}
+
+func readScript(cfg Config, name string) (string, error) {
+	path := filepath.Join(cfg.PackagingDir, "common", "scripts", name)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("reading lifecycle script: %w", err)
+	}
+	return escapePercent(strings.TrimRight(string(data), "\n")), nil
+}
+
+// escapePercent protects literal percent signs from RPM macro expansion, which applies inside comments and scriptlets too.
+// preuninstall-injector.sh contains printf '%s\n'.
+func escapePercent(s string) string {
+	return strings.ReplaceAll(s, "%", "%%")
 }

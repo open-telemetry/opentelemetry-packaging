@@ -8,7 +8,7 @@ Proposed
 
 The system packages need to reach users as signed DEB and RPM repositories that `apt` and `dnf` can install from and upgrade against.
 As of the beginning of November 2026, the Debian and Ubuntu packages come from nfpm (`make deb-packages`) and never pass through a build service, so nothing signs them or generates repository metadata for them.
-The Fedora and EPEL RPMs build in [Fedora COPR](https://copr.fedorainfracloud.org/coprs/opentelemetry/opentelemetry-packaging/), which signs them and serves a repository.
+The Fedora and EPEL RPMs used to build in [Fedora COPR](https://copr.fedorainfracloud.org/coprs/opentelemetry/opentelemetry-packaging/), which signs them and serves a repository.
 COPR, however, only builds RPMs, and it builds every component at once from a release tag.
 
 This document specifies how the packages are built, versioned, signed, and published.
@@ -33,9 +33,10 @@ The work is split into phases.
 
 1. **DEBs on OBS.** Build and publish the Debian and Ubuntu packages on the openSUSE Open Build Service (OBS).
    Users install them from the repositories OBS publishes.
-   COPR keeps building the RPMs, unchanged, in the meantime.
-2. **RPMs on OBS.** Once the DEB path is in place, build the Fedora and EPEL packages on OBS with the same model, and retire COPR.
-   This document covers that phase only in outline; its details are added when it starts.
+2. **RPMs on OBS.** Build the Fedora and EPEL packages on OBS with the same model, from the same spec as the DEBs.
+   The repository no longer contains the COPR build: its workflow, its source RPM generator, and the Makefile targets for them are removed.
+   Retiring the COPR project and moving users to the OBS repositories happen outside this repository.
+   This document covers this phase only in outline.
 3. **Blob storage mirror.** Mirror the published repositories to blob storage behind a project domain.
    Its provider, domain, and trigger are not decided yet.
 4. **Retire GitHub Pages.**
@@ -51,7 +52,6 @@ The work is split into phases.
 
 - Running our own build service instance.
 - Nightly or development channels.
-- Changing how COPR builds the RPMs before it is retired.
 - Changing how the GitHub release assets are versioned.
 
 ### Vocabulary
@@ -82,7 +82,7 @@ A package version has the form `<component version>-<package release>`.
 The component version says which agent the package ships, and the package release says which packaging of that agent it is.
 
 This scheme applies to the packages on OBS only.
-The GitHub release assets, and COPR until it is retired, keep the repository release tag version.
+The GitHub release assets keep the repository release tag version.
 
 The metapackage declares its relations without versions and ships only a README, so it does not change when other packages do.
 Its version is bumped by hand when its relations or contents change, for example when a new package joins the suite.
@@ -290,14 +290,14 @@ The cost of that choice is the dependency on `Debian:debbuild` and `Ubuntu:debbu
 
 ### Building on OBS from source
 
-Run `go build` and fetch the upstream agents during the OBS build, as COPR does.
+Run `go build` and fetch the upstream agents during the OBS build, as the COPR build did.
 Rejected because OBS build roots have no network access.
 The required Go version is also unavailable in the standard Debian 12 repositories, and the other distributions need backports or additional repositories to provide it.
 Preparing the contents in CI removes every build dependency, so Debian and Ubuntu can share a single spec.
 
 ### Releasing every package together from a release tag
 
-Build and release all packages from a single tag, as COPR does.
+Build and release all packages from a single tag, as the COPR build did.
 Rejected because it couples the release of every agent to every other, rebuilds unchanged packages, and forces a shared version that does not tell users which agent a package contains.
 
 ### Using `osc` in CI
